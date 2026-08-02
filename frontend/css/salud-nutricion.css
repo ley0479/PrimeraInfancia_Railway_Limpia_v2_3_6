@@ -1,0 +1,84 @@
+
+.sn-tab {
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 0.85rem;
+    padding: 0.65rem 1rem;
+    color: rgb(203 213 225);
+    transition: all .18s ease;
+}
+.sn-tab:hover,
+.sn-tab.active {
+    background: rgba(14, 165, 233, 0.12);
+    color: rgb(125 211 252);
+    border-color: rgba(14, 165, 233, 0.35);
+}
+.sn-card {
+    border: 1px solid rgb(30 41 59);
+    background: rgba(15, 23, 42, 0.72);
+    border-radius: 1rem;
+    padding: 1rem;
+}
+.sn-table th {
+    background: rgb(15 23 42);
+    color: rgb(226 232 240);
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: .04em;
+}
+.sn-table td,
+.sn-table th {
+    padding: .6rem .75rem;
+    border-bottom: 1px solid rgba(51, 65, 85, .75);
+}
+.sn-badge {
+    border-radius: 999px;
+    padding: .25rem .55rem;
+    font-size: .72rem;
+    border: 1px solid rgba(148, 163, 184, .22);
+}
+.sn-badge-rojo { background: rgba(244, 63, 94, .12); color: rgb(253 164 175); border-color: rgba(244, 63, 94, .35); }
+.sn-badge-amarillo { background: rgba(245, 158, 11, .12); color: rgb(252 211 77); border-color: rgba(245, 158, 11, .35); }
+.sn-badge-verde { background: rgba(16, 185, 129, .12); color: rgb(110 231 183); border-color: rgba(16, 185, 129, .35); }
+.sn-bar { height: .55rem; border-radius: 999px; background: rgba(51, 65, 85, .65); overflow: hidden; }
+.sn-bar > span { display:block; height:100%; background: currentColor; }
+
+/* ALPHA51 - Entregables Salud y Nutrición */
+.sn-entregables-hero {
+    background:
+        radial-gradient(circle at 15% 10%, rgba(34, 211, 238, .16), transparent 32%),
+        radial-gradient(circle at 85% 20%, rgba(139, 92, 246, .14), transparent 30%),
+        rgba(15, 23, 42, .78);
+    border-color: rgba(34, 211, 238, .28);
+}
+.sn-ent-kpi {
+    border: 1px solid rgba(34, 211, 238, .22);
+    background: rgba(2, 6, 23, .55);
+    border-radius: .9rem;
+    padding: .75rem .9rem;
+    min-width: 7rem;
+}
+.sn-ent-kpi span { display:block; color: rgb(148 163 184); font-size: .72rem; }
+.sn-ent-kpi strong { display:block; margin-top:.25rem; color: rgb(103 232 249); font-size: 1.35rem; }
+.sn-ent-input {
+    width: 100%;
+    border: 1px solid rgb(51 65 85);
+    border-radius: .85rem;
+    background: rgba(2, 6, 23, .75);
+    color: rgb(226 232 240);
+    padding: .7rem .85rem;
+    font-size: .85rem;
+}
+.sn-ent-input:focus { outline: none; border-color: rgba(34, 211, 238, .55); box-shadow: 0 0 0 3px rgba(34, 211, 238, .12); }
+.sn-ent-btn {
+    border: 1px solid rgba(34, 211, 238, .28);
+    color: rgb(165 243 252);
+    background: rgba(8, 145, 178, .12);
+    border-radius: .55rem;
+    padding: .35rem .55rem;
+    font-size: .72rem;
+    white-space: nowrap;
+}
+.sn-ent-btn:hover { background: rgba(8, 145, 178, .22); }
+.sn-ent-btn-foto { border-color: rgba(168, 85, 247, .32); color: rgb(216 180 254); background: rgba(109, 40, 217, .14); }
+.sn-ent-btn-validar { border-color: rgba(16, 185, 129, .32); color: rgb(110 231 183); background: rgba(5, 150, 105, .12); }
+.sn-ent-table td { vertical-align: top; }

@@ -1,0 +1,203 @@
+/* Ajustes visuales dinámicos de PrimeraInfancia.
+   Este archivo no modifica formatos ICBF; solo controla la interfaz web. */
+:root {
+    --pi-bg: #020617;
+    --pi-surface: #0f172a;
+    --pi-surface-soft: #1e293b;
+    --pi-border: #334155;
+    --pi-text: #f8fafc;
+    --pi-muted: #94a3b8;
+    --pi-primary: #4f46e5;
+    --pi-primary-hover: #4338ca;
+    --pi-accent: #06b6d4;
+    --pi-success: #10b981;
+    --pi-warning: #f59e0b;
+    --pi-danger: #ef4444;
+    --pi-radius: 16px;
+    --pi-font-scale: 100%;
+    --pi-density-y: 1;
+}
+
+html.theme-pi {
+    font-size: var(--pi-font-scale);
+}
+
+html.theme-pi body {
+    background: var(--pi-bg) !important;
+    color: var(--pi-text) !important;
+}
+
+html.theme-pi .bg-slate-950,
+html.theme-pi .bg-slate-950\/50 {
+    background-color: color-mix(in srgb, var(--pi-bg) 92%, transparent) !important;
+}
+
+html.theme-pi .bg-slate-900,
+html.theme-pi .bg-slate-900\/40,
+html.theme-pi .bg-slate-900\/50,
+html.theme-pi .bg-slate-900\/60,
+html.theme-pi .bg-slate-900\/70 {
+    background-color: color-mix(in srgb, var(--pi-surface) 88%, transparent) !important;
+}
+
+html.theme-pi .bg-slate-800,
+html.theme-pi .bg-slate-800\/50 {
+    background-color: color-mix(in srgb, var(--pi-surface-soft) 88%, transparent) !important;
+}
+
+html.theme-pi .border-slate-800,
+html.theme-pi .border-slate-700,
+html.theme-pi .border-slate-600 {
+    border-color: var(--pi-border) !important;
+}
+
+html.theme-pi .text-slate-100,
+html.theme-pi .text-slate-200,
+html.theme-pi .text-slate-300 {
+    color: var(--pi-text) !important;
+}
+
+html.theme-pi .text-slate-400,
+html.theme-pi .text-slate-500 {
+    color: var(--pi-muted) !important;
+}
+
+html.theme-pi .bg-indigo-600,
+html.theme-pi .bg-cyan-600,
+html.theme-pi .bg-violet-600,
+html.theme-pi .bg-fuchsia-600 {
+    background-color: var(--pi-primary) !important;
+}
+
+html.theme-pi .hover\:bg-indigo-500:hover,
+html.theme-pi .hover\:bg-cyan-500:hover,
+html.theme-pi .hover\:bg-violet-500:hover,
+html.theme-pi .hover\:bg-fuchsia-500:hover {
+    background-color: var(--pi-primary-hover) !important;
+}
+
+html.theme-pi .text-indigo-400,
+html.theme-pi .text-cyan-400,
+html.theme-pi .text-cyan-300,
+html.theme-pi .text-violet-400,
+html.theme-pi .text-fuchsia-400 {
+    color: var(--pi-accent) !important;
+}
+
+html.theme-pi .border-indigo-500\/20,
+html.theme-pi .border-cyan-500\/20,
+html.theme-pi .border-indigo-500\/30,
+html.theme-pi .border-cyan-500\/30 {
+    border-color: color-mix(in srgb, var(--pi-accent) 35%, transparent) !important;
+}
+
+html.theme-pi .card-metrica,
+html.theme-pi .gp-card,
+html.theme-pi .gp-panel,
+html.theme-pi .gc-card,
+html.theme-pi .gc-panel,
+html.theme-pi .sn-card,
+html.theme-pi .fact-card,
+html.theme-pi .backups-card,
+html.theme-pi .calidad-card,
+html.theme-pi .ajustes-card {
+    background: linear-gradient(135deg, var(--pi-surface) 0%, var(--pi-surface-soft) 100%) !important;
+    border-color: var(--pi-border) !important;
+    border-radius: var(--pi-radius) !important;
+    color: var(--pi-text) !important;
+}
+
+html.theme-pi input,
+html.theme-pi select,
+html.theme-pi textarea,
+html.theme-pi .gp-input,
+html.theme-pi .gc-input,
+html.theme-pi .sn-input,
+html.theme-pi .acceso-input {
+    background-color: var(--pi-bg) !important;
+    border-color: var(--pi-border) !important;
+    color: var(--pi-text) !important;
+    border-radius: calc(var(--pi-radius) * 0.75) !important;
+}
+
+html.theme-pi [class*="rounded-xl"],
+html.theme-pi [class*="rounded-2xl"],
+html.theme-pi [class*="rounded-3xl"] {
+    border-radius: var(--pi-radius) !important;
+}
+
+html.theme-pi[data-density="compact"] .card-metrica,
+html.theme-pi[data-density="compact"] .ajustes-card,
+html.theme-pi[data-density="compact"] .bg-slate-950.border,
+html.theme-pi[data-density="compact"] .bg-slate-950.p-6 {
+    padding: 1rem !important;
+}
+
+html.theme-pi[data-density="spacious"] .card-metrica,
+html.theme-pi[data-density="spacious"] .ajustes-card,
+html.theme-pi[data-density="spacious"] .bg-slate-950.border,
+html.theme-pi[data-density="spacious"] .bg-slate-950.p-6 {
+    padding: 2rem !important;
+}
+
+html.theme-pi[data-sidebar="compact"] aside {
+    width: 5.5rem !important;
+}
+
+html.theme-pi[data-sidebar="compact"] aside nav button {
+    justify-content: center;
+    padding-left: .75rem !important;
+    padding-right: .75rem !important;
+}
+
+html.theme-pi[data-sidebar="compact"] aside nav button span,
+html.theme-pi[data-sidebar="compact"] aside nav button:not(:hover) {
+    font-size: 0;
+}
+
+html.theme-pi[data-sidebar="compact"] aside nav button i {
+    width: 1.25rem;
+    height: 1.25rem;
+}
+
+html.theme-pi.reduce-motion *,
+html.theme-pi.reduce-motion *::before,
+html.theme-pi.reduce-motion *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+}
+
+.ajustes-card {
+    background: linear-gradient(135deg, var(--pi-surface) 0%, var(--pi-surface-soft) 100%);
+    border: 1px solid var(--pi-border);
+    border-radius: var(--pi-radius);
+    padding: 1.5rem;
+}
+
+.ajustes-input {
+    width: 100%;
+    border: 1px solid var(--pi-border);
+    background: var(--pi-bg);
+    color: var(--pi-text);
+    border-radius: calc(var(--pi-radius) * .75);
+    padding: .75rem 1rem;
+    font-size: .875rem;
+}
+
+.ajustes-color {
+    width: 100%;
+    height: 2.75rem;
+    border: 1px solid var(--pi-border);
+    background: var(--pi-bg);
+    border-radius: calc(var(--pi-radius) * .75);
+    padding: .25rem;
+}
+
+.ajustes-preview {
+    background: var(--pi-surface);
+    border: 1px solid var(--pi-border);
+    color: var(--pi-text);
+    border-radius: var(--pi-radius);
+    padding: 1rem;
+}

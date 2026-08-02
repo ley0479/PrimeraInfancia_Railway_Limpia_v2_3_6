@@ -1,0 +1,524 @@
+/* ALPHA47 — Panel Principal Institucional sobre Pack35 estable
+   Capa visual aislada: no modifica motor de procesamiento, formatos ni rutas. */
+:root {
+    --alpha47-bg: #050b18;
+    --alpha47-panel: rgba(15, 23, 42, 0.82);
+    --alpha47-panel-soft: rgba(15, 23, 42, 0.62);
+    --alpha47-border: rgba(56, 189, 248, 0.22);
+    --alpha47-border-strong: rgba(139, 92, 246, 0.42);
+    --alpha47-cyan: #22d3ee;
+    --alpha47-blue: #3b82f6;
+    --alpha47-violet: #8b5cf6;
+    --alpha47-emerald: #34d399;
+    --alpha47-amber: #fbbf24;
+}
+
+body.pi-futurista-institucional {
+    background:
+        radial-gradient(circle at 20% 5%, rgba(59,130,246,0.14), transparent 28rem),
+        radial-gradient(circle at 90% 0%, rgba(139,92,246,0.10), transparent 24rem),
+        linear-gradient(135deg, #020617 0%, #071225 52%, #020617 100%);
+}
+
+#app-shell > aside {
+    background: linear-gradient(180deg, rgba(2, 6, 23, 0.98), rgba(8, 18, 42, 0.96));
+    border-right: 1px solid rgba(56, 189, 248, 0.14);
+    box-shadow: 18px 0 70px rgba(0,0,0,0.24);
+}
+
+#app-shell > main > header {
+    min-height: 4rem;
+    height: auto;
+    flex-wrap: wrap;
+    gap: .75rem;
+    background: rgba(2, 6, 23, 0.72);
+    border-bottom: 1px solid rgba(56, 189, 248, 0.14);
+    backdrop-filter: blur(16px);
+}
+
+#dashboard {
+    --tw-space-y-reverse: 0;
+}
+
+#dashboard > * + * {
+    margin-top: 1.25rem !important;
+}
+
+.alpha47-dashboard-operativo {
+    display: grid;
+    gap: 1rem;
+}
+
+.alpha47-hero-panel,
+.alpha47-panel,
+#dashboard .dashboard-current-datetime-bar,
+#dashboard #bmp-panel,
+#dashboard #cruce-bases-panel,
+#dashboard .card-metrica,
+#dashboard .bg-slate-950.border {
+    border-radius: 1.25rem !important;
+    border: 1px solid rgba(56, 189, 248, 0.18) !important;
+    background:
+        linear-gradient(135deg, rgba(15,23,42,0.92), rgba(15,23,42,0.62)) !important;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.03);
+}
+
+.alpha47-hero-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.72fr);
+    gap: 1rem;
+    padding: 1.1rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.alpha47-hero-panel::before {
+    content: "";
+    position: absolute;
+    inset: -40% -10% auto auto;
+    width: 35rem;
+    height: 35rem;
+    background: radial-gradient(circle, rgba(34,211,238,0.16), transparent 62%);
+    pointer-events: none;
+}
+
+.alpha47-hero-content,
+.alpha47-institution-card {
+    position: relative;
+    z-index: 1;
+}
+
+.alpha47-eyebrow,
+.alpha47-label,
+.alpha47-panel-head span {
+    color: var(--alpha47-cyan);
+    font-size: .72rem;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    font-weight: 800;
+}
+
+.alpha47-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .4rem .65rem;
+    border: 1px solid rgba(34,211,238,.22);
+    border-radius: 999px;
+    background: rgba(34,211,238,.08);
+}
+
+.alpha47-hero-content h2 {
+    margin-top: .8rem;
+    font-size: clamp(1.6rem, 2.2vw, 2.55rem);
+    font-weight: 900;
+    line-height: 1.05;
+    color: #f8fafc;
+}
+
+.alpha47-hero-content p {
+    max-width: 62rem;
+    margin-top: .75rem;
+    color: #94a3b8;
+    font-size: .95rem;
+    line-height: 1.65;
+}
+
+.alpha47-hero-actions,
+.alpha47-action-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .6rem;
+}
+
+.alpha47-hero-actions {
+    margin-top: 1rem;
+}
+
+.alpha47-hero-actions button,
+.alpha47-config-btn,
+.alpha47-action-grid button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .45rem;
+    border-radius: .9rem;
+    border: 1px solid rgba(56,189,248,.26);
+    background: linear-gradient(135deg, rgba(37,99,235,.72), rgba(124,58,237,.72));
+    color: #eff6ff;
+    font-size: .8rem;
+    font-weight: 700;
+    padding: .68rem .86rem;
+    transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+
+.alpha47-hero-actions button:hover,
+.alpha47-config-btn:hover,
+.alpha47-action-grid button:hover {
+    transform: translateY(-1px);
+    border-color: rgba(34,211,238,.58);
+    box-shadow: 0 12px 26px rgba(37,99,235,.18);
+}
+
+.alpha47-institution-card {
+    border: 1px solid rgba(139,92,246,.22);
+    border-radius: 1.1rem;
+    background: rgba(2,6,23,.54);
+    padding: .95rem;
+    display: grid;
+    gap: .9rem;
+}
+
+.alpha47-institution-top,
+.alpha47-admin-card {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    min-width: 0;
+}
+
+.alpha47-logo-frame {
+    height: 3.3rem;
+    width: 3.3rem;
+    border-radius: 1.05rem;
+    display: grid;
+    place-items: center;
+    flex: none;
+    background: linear-gradient(135deg, rgba(14,165,233,.2), rgba(124,58,237,.24));
+    border: 1px solid rgba(34,211,238,.2);
+    overflow: hidden;
+}
+
+.alpha47-logo-frame img,
+.alpha47-admin-card img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.alpha47-institution-card h3,
+.alpha47-admin-card p {
+    color: #f8fafc;
+    font-weight: 800;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.alpha47-institution-card h3 { font-size: 1rem; }
+.alpha47-institution-card span,
+.alpha47-admin-card span { color: #94a3b8; font-size: .75rem; }
+
+.alpha47-admin-card {
+    padding: .7rem;
+    border: 1px solid rgba(148,163,184,.16);
+    background: rgba(15,23,42,.62);
+    border-radius: 1rem;
+}
+
+#alpha47-admin-foto,
+#alpha47-admin-fallback {
+    height: 2.45rem;
+    width: 2.45rem;
+    border-radius: 999px;
+    flex: none;
+}
+
+#alpha47-admin-fallback {
+    display: grid;
+    place-items: center;
+    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+    color: white;
+    font-size: .78rem;
+    font-weight: 900;
+}
+
+.alpha47-config-btn {
+    width: 100%;
+    background: rgba(34,211,238,.09);
+}
+
+.alpha47-grid-top {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(360px, .95fr);
+    gap: 1rem;
+}
+
+.alpha47-grid-bottom {
+    display: grid;
+    grid-template-columns: minmax(280px,.8fr) minmax(320px,1fr) minmax(320px,.9fr);
+    gap: 1rem;
+}
+
+.alpha47-panel {
+    padding: 1rem;
+    min-width: 0;
+}
+
+.alpha47-panel-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: .85rem;
+}
+
+.alpha47-panel-head h3 {
+    margin-top: .15rem;
+    color: #f8fafc;
+    font-size: 1rem;
+    font-weight: 800;
+}
+
+.alpha47-panel-head em {
+    border-radius: 999px;
+    border: 1px solid rgba(52,211,153,.32);
+    background: rgba(52,211,153,.10);
+    color: #bbf7d0;
+    font-size: .72rem;
+    font-style: normal;
+    font-weight: 800;
+    padding: .35rem .55rem;
+}
+
+.alpha47-progress-track {
+    height: .85rem;
+    border-radius: 999px;
+    background: rgba(2,6,23,.82);
+    overflow: hidden;
+    border: 1px solid rgba(148,163,184,.16);
+}
+
+#alpha47-progress-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #8b5cf6, #3b82f6, #06b6d4);
+    transition: width .35s ease;
+    box-shadow: 0 0 24px rgba(34,211,238,.32);
+}
+
+.alpha47-progress-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: .7rem;
+    color: #94a3b8;
+    font-size: .8rem;
+}
+
+.alpha47-progress-meta strong { color: #e0f2fe; }
+
+.alpha47-metric-row {
+    margin-top: .95rem;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: .65rem;
+}
+
+.alpha47-metric-row div {
+    border-radius: .95rem;
+    border: 1px solid rgba(148,163,184,.14);
+    background: rgba(15,23,42,.64);
+    padding: .75rem;
+}
+
+.alpha47-metric-row span {
+    display: block;
+    color: #94a3b8;
+    font-size: .68rem;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+}
+
+.alpha47-metric-row strong {
+    display: block;
+    margin-top: .25rem;
+    color: #f8fafc;
+    font-size: 1.28rem;
+}
+
+.alpha47-steps-line {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0,1fr));
+    gap: .65rem;
+}
+
+.alpha47-step {
+    position: relative;
+    border-radius: 1rem;
+    border: 1px solid rgba(148,163,184,.15);
+    background: rgba(15,23,42,.65);
+    padding: .8rem .55rem;
+    text-align: center;
+    min-width: 0;
+}
+
+.alpha47-step svg {
+    width: 1.55rem;
+    height: 1.55rem;
+    margin: 0 auto .45rem;
+    color: #64748b;
+}
+
+.alpha47-step.done,
+.alpha47-step.active {
+    border-color: rgba(34,211,238,.38);
+    background: linear-gradient(180deg, rgba(37,99,235,.16), rgba(15,23,42,.64));
+}
+
+.alpha47-step.done svg { color: #34d399; }
+.alpha47-step.active svg { color: #60a5fa; }
+
+.alpha47-step b {
+    display: inline-grid;
+    place-items: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: 999px;
+    background: rgba(59,130,246,.2);
+    color: #dbeafe;
+    font-size: .7rem;
+    margin-bottom: .4rem;
+}
+
+.alpha47-step span,
+.alpha47-step small {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.alpha47-step span { color: #e2e8f0; font-size: .78rem; font-weight: 800; }
+.alpha47-step small { color: #94a3b8; font-size: .68rem; }
+
+.alpha47-action-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.alpha47-action-grid button {
+    background: rgba(15,23,42,.72);
+    border-color: rgba(56,189,248,.18);
+    justify-content: flex-start;
+}
+
+.alpha47-action-grid svg { width: 1rem; height: 1rem; color: var(--alpha47-cyan); }
+
+.alpha47-bars {
+    display: grid;
+    gap: .65rem;
+}
+
+.alpha47-bars div {
+    display: grid;
+    grid-template-columns: minmax(120px, 1fr) 3.5rem minmax(120px, 2fr);
+    align-items: center;
+    gap: .7rem;
+    color: #cbd5e1;
+    font-size: .75rem;
+}
+
+.alpha47-bars b {
+    text-align: right;
+    color: #f8fafc;
+}
+
+.alpha47-bars i {
+    display: block;
+    height: .65rem;
+    min-width: .55rem;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #8b5cf6, #06b6d4);
+    width: 8%;
+    transition: width .35s ease;
+}
+
+.alpha47-activity-log {
+    display: grid;
+    gap: .65rem;
+    max-height: 13rem;
+    overflow: auto;
+    padding-right: .25rem;
+}
+
+.alpha47-activity-log div {
+    border-left: 2px solid rgba(34,211,238,.45);
+    padding: .55rem .7rem;
+    border-radius: .75rem;
+    background: rgba(15,23,42,.58);
+}
+
+.alpha47-activity-log b,
+.alpha47-activity-log span {
+    display: block;
+}
+
+.alpha47-activity-log b { color: #e2e8f0; font-size: .78rem; }
+.alpha47-activity-log span { color: #94a3b8; font-size: .72rem; margin-top: .15rem; }
+
+/* Mejoras sobre tarjetas existentes del panel sin cambiar IDs ni callbacks. */
+#dashboard .card-metrica {
+    position: relative;
+    overflow: hidden;
+    min-height: 7rem;
+    transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+
+#dashboard .card-metrica::after {
+    content: "";
+    position: absolute;
+    inset: auto -20% -45% auto;
+    width: 10rem;
+    height: 10rem;
+    background: radial-gradient(circle, rgba(34,211,238,.10), transparent 70%);
+    pointer-events: none;
+}
+
+#dashboard .card-metrica:hover {
+    transform: translateY(-2px);
+    border-color: rgba(34,211,238,.35) !important;
+    box-shadow: 0 22px 42px rgba(0,0,0,.30), 0 0 0 1px rgba(34,211,238,.04);
+}
+
+#dashboard #bmp-panel {
+    background: linear-gradient(135deg, rgba(6,78,59,.26), rgba(15,23,42,.82)) !important;
+}
+
+#dashboard .drop-zone {
+    border-color: rgba(56,189,248,.18) !important;
+    background: rgba(15,23,42,.58) !important;
+}
+
+#dashboard .dashboard-current-datetime-bar {
+    padding: .95rem 1rem;
+}
+
+@media (max-width: 1280px) {
+    .alpha47-hero-panel,
+    .alpha47-grid-top,
+    .alpha47-grid-bottom {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    #app-shell > aside { width: 5.25rem; }
+    #app-shell > aside nav button { justify-content: center; padding-left: .75rem; padding-right: .75rem; }
+    #app-shell > aside nav button span,
+    #app-shell > aside nav button { font-size: 0; }
+    #app-shell > aside nav button svg { width: 1.15rem; height: 1.15rem; }
+    .alpha47-metric-row,
+    .alpha47-steps-line,
+    .alpha47-action-grid { grid-template-columns: 1fr 1fr; }
+    .alpha47-bars div { grid-template-columns: 1fr 2.8rem; }
+    .alpha47-bars i { grid-column: 1 / -1; }
+}
+
+@media (max-width: 520px) {
+    .alpha47-metric-row,
+    .alpha47-steps-line,
+    .alpha47-action-grid { grid-template-columns: 1fr; }
+    .alpha47-hero-actions button { width: 100%; }
+}

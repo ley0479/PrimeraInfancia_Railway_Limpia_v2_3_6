@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 027
+
+export APP_ENV="${APP_ENV:-production}"
+export DATA_DIR="${DATA_DIR:-${RAILWAY_VOLUME_MOUNT_PATH:-/data}}"
+export PORT="${PORT:-5000}"
+
+# Railway monta el volumen en tiempo de ejecución. El proceso de entrada puede
+# preparar sus permisos como root, pero Flask/Gunicorn nunca queda ejecutándose
+# con privilegios de root.
+if [[ "$(id -u)" -eq 0 ]]; then
+  mkdir -p "$DATA_DIR"
+  chown -R appuser:appuser "$DATA_DIR"
+  exec gosu appuser "$0" "$@"
+fi
+
+mkdir -p "$DATA_DIR"
+python backend/init_hosting.py
+
+# SQLite y los trabajos en memoria requieren una única instancia/proceso.
+exec gunicorn \
+  --chdir backend \
+  --bind "0.0.0.0:${PORT}" \
+  --workers 1 \
+  --worker-class gthread \
+  --threads "${GUNICORN_THREADS:-4}" \
+  --timeout "${GUNICORN_TIMEOUT:-300}" \
+  --graceful-timeout 60 \
+  --keep-alive 5 \
+  --access-logfile - \
+  --error-logfile - \
+  --capture-output \
+  wsgi:application

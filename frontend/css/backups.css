@@ -1,0 +1,13 @@
+.backups-module .card-metrica {
+    min-height: 112px;
+}
+
+.backups-module table th,
+.backups-module table td {
+    vertical-align: top;
+}
+
+.backups-module button:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+}
