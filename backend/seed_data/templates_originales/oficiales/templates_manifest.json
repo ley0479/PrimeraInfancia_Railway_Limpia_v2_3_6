@@ -1,0 +1,69 @@
+{
+  "rpp": {
+    "nombre": "Formato RPP Oficial",
+    "archivo": "plantilla_rpp_oficial.xlsx",
+    "archivo_versionado": "plantilla_rpp_oficial_v2026.xlsx",
+    "hoja": "PLANTILLA O FORMADE RPP",
+    "tipo": "excel",
+    "preservar_estilos": true,
+    "preservar_impresion": true,
+    "version": "2026",
+    "area_impresion_si_falta": "A1:AA42",
+    "filas_usuarios": [
+      12,
+      31
+    ],
+    "descripcion": "Plantilla oficial RPP sanitizada; conserva diseño y cantidades, sin participantes ni datos institucionales reales.",
+    "hash_sha256": "526fa8ad134676a7ce529838845d2e85c68d7eeabe794e5894dcc524e06a84da",
+    "sanitizada": true,
+    "contiene_datos_reales": false
+  },
+  "bienestarina": {
+    "nombre": "Formato Bienestarina Oficial",
+    "archivo": "plantilla_bienestarina_oficial.xlsx",
+    "archivo_versionado": "plantilla_bienestarina_oficial_v2026.xlsx",
+    "hoja": "plantilla de bienestarina ",
+    "tipo": "excel",
+    "preservar_estilos": true,
+    "preservar_impresion": true,
+    "version": "2026",
+    "area_impresion_si_falta": "A1:T50",
+    "filas_usuarios": [
+      [
+        10,
+        23
+      ],
+      [
+        31,
+        46
+      ]
+    ],
+    "descripcion": "Plantilla oficial Bienestarina sanitizada; conserva diseño, sin beneficiarios ni datos institucionales reales.",
+    "hash_sha256": "334a8dc7ffc1cb07336ae48f6d8eb88448688fa5d1439aa3931ef2fd76402f81",
+    "sanitizada": true,
+    "contiene_datos_reales": false
+  },
+  "ram": {
+    "nombre": "Formato Asistencia Registro Mensual RAM V3",
+    "archivo": "plantilla_ram_oficial_v3.xlsx",
+    "archivo_versionado": "plantilla_ram_oficial_v3.xlsx",
+    "hoja": "FORMATO RAM",
+    "hoja_instrucciones": "INSTRUCCIONES DILIGENCIAMIENTO",
+    "tipo": "excel",
+    "preservar_estilos": true,
+    "preservar_impresion": true,
+    "version": "3",
+    "codigo": "F27.MT1.PP",
+    "fecha_vigencia": "2026-08-01",
+    "hash_sha256": "52ae6d192acd678d282d851bbc43d0ebd042efe4e338c3761a4f87f207b14fdf",
+    "area_impresion_si_falta": "A1:AO41",
+    "filas_usuarios": [
+      15,
+      34
+    ],
+    "capacidad_por_pagina": 20,
+    "descripcion": "Plantilla oficial RAM V3 sanitizada y sin participantes.",
+    "sanitizada": true,
+    "contiene_datos_reales": false
+  }
+}
