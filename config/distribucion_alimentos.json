@@ -1,0 +1,11 @@
+{
+  "nota": "Distribución configurable. Ajuste cantidad_por_usuario según la minuta/lineamiento vigente. Cero indica pendiente de configuración.",
+  "olla_comunitaria_por_uds": 1,
+  "items": [
+    {"grupo_etario": "0 A 6 MESES", "alimento": "Bienestarina", "cantidad_por_usuario": 0, "unidad_medida": "unidad", "frecuencia": "mensual", "activo": true},
+    {"grupo_etario": "6 A 11 MESES", "alimento": "Bienestarina", "cantidad_por_usuario": 0, "unidad_medida": "unidad", "frecuencia": "mensual", "activo": true},
+    {"grupo_etario": "1 A 2 ANOS 11 MESES", "alimento": "Huevos", "cantidad_por_usuario": 0, "unidad_medida": "unidad", "frecuencia": "mensual", "activo": true},
+    {"grupo_etario": "3 A 5 ANOS 11 MESES", "alimento": "Panela", "cantidad_por_usuario": 0, "unidad_medida": "unidad", "frecuencia": "mensual", "activo": true},
+    {"grupo_etario": "TODOS", "alimento": "Olla comunitaria", "cantidad_por_usuario": 1, "unidad_medida": "olla por UDS", "frecuencia": "mensual", "activo": true}
+  ]
+}
