@@ -7,6 +7,8 @@ from datetime import datetime, date, timedelta
 import calendar
 from typing import Any
 
+from modules.seguridad.tenant_context import current_tenant_id
+
 ESTADOS_ENTREGABLE = [
     'Pendiente',
     'En proceso',
@@ -210,13 +212,18 @@ def reporte_mensual(repo, periodo: str | None = None) -> dict[str, Any]:
     periodo = periodo or periodo_actual()
     coordinadores = repo.listar_coordinadores()
     entregables = repo.listar_entregables(periodo=periodo)
+    fid = int(current_tenant_id(1) or 1)
     documentos = repo.fetch_all(
-        """
+        f"""
         SELECT d.*, c.nombre AS coordinador_nombre, e.titulo AS entregable_titulo
         FROM gp_documentos d
-        LEFT JOIN gp_coordinadores c ON c.id = d.coordinador_id
-        LEFT JOIN gp_entregables e ON e.id = d.entregable_id
-        WHERE d.activo = 1 AND substr(d.fecha_carga, 1, 7) = ?
+        LEFT JOIN gp_coordinadores c
+          ON c.id = d.coordinador_id AND COALESCE(c.fundacion_id, 1)={fid}
+        LEFT JOIN gp_entregables e
+          ON e.id = d.entregable_id AND COALESCE(e.fundacion_id, 1)={fid}
+        WHERE d.activo = 1
+          AND COALESCE(d.fundacion_id, 1)={fid}
+          AND substr(d.fecha_carga, 1, 7) = ?
         ORDER BY d.fecha_carga DESC
         """,
         (periodo,),

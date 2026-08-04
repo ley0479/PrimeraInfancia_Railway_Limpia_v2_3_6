@@ -374,9 +374,10 @@ class PanelComercialService:
             SELECT c.*, u.username, u.nombre_completo
             FROM pc_ticket_comentarios c
             LEFT JOIN usuarios_app u ON u.id=c.usuario_id
-            WHERE c.ticket_id=? ORDER BY c.fecha_creacion ASC
+            WHERE c.ticket_id=? AND COALESCE(c.fundacion_id, ?) = ?
+            ORDER BY c.fecha_creacion ASC
             """,
-            (ticket_id,),
+            (ticket_id, int(ticket.get('fundacion_id') or 1), int(ticket.get('fundacion_id') or 1)),
         )
         ticket['comentarios'] = comentarios
         return ticket
@@ -444,10 +445,17 @@ class PanelComercialService:
             raise ValueError('Comentario requerido.')
         new_id = self.execute(
             """
-            INSERT INTO pc_ticket_comentarios (ticket_id, usuario_id, comentario, fecha_creacion)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO pc_ticket_comentarios
+            (ticket_id, fundacion_id, usuario_id, comentario, fecha_creacion)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (ticket_id, self.context().get('usuario_id'), comentario, now_iso()),
+            (
+                ticket_id,
+                int(ticket.get('fundacion_id') or self.context().get('fundacion_id') or 1),
+                self.context().get('usuario_id'),
+                comentario,
+                now_iso(),
+            ),
         )
         self.execute_update("UPDATE pc_tickets_soporte SET fecha_actualizacion=? WHERE id=?", (now_iso(), ticket_id))
         row = self.fetch_one("SELECT * FROM pc_ticket_comentarios WHERE id=?", (new_id,))

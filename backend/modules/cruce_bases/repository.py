@@ -4,8 +4,7 @@ import json
 from datetime import datetime
 from typing import Any
 
-from modules.sqlalchemy_compat import CoreCompatRepository, convert_qmark_sql
-from database import database
+from modules.sqlalchemy_compat import CoreCompatRepository
 
 from .schema import SCHEMA_SQL
 
@@ -27,14 +26,9 @@ class CruceBasesRepository(CoreCompatRepository):
     def init_schema(self) -> None:
         self.execute_script(SCHEMA_SQL)
 
-    def execute_many(self, sql: str, rows: list[tuple]) -> None:
-        if not rows:
-            return
-        with database.transaction() as conn:
-            sql2, _ = convert_qmark_sql(sql, [])
-            for row in rows:
-                _, bind = convert_qmark_sql(sql, row)
-                conn.execute(__import__('sqlalchemy').text(sql2), bind)
+    def execute_many(self, sql: str, rows: list[tuple]) -> int:
+        """Ejecuta lotes mediante el repositorio protegido por tenant."""
+        return super().execute_many(sql, rows)
 
     def guardar_cruce(self, resultado: dict[str, Any], metadata: dict[str, Any]) -> int:
         resumen = resultado.get('resumen', {})

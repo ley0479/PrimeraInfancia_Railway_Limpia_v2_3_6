@@ -76,10 +76,46 @@ DEFAULT_MANIFEST: dict[str, dict[str, Any]] = {
         "version": "3",
         "codigo": "F27.MT1.PP",
         "fecha_vigencia": "2026-08-01",
-        "hash_sha256": "a6b4c9412f7c72a19b9d5e842fa5ffd4b876c7d0f0c3d5c8e140b5287d700753",
+        "hash_sha256": "52ae6d192acd678d282d851bbc43d0ebd042efe4e338c3761a4f87f207b14fdf",
         "area_impresion_si_falta": "A1:AO41",
         "filas_usuarios": [15, 34],
         "capacidad_por_pagina": 20,
+        "versiones": [
+            {
+                "nombre": "Formato Registro Asistencia Mensual RAM V2 histórico sanitizado",
+                "archivo": "plantilla_ram_oficial_v2_historica.xlsx",
+                "archivo_versionado": "plantilla_ram_oficial_v2_historica.xlsx",
+                "hoja": "FORMATO RAM V2 HISTORICO",
+                "hoja_instrucciones": None,
+                "version": "2",
+                "codigo": "F27.MT1.PP",
+                "fecha_vigencia": "2000-01-01",
+                "fecha_vigencia_fin": "2026-07-31",
+                "hash_sha256": "69fabc7db8460c11a75a56eb7a382279c2673b49bdce602146fde7293444f666",
+                "area_impresion_si_falta": "A1:AK41",
+                "filas_usuarios": [15, 34],
+                "capacidad_por_pagina": 20,
+                "sanitizada": True,
+                "contiene_datos_reales": False,
+            },
+            {
+                "nombre": "Formato Asistencia Registro Mensual RAM V3",
+                "archivo": "plantilla_ram_oficial_v3.xlsx",
+                "archivo_versionado": "plantilla_ram_oficial_v3.xlsx",
+                "hoja": "FORMATO RAM",
+                "hoja_instrucciones": "INSTRUCCIONES DILIGENCIAMIENTO",
+                "version": "3",
+                "codigo": "F27.MT1.PP",
+                "fecha_vigencia": "2026-08-01",
+                "fecha_vigencia_fin": "",
+                "hash_sha256": "52ae6d192acd678d282d851bbc43d0ebd042efe4e338c3761a4f87f207b14fdf",
+                "area_impresion_si_falta": "A1:AO41",
+                "filas_usuarios": [15, 34],
+                "capacidad_por_pagina": 20,
+                "sanitizada": True,
+                "contiene_datos_reales": False,
+            },
+        ],
     },
 }
 
@@ -140,29 +176,48 @@ def tipo_normalizado(tipo_formato: str | None) -> str | None:
     return raw or None
 
 
-def get_plantilla_oficial(templates_folder: str | os.PathLike[str], tipo_formato: str) -> dict[str, Any] | None:
+def get_plantilla_oficial(
+    templates_folder: str | os.PathLike[str],
+    tipo_formato: str,
+    mes: int | None = None,
+    anio: int | None = None,
+) -> dict[str, Any] | None:
     tipo = tipo_normalizado(tipo_formato)
     if tipo not in {"rpp", "bienestarina", "ram"}:
         return None
     manifest = cargar_manifest(templates_folder)
-    info = dict(manifest.get(tipo) or {})
+    raw_info = dict(manifest.get(tipo) or {})
+    if not raw_info:
+        return None
+    info = _select_manifest_version(raw_info, mes=mes, anio=anio)
     if not info:
         return None
     path = oficiales_dir(templates_folder) / str(info.get("archivo") or "")
     info.update({
-        "codigo": tipo,
+        "codigo_tipo": tipo,
+        "tipo_formato": tipo,
         "ruta": str(path),
         "existe": path.exists(),
         "tamano_bytes": path.stat().st_size if path.exists() else 0,
         "fecha_actualizacion": datetime.fromtimestamp(path.stat().st_mtime).isoformat(timespec="seconds") if path.exists() else None,
     })
+    # Compatibilidad histórica: `codigo` representaba el tipo en RPP/Bienestarina.
+    info.setdefault("codigo", tipo)
     return info
 
 
-def listar_plantillas_oficiales(templates_folder: str | os.PathLike[str]) -> list[dict[str, Any]]:
+def listar_plantillas_oficiales(
+    templates_folder: str | os.PathLike[str],
+    mes: int | None = None,
+    anio: int | None = None,
+) -> list[dict[str, Any]]:
     manifest = cargar_manifest(templates_folder)
-    return [get_plantilla_oficial(templates_folder, key) for key in manifest.keys()]
-
+    result = []
+    for key in manifest.keys():
+        item = get_plantilla_oficial(templates_folder, key, mes=mes, anio=anio)
+        if item:
+            result.append(item)
+    return result
 
 
 
@@ -185,13 +240,54 @@ def _period_start(mes: int | None = None, anio: int | None = None) -> date:
 
 
 def _manifest_applies(info: dict[str, Any], mes: int | None = None, anio: int | None = None) -> bool:
-    raw = str(info.get("fecha_vigencia") or "").strip()
-    if not raw:
-        return True
+    """Valida inicio y fin de vigencia de una plantilla del manifiesto."""
+    periodo = _period_start(mes, anio)
+    inicio_raw = str(info.get("fecha_vigencia") or "").strip()
+    fin_raw = str(info.get("fecha_vigencia_fin") or "").strip()
     try:
-        return date.fromisoformat(raw[:10]) <= _period_start(mes, anio)
+        if inicio_raw and date.fromisoformat(inicio_raw[:10]) > periodo:
+            return False
+        if fin_raw and date.fromisoformat(fin_raw[:10]) < periodo:
+            return False
     except Exception:
         return False
+    return True
+
+
+def _versiones_manifest(info: dict[str, Any]) -> list[dict[str, Any]]:
+    """Expande una entrada compatible con versiones sin romper manifiestos antiguos."""
+    versiones = info.get("versiones")
+    if not isinstance(versiones, list) or not versiones:
+        return [dict(info)]
+    base = {k: v for k, v in info.items() if k != "versiones"}
+    result = []
+    for version in versiones:
+        if not isinstance(version, dict):
+            continue
+        item = dict(base)
+        item.update(version)
+        result.append(item)
+    return result or [dict(info)]
+
+
+def _select_manifest_version(
+    info: dict[str, Any],
+    mes: int | None = None,
+    anio: int | None = None,
+) -> dict[str, Any] | None:
+    aplicables = [item for item in _versiones_manifest(info) if _manifest_applies(item, mes=mes, anio=anio)]
+    if not aplicables:
+        return None
+
+    def sort_key(item: dict[str, Any]):
+        raw = str(item.get("fecha_vigencia") or "0001-01-01")[:10]
+        try:
+            inicio = date.fromisoformat(raw)
+        except Exception:
+            inicio = date.min
+        return (inicio, str(item.get("version") or ""))
+
+    return dict(sorted(aplicables, key=sort_key, reverse=True)[0])
 
 
 def _load_versioned_templates_from_db(
@@ -309,9 +405,9 @@ def iter_plantillas_oficiales_para_generacion(
     versionadas = _load_versioned_templates_from_db(templates_folder, mes=mes, anio=anio)
     plantillas.extend(versionadas)
     tipos_versionados = {p.get('tipo') for p in versionadas if p.get('tipo')}
-    for info in listar_plantillas_oficiales(templates_folder):
+    for info in listar_plantillas_oficiales(templates_folder, mes=mes, anio=anio):
         if info and info.get("existe"):
-            tipo = info.get("codigo")
+            tipo = info.get("tipo_formato") or info.get("codigo_tipo") or tipo_normalizado(info.get("codigo"))
             if tipo in tipos_versionados:
                 continue
             if not _manifest_applies(info, mes=mes, anio=anio):
@@ -327,6 +423,7 @@ def iter_plantillas_oficiales_para_generacion(
                 "version": info.get("version"),
                 "codigo": info.get("codigo"),
                 "fecha_vigencia": info.get("fecha_vigencia"),
+                "fecha_vigencia_fin": info.get("fecha_vigencia_fin"),
                 "hash_sha256": info.get("hash_sha256"),
                 "preservar_estilos": True,
                 "preservar_impresion": True,
@@ -549,7 +646,15 @@ def generar_desde_plantilla_oficial(
     - usuarios: list[dict] con beneficiarios.
     """
     tipo = tipo_normalizado(tipo_formato)
-    info = get_plantilla_oficial(templates_folder, tipo or "")
+    metadata = dict(datos.get("metadata") or {})
+    report_year = int(metadata.get("anio") or metadata.get("año") or datetime.now().year)
+    report_month = int(metadata.get("mes_numero") or metadata.get("mes") or datetime.now().month)
+    info = get_plantilla_oficial(
+        templates_folder,
+        tipo or "",
+        mes=report_month if tipo == "ram" else None,
+        anio=report_year if tipo == "ram" else None,
+    )
     if not info or not info.get("existe"):
         raise FileNotFoundError(
             "No se encontró la plantilla oficial de este formato. "
@@ -558,7 +663,6 @@ def generar_desde_plantilla_oficial(
 
     wb = load_workbook(info["ruta"], data_only=False, keep_vba=str(info["ruta"]).lower().endswith(".xlsm"))
     ws = _hoja_por_nombre(wb, info.get("hoja"))
-    metadata = dict(datos.get("metadata") or {})
     usuarios = list(datos.get("usuarios") or [])
 
     if tipo == "bienestarina":
@@ -566,15 +670,19 @@ def generar_desde_plantilla_oficial(
     elif tipo == "rpp":
         _write_rpp(ws, usuarios, metadata, info)
     elif tipo == "ram":
-        report_year = int(metadata.get("anio") or metadata.get("año") or datetime.now().year)
-        report_month = int(metadata.get("mes_numero") or metadata.get("mes") or datetime.now().month)
-        if not _manifest_applies(info, mes=report_month, anio=report_year):
-            raise ValueError(
-                "El RAM V3 todavía no aplica al periodo solicitado. "
-                f"Vigencia configurada: {info.get('fecha_vigencia') or 'sin definir'}."
+        version = str(info.get("version") or "").strip()
+        if version == "3":
+            from services.ram_v3_service import generate_ram_v3
+            result = generate_ram_v3(
+                info["ruta"], salida, usuarios,
+                report_year,
+                report_month,
+                metadata=metadata,
+                expected_sha256=info.get("hash_sha256"),
             )
-        from services.ram_v3_service import generate_ram_v3
-        result = generate_ram_v3(
+            return str(result["archivo"])
+        from services.ram_historical_service import generate_ram_historical
+        result = generate_ram_historical(
             info["ruta"], salida, usuarios,
             report_year,
             report_month,

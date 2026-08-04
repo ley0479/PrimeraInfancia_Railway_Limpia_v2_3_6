@@ -54,7 +54,10 @@ CREATE TABLE IF NOT EXISTS fundaciones (
     fecha_vencimiento TEXT,
     observaciones TEXT,
     fecha_creacion TEXT NOT NULL,
-    fecha_actualizacion TEXT
+    fecha_actualizacion TEXT,
+    eliminado_en TEXT,
+    eliminado_por INTEGER,
+    motivo_eliminacion TEXT
 );
 
 CREATE TABLE IF NOT EXISTS roles_sistema (
@@ -101,11 +104,16 @@ CREATE INDEX IF NOT EXISTS idx_sesiones_token_hash ON sesiones_usuario(token_has
 CREATE TABLE IF NOT EXISTS recuperacion_password (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     usuario_id INTEGER NOT NULL,
+    fundacion_id INTEGER,
     token_hash TEXT NOT NULL UNIQUE,
+    metodo TEXT DEFAULT 'EMAIL_LINK',
+    solicitado_por INTEGER,
+    ip TEXT,
     usado INTEGER DEFAULT 0,
     fecha_creacion TEXT NOT NULL,
     fecha_expiracion TEXT NOT NULL,
-    FOREIGN KEY(usuario_id) REFERENCES usuarios_app(id)
+    FOREIGN KEY(usuario_id) REFERENCES usuarios_app(id),
+    FOREIGN KEY(fundacion_id) REFERENCES fundaciones(id)
 );
 CREATE INDEX IF NOT EXISTS idx_recuperacion_usuario ON recuperacion_password(usuario_id, usado);
 

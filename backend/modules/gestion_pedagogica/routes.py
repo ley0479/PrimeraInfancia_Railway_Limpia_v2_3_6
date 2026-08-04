@@ -11,7 +11,7 @@ import csv
 import zipfile
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request, send_from_directory
+from flask import Blueprint, jsonify, request, send_from_directory, g
 
 from .documentos import save_uploaded_document
 from .repository import GestionPedagogicaRepository, now_iso
@@ -189,11 +189,14 @@ def register_gestion_pedagogica(app, database_path: str, upload_folder: str) -> 
             where.append("tipo = ?")
             params.append(tipo)
 
+        fid = int((getattr(g, 'current_user', {}) or {}).get('fundacion_id') or 1)
+        where.append(f"COALESCE(ev.fundacion_id, 1)={fid}")
         eventos = repo.fetch_all(
             f"""
             SELECT ev.*, c.nombre AS coordinador_nombre
             FROM gp_calendario_eventos ev
-            LEFT JOIN gp_coordinadores c ON c.id = ev.coordinador_id
+            LEFT JOIN gp_coordinadores c
+              ON c.id = ev.coordinador_id AND COALESCE(c.fundacion_id, 1)={fid}
             WHERE {' AND '.join(where)}
             ORDER BY ev.fecha, ev.hora
             """,
@@ -338,12 +341,16 @@ def register_gestion_pedagogica(app, database_path: str, upload_folder: str) -> 
             where.append("d.coordinador_id = ?")
             params.append(coordinador_id)
 
+        fid = int((getattr(g, 'current_user', {}) or {}).get('fundacion_id') or 1)
+        where.append(f"COALESCE(d.fundacion_id, 1)={fid}")
         docs = repo.fetch_all(
             f"""
             SELECT d.*, c.nombre AS coordinador_nombre, e.titulo AS entregable_titulo
             FROM gp_documentos d
-            LEFT JOIN gp_coordinadores c ON c.id = d.coordinador_id
-            LEFT JOIN gp_entregables e ON e.id = d.entregable_id
+            LEFT JOIN gp_coordinadores c
+              ON c.id = d.coordinador_id AND COALESCE(c.fundacion_id, 1)={fid}
+            LEFT JOIN gp_entregables e
+              ON e.id = d.entregable_id AND COALESCE(e.fundacion_id, 1)={fid}
             WHERE {' AND '.join(where)}
             ORDER BY d.fecha_carga DESC
             """,

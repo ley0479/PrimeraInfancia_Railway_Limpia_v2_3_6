@@ -15,21 +15,30 @@ import uuid
 from datetime import datetime
 from typing import Any, Callable
 
+from modules.seguridad.tenant_context import (
+    capture_tenant_context,
+    current_tenant_context,
+    tenant_context,
+)
+
 _LOCK = threading.RLock()
 _JOBS: dict[str, dict[str, Any]] = {}
-_LOG_DIR: str | None = None
+_LOG_DIR: os.PathLike[str] | str | None = None
 _MAX_LOGS = 200
 
 
-def configure(log_dir: str | None = None) -> None:
+def configure(log_dir: os.PathLike[str] | str | None = None) -> None:
     """Configura carpeta de logs de jobs. No falla si no puede crearla."""
     global _LOG_DIR
     _LOG_DIR = log_dir
     if _LOG_DIR:
         try:
-            os.makedirs(_LOG_DIR, exist_ok=True)
+            os.makedirs(os.fspath(_LOG_DIR), exist_ok=True)
         except Exception:
-            _LOG_DIR = None
+            # La ruta puede ser dinámica por tenant y no estar disponible hasta
+            # que exista un contexto autenticado. Se conserva para resolverla
+            # al escribir el primer log.
+            pass
 
 
 def _now() -> str:
@@ -47,7 +56,9 @@ def _write_job_log(job: dict[str, Any], include_result: bool = False) -> None:
     if not _LOG_DIR:
         return
     try:
-        path = os.path.join(_LOG_DIR, f"job_{job['id']}.json")
+        log_dir = os.fspath(_LOG_DIR)
+        os.makedirs(log_dir, exist_ok=True)
+        path = os.path.join(log_dir, f"job_{job['id']}.json")
         data = _public_job(job, include_result=include_result)
         # El resultado puede contener miles de beneficiarios; para el archivo se evita
         # guardar un JSON pesado, pero la respuesta en memoria sí conserva el resultado.
@@ -66,16 +77,32 @@ def _append_log(job: dict[str, Any], message: str) -> None:
         del logs[:-_MAX_LOGS]
 
 
+def _job_visible(job: dict[str, Any]) -> bool:
+    context = current_tenant_context()
+    if context.allow_global and context.role == "SUPERADMIN":
+        return True
+    tenant_id = context.tenant_id
+    job_tenant = (job.get("metadata") or {}).get("fundacion_id")
+    if tenant_id is None:
+        # Los procesos internos sin usuario pueden inspeccionar jobs del sistema.
+        return context.source == "background" and context.role == "SYSTEM"
+    try:
+        return int(job_tenant or 0) == int(tenant_id)
+    except (TypeError, ValueError):
+        return False
+
+
 def get_job(job_id: str) -> dict[str, Any] | None:
     with _LOCK:
         job = _JOBS.get(str(job_id))
-        return _public_job(job) if job else None
+        return _public_job(job) if job and _job_visible(job) else None
 
 
 def list_jobs(limit: int = 50) -> list[dict[str, Any]]:
     with _LOCK:
         jobs = sorted(_JOBS.values(), key=lambda j: j.get("fecha_creacion", ""), reverse=True)
-        return [_public_job(j, include_result=False) for j in jobs[:limit]]
+        visible = [job for job in jobs if _job_visible(job)]
+        return [_public_job(j, include_result=False) for j in visible[:limit]]
 
 
 def _cleanup_old_jobs(max_age_seconds: int = 3600 * 8, keep: int = 100) -> None:
@@ -110,7 +137,13 @@ def start_job(
     El resultado retornado por target queda en job["resultado"].
     """
     _cleanup_old_jobs()
+    captured = capture_tenant_context()
     job_id = uuid.uuid4().hex[:16]
+    job_metadata = dict(metadata or {})
+    if captured.tenant_id:
+        job_metadata["fundacion_id"] = int(captured.tenant_id)
+    job_metadata.setdefault("usuario", captured.username)
+    job_metadata.setdefault("rol", captured.role)
     job = {
         "id": job_id,
         "tipo": tipo,
@@ -121,7 +154,7 @@ def start_job(
         "resultado": None,
         "error": None,
         "traceback": None,
-        "metadata": metadata or {},
+        "metadata": job_metadata,
         "logs": [],
         "fecha_creacion": _now(),
         "fecha_inicio": None,
@@ -147,33 +180,40 @@ def start_job(
             _write_job_log(current, include_result=False)
 
     def runner() -> None:
-        with _LOCK:
-            job["estado"] = "procesando"
-            job["fecha_inicio"] = _now()
-            job["etapa"] = "Iniciando"
-            job["fecha_actualizacion"] = _now()
-            _write_job_log(job, include_result=False)
-        try:
-            result = target(update)
+        with tenant_context(
+            captured.tenant_id,
+            role=captured.role,
+            username=captured.username,
+            allow_global=captured.allow_global,
+            source=f"job:{job_id}",
+        ):
             with _LOCK:
-                job["estado"] = "completado"
-                job["progreso"] = 100
-                job["etapa"] = "Completado"
-                job["resultado"] = result
-                job["fecha_fin"] = _now()
+                job["estado"] = "procesando"
+                job["fecha_inicio"] = _now()
+                job["etapa"] = "Iniciando"
                 job["fecha_actualizacion"] = _now()
                 _write_job_log(job, include_result=False)
-        except Exception as exc:  # pragma: no cover - cubierto por integración manual
-            tb = traceback.format_exc()
-            with _LOCK:
-                job["estado"] = "error"
-                job["error"] = str(exc)
-                job["traceback"] = tb[-6000:]
-                job["etapa"] = "Error"
-                job["fecha_fin"] = _now()
-                job["fecha_actualizacion"] = _now()
-                _append_log(job, str(exc))
-                _write_job_log(job, include_result=False)
+            try:
+                result = target(update)
+                with _LOCK:
+                    job["estado"] = "completado"
+                    job["progreso"] = 100
+                    job["etapa"] = "Completado"
+                    job["resultado"] = result
+                    job["fecha_fin"] = _now()
+                    job["fecha_actualizacion"] = _now()
+                    _write_job_log(job, include_result=False)
+            except Exception as exc:  # pragma: no cover - cubierto por integración manual
+                tb = traceback.format_exc()
+                with _LOCK:
+                    job["estado"] = "error"
+                    job["error"] = str(exc)
+                    job["traceback"] = tb[-6000:]
+                    job["etapa"] = "Error"
+                    job["fecha_fin"] = _now()
+                    job["fecha_actualizacion"] = _now()
+                    _append_log(job, str(exc))
+                    _write_job_log(job, include_result=False)
 
     thread = threading.Thread(target=runner, name=f"PrimeraInfanciaJob-{job_id}", daemon=True)
     job["thread"] = thread

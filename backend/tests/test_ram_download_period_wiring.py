@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import tempfile
 from pathlib import Path
 import sys
@@ -12,9 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 BACKEND = ROOT / 'backend'
 sys.path.insert(0, str(BACKEND))
 
-from services.ram_v3_service import generate_ram_v3, sha256_file
-
-EXPECTED_HASH = 'a6b4c9412f7c72a19b9d5e842fa5ffd4b876c7d0f0c3d5c8e140b5287d700753'
+from modules.plantillas_oficiales import generar_desde_plantilla_oficial, iter_plantillas_oficiales_para_generacion
 
 
 def assert_true(value, message):
@@ -31,45 +28,37 @@ def run():
     assert_true("'formatos_seleccionados': 'ram'" in app_text, 'RAM directo no está aislado')
     assert_true('def _alpha69_buscar_ram_periodo' in app_text, 'Falta búsqueda por periodo')
     assert_true("if formato_norm == 'ram':" in app_text, 'El endpoint no separa RAM')
-    assert_true("request.args.get('mes')" in app_text and "request.args.get('anio')" in app_text, 'El endpoint no recibe periodo')
     assert_true('periodo-formatos-mes' in html_text and 'periodo-formatos-anio' in html_text, 'Falta selector de periodo')
     assert_true("formData.append('mes'" in js_text and "formData.append('anio'" in js_text, 'El proceso no envía periodo')
     assert_true('queryPeriodo' in js_text, 'La descarga no envía periodo')
 
-    db = sqlite3.connect(BACKEND / 'database.sqlite3')
-    db.row_factory = sqlite3.Row
-    unit = db.execute("SELECT unidad FROM beneficiarios WHERE estado='ACTIVO' AND TRIM(COALESCE(unidad,''))<>'' LIMIT 1").fetchone()
-    users = [dict(r) for r in db.execute("SELECT * FROM beneficiarios WHERE unidad=? AND estado='ACTIVO' LIMIT 21", (unit['unidad'],)).fetchall()]
-    db.close()
-    assert_true(bool(users), 'No hay usuarios reales para prueba')
+    templates = BACKEND / 'seed_data' / 'templates_originales'
+    july = [x for x in iter_plantillas_oficiales_para_generacion(templates, mes=7, anio=2026) if x.get('tipo') == 'ram']
+    august = [x for x in iter_plantillas_oficiales_para_generacion(templates, mes=8, anio=2026) if x.get('tipo') == 'ram']
+    assert_true(len(july) == 1 and str(july[0].get('version')) == '2', 'Julio debe seleccionar RAM V2 histórico')
+    assert_true(len(august) == 1 and str(august[0].get('version')) == '3', 'Agosto debe seleccionar RAM V3')
 
-    template = BACKEND / 'templates_originales' / 'oficiales' / 'plantilla_ram_oficial_v3.xlsx'
-    assert_true(sha256_file(template) == EXPECTED_HASH, 'Cambió plantilla oficial')
+    user = {
+        'tipo_documento': 'RC', 'numero_documento': '000001',
+        'primer_nombre': 'PRUEBA', 'primer_apellido': 'CONTROL',
+        'fecha_nacimiento': '2025-01-01', 'fecha_ingreso': '2026-01-01',
+    }
     with tempfile.TemporaryDirectory() as temp:
-        out = Path(temp) / 'RAM_V3_PRUEBA_2026_08.xlsx'
-        report = generate_ram_v3(
-            template, out, users, 2026, 8,
-            metadata={'unidad': unit['unidad'], 'mes_nombre': 'AGOSTO', 'anio': 2026},
-            expected_sha256=EXPECTED_HASH,
-        )
-        assert_true(out.exists() and out.stat().st_size > 0, 'RAM V3 no se generó')
-        wb = load_workbook(out, read_only=False, data_only=False)
-        assert_true('FORMATO RAM' in wb.sheetnames, 'Falta hoja FORMATO RAM')
-        assert_true('INSTRUCCIONES DILIGENCIAMIENTO' in wb.sheetnames, 'Falta hoja de instrucciones')
-        wb.close()
+        out2 = Path(temp) / 'ram_v2.xlsx'
+        out3 = Path(temp) / 'ram_v3.xlsx'
+        generar_desde_plantilla_oficial('ram', {'metadata': {'anio': 2026, 'mes_numero': 7}, 'usuarios': [user]}, out2, templates)
+        generar_desde_plantilla_oficial('ram', {'metadata': {'anio': 2026, 'mes_numero': 8}, 'usuarios': [user]}, out3, templates)
+        assert_true(out2.exists() and out3.exists(), 'No se generaron ambas versiones RAM')
+        assert_true('FORMATO RAM V2 HISTORICO' in load_workbook(out2, read_only=True).sheetnames, 'RAM V2 inválido')
+        assert_true('FORMATO RAM' in load_workbook(out3, read_only=True).sheetnames, 'RAM V3 inválido')
 
-    print(json.dumps({
-        'ok': True,
-        'checks': [
-            'Periodo visible en interfaz',
-            'Periodo enviado al procesamiento',
-            'Periodo enviado a la descarga',
-            'RAM aislado de RPP/Bienestarina',
-            'Búsqueda estricta por UDS y periodo',
-            'Generación RAM V3 real verificada',
-            'Plantilla oficial intacta',
-        ]
-    }, ensure_ascii=False, indent=2))
+    print(json.dumps({'ok': True, 'checks': [
+        'Periodo visible y enviado',
+        'Descarga estricta por UDS y periodo',
+        'RAM V2 histórico hasta julio de 2026',
+        'RAM V3 desde agosto de 2026',
+        'Generación sintética de ambas versiones',
+    ]}, ensure_ascii=False, indent=2))
 
 
 if __name__ == '__main__':

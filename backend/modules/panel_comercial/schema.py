@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS pc_tickets_soporte (
 CREATE TABLE IF NOT EXISTS pc_ticket_comentarios (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ticket_id INTEGER NOT NULL,
+    fundacion_id INTEGER,
     usuario_id INTEGER,
     comentario TEXT NOT NULL,
     archivo_nombre TEXT,
@@ -65,6 +66,7 @@ CREATE TABLE IF NOT EXISTS pc_auditoria (
 CREATE INDEX IF NOT EXISTS idx_pc_tickets_fundacion ON pc_tickets_soporte(fundacion_id);
 CREATE INDEX IF NOT EXISTS idx_pc_tickets_estado ON pc_tickets_soporte(estado);
 CREATE INDEX IF NOT EXISTS idx_pc_tickets_prioridad ON pc_tickets_soporte(prioridad);
+CREATE INDEX IF NOT EXISTS idx_pc_ticket_comentarios_fundacion ON pc_ticket_comentarios(fundacion_id, ticket_id);
 CREATE INDEX IF NOT EXISTS idx_pc_alertas_fundacion ON pc_alertas_pago(fundacion_id);
 CREATE INDEX IF NOT EXISTS idx_pc_alertas_estado ON pc_alertas_pago(estado);
 """

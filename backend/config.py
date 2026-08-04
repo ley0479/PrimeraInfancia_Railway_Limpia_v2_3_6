@@ -72,9 +72,10 @@ def password_policy_errors(password: str, minimum: int = 12) -> list[str]:
 
 class BaseConfig:
     APP_ENV = os.getenv("APP_ENV", os.getenv("FLASK_ENV", "development")).lower()
-    APP_VERSION = os.getenv("APP_VERSION", "2.3.6-railway-clean")
+    APP_VERSION = os.getenv("APP_VERSION", "2.4.2-tunel-login-logging-corregido")
     BUILD_COMMIT = os.getenv("BUILD_COMMIT", os.getenv("RAILWAY_GIT_COMMIT_SHA", "unknown"))
     BUILD_DATE = os.getenv("BUILD_DATE", "unknown")
+    PROJECT_INSTANCE_ID = os.getenv("PROJECT_INSTANCE_ID", "").strip()
 
     BASE_DIR = str(BACKEND_DIR)
     PROJECT_DIR = str(PROJECT_DIR)
@@ -100,7 +101,9 @@ class BaseConfig:
 
     FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "").strip()
     ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "").strip()
+    RAILWAY_PUBLIC_DOMAIN = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip()
     PUBLIC_APP_URL = os.getenv("PUBLIC_APP_URL", FRONTEND_ORIGIN).rstrip("/")
+    SYNC_MANAGED_TEMPLATES = env_bool("SYNC_MANAGED_TEMPLATES", True)
 
     STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "local").lower().strip()
     S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "")
@@ -133,6 +136,13 @@ class BaseConfig:
 
     PASSWORD_RESET_EXPIRES_MINUTES = env_int("PASSWORD_RESET_EXPIRES_MINUTES", 30)
     ALLOW_PASSWORD_RESET_TOKEN_RESPONSE = env_bool("ALLOW_PASSWORD_RESET_TOKEN_RESPONSE", False)
+    # Alternativa estrictamente local cuando no existe proveedor de correo.
+    # Se desactiva en producción y mientras PUBLIC_TUNNEL_MODE está activo.
+    ALLOW_LOCAL_RECOVERY_CODE = env_bool("ALLOW_LOCAL_RECOVERY_CODE", False)
+    LOCAL_RECOVERY_CODE_LENGTH = env_int("LOCAL_RECOVERY_CODE_LENGTH", 10)
+    RESET_MAX_ATTEMPTS = env_int("RESET_MAX_ATTEMPTS", 8)
+    RESET_WINDOW_SECONDS = env_int("RESET_WINDOW_SECONDS", 900)
+    RESET_LOCK_SECONDS = env_int("RESET_LOCK_SECONDS", 900)
     PASSWORD_RESET_PUBLIC_URL = os.getenv("PASSWORD_RESET_PUBLIC_URL", PUBLIC_APP_URL).rstrip("/")
     RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
     PASSWORD_RESET_FROM_EMAIL = os.getenv("PASSWORD_RESET_FROM_EMAIL", "").strip()
@@ -147,16 +157,21 @@ class BaseConfig:
     BACKUP_RETENTION_DAYS = env_int("BACKUP_RETENTION_DAYS", 90)
     DEMO_MODE = env_bool("DEMO_MODE", False)
 
-    # Esta entrega Railway queda restringida a una sola fundación. El código
-    # histórico aún contiene consultas que no han sido certificadas para
-    # aislamiento multi-tenant completo; habilitarlo exige aceptación explícita.
+    # El valor seguro por omisión continúa siendo una sola fundación. La
+    # entrega 2.4.1 mantiene el piloto únicamente mediante variables explícitas,
+    # junto con el guard SQL, el esquema v3 y almacenamiento físico aislado.
     SINGLE_TENANT_MODE = env_bool("SINGLE_TENANT_MODE", True)
+    # Confirmación explícita requerida para un despliegue multi-fundación.
     ALLOW_EXPERIMENTAL_MULTI_TENANT = env_bool("ALLOW_EXPERIMENTAL_MULTI_TENANT", False)
+    MULTI_TENANT_STRICT = env_bool("MULTI_TENANT_STRICT", True)
+    TENANT_STORAGE_ISOLATION = env_bool("TENANT_STORAGE_ISOLATION", True)
+    MULTI_TENANT_SCHEMA_VERSION = env_int("MULTI_TENANT_SCHEMA_VERSION", 3)
 
     FLASK_HOST = os.getenv("FLASK_HOST", os.getenv("HOST", "127.0.0.1"))
     FLASK_PORT = env_int("FLASK_PORT", env_int("PORT", 5000))
     FRONTEND_PORT = env_int("FRONTEND_PORT", 8080)
     SERVER_MODE = os.getenv("SERVER_MODE", "LOCAL")
+    PUBLIC_TUNNEL_MODE = env_bool("PUBLIC_TUNNEL_MODE", False)
 
     SQLALCHEMY_ENGINE_OPTIONS: dict[str, Any] = {
         "pool_pre_ping": True,
@@ -248,16 +263,24 @@ def validate_runtime_config(config: dict[str, Any]) -> None:
         errors.append("ALLOW_LEGACY_QUERY_TOKENS debe permanecer desactivado en producción.")
     if config.get("ALLOW_PASSWORD_RESET_TOKEN_RESPONSE"):
         errors.append("ALLOW_PASSWORD_RESET_TOKEN_RESPONSE debe permanecer desactivado en producción.")
+    if config.get("ALLOW_LOCAL_RECOVERY_CODE"):
+        errors.append("ALLOW_LOCAL_RECOVERY_CODE debe permanecer desactivado en producción.")
     if not config.get("FORCE_HTTPS", True):
         errors.append("FORCE_HTTPS debe permanecer activado en esta entrega Railway.")
     if not Path(str(config.get("DATA_DIR", ""))).is_absolute():
         errors.append("DATA_DIR debe ser una ruta absoluta.")
-    if not config.get("SINGLE_TENANT_MODE", True) and not config.get("ALLOW_EXPERIMENTAL_MULTI_TENANT", False):
-        errors.append(
-            "El modo multi-fundación todavía no está certificado para esta entrega. "
-            "Mantenga SINGLE_TENANT_MODE=true o habilite conscientemente "
-            "ALLOW_EXPERIMENTAL_MULTI_TENANT=true."
-        )
+    if not config.get("SINGLE_TENANT_MODE", True):
+        if not config.get("ALLOW_EXPERIMENTAL_MULTI_TENANT", False):
+            errors.append(
+                "La operación multi-fundación requiere "
+                "ALLOW_EXPERIMENTAL_MULTI_TENANT=true como confirmación explícita."
+            )
+        if not config.get("MULTI_TENANT_STRICT", True):
+            errors.append("MULTI_TENANT_STRICT debe permanecer activado en modo multi-fundación.")
+        if not config.get("TENANT_STORAGE_ISOLATION", True):
+            errors.append("TENANT_STORAGE_ISOLATION debe permanecer activado en modo multi-fundación.")
+        if int(config.get("MULTI_TENANT_SCHEMA_VERSION", 0) or 0) < 3:
+            errors.append("MULTI_TENANT_SCHEMA_VERSION debe ser 3 o superior.")
 
     if errors:
         raise RuntimeError("Configuración de producción inválida: " + " ".join(errors))

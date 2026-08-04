@@ -6,6 +6,8 @@ from functools import wraps
 import json
 import os
 
+from services.uds_catalog import canonical_units, normalization_map
+
 # Directorio de base de datos
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATABASE_PATH = os.path.join(BASE_DIR, 'database.sqlite3')
@@ -109,12 +111,9 @@ class AlertaConfiguracion:
 class ConfiguracionSistema:
     """Configuración general del sistema"""
     
-    UNIDADES = [f'UNIDAD DEMO {indice:02d}' for indice in range(1, 33)]
+    UNIDADES = canonical_units()
 
-    NORMALIZACION_UNIDADES = {
-        f'UNIDAD DEMO {indice:02d}': f'UNIDAD DEMO {indice:02d}'
-        for indice in range(1, 33)
-    }
+    NORMALIZACION_UNIDADES = normalization_map()
     
     FORMATOS_ICBF = [
         'ASISTENCIA',

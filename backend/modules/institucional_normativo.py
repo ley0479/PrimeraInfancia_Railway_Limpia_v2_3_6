@@ -17,9 +17,12 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from flask import Blueprint, jsonify, request, g, send_from_directory, send_file
 from werkzeug.utils import secure_filename
+
+from modules.seguridad.tenant_context import tenant_storage_root
 
 try:
     from modules.seguridad.services import require_roles
@@ -88,7 +91,11 @@ def _user() -> dict[str, Any]:
     }
 
 
-def _public_path(absolute_path: str | None, base_dir: str) -> str | None:
+def _public_path(
+    absolute_path: str | None,
+    base_dir: str,
+    tenant_root: str | os.PathLike[str] | None = None,
+) -> str | None:
     """Convierte una ruta local válida en URL pública de Flask.
 
     Nunca devuelve una URL para un archivo inexistente: así se evita que el
@@ -103,6 +110,11 @@ def _public_path(absolute_path: str | None, base_dir: str) -> str | None:
         static_dir = os.path.abspath(os.path.join(base_dir, 'static'))
         if os.path.commonpath([abs_path, static_dir]) == static_dir:
             return '/static/' + os.path.relpath(abs_path, static_dir).replace(os.sep, '/')
+        if tenant_root:
+            tenant_abs = os.path.abspath(os.fspath(tenant_root))
+            if os.path.commonpath([abs_path, tenant_abs]) == tenant_abs:
+                relative = os.path.relpath(abs_path, tenant_abs).replace(os.sep, '/')
+                return '/api/institucional-archivos/' + quote(relative, safe='/')
     except (OSError, ValueError):
         pass
     return None
@@ -140,7 +152,7 @@ def _copy_to_active_storage(source_path: str, branding_root: Path, tipo: str, to
     return destination.resolve()
 
 
-def _repair_missing_branding_references(database_path: str, base_dir: str) -> None:
+def _repair_missing_branding_references(database_path: str, fundacion_id: int) -> None:
     """Limpia referencias antiguas o absolutas que apuntan a archivos ausentes.
 
     No borra registros: únicamente desactiva recursos inexistentes y deja en NULL
@@ -149,7 +161,10 @@ def _repair_missing_branding_references(database_path: str, base_dir: str) -> No
     conn = _connect(database_path)
     now = _now()
     try:
-        rows = conn.execute('SELECT id, archivo_path, activo FROM identidad_visual_archivos').fetchall()
+        rows = conn.execute(
+            'SELECT id, archivo_path, activo FROM identidad_visual_archivos WHERE fundacion_id=?',
+            (int(fundacion_id),),
+        ).fetchall()
         for row in rows:
             if row['archivo_path'] and not os.path.isfile(str(row['archivo_path'])) and int(row['activo'] or 0) == 1:
                 conn.execute('UPDATE identidad_visual_archivos SET activo=0, updated_at=? WHERE id=?', (now, row['id']))
@@ -158,7 +173,10 @@ def _repair_missing_branding_references(database_path: str, base_dir: str) -> No
             'logo_formatos_path', 'logo_documentos_path', 'favicon_path',
             'favicon_png_path', 'foto_admin_path', 'firma_path'
         )
-        configs = conn.execute('SELECT * FROM configuracion_institucional').fetchall()
+        configs = conn.execute(
+            'SELECT * FROM configuracion_institucional WHERE fundacion_id=?',
+            (int(fundacion_id),),
+        ).fetchall()
         for cfg in configs:
             broken = [col for col in columns if col in cfg.keys() and cfg[col] and not os.path.isfile(str(cfg[col]))]
             if broken:
@@ -169,13 +187,17 @@ def _repair_missing_branding_references(database_path: str, base_dir: str) -> No
         conn.close()
 
 
-def _row_to_dict(row: sqlite3.Row | None, base_dir: str | None = None) -> dict[str, Any] | None:
+def _row_to_dict(
+    row: sqlite3.Row | None,
+    base_dir: str | None = None,
+    tenant_root: str | os.PathLike[str] | None = None,
+) -> dict[str, Any] | None:
     if row is None:
         return None
     data = dict(row)
     if base_dir:
         for key in ('logo_principal_path', 'logo_horizontal_path', 'logo_reportes_path', 'logo_formatos_path', 'logo_documentos_path', 'foto_admin_path', 'favicon_path', 'favicon_png_path', 'firma_path'):
-            data[key.replace('_path', '_url')] = _public_path(data.get(key), base_dir)
+            data[key.replace('_path', '_url')] = _public_path(data.get(key), base_dir, tenant_root)
         if data.get('archivo_path'):
             data['archivo_nombre'] = os.path.basename(str(data.get('archivo_path')))
     return data
@@ -456,7 +478,14 @@ def _audit(database_path: str, accion: str, entidad: str, entidad_id: int | None
         pass
 
 
-def _get_or_create_config(database_path: str, base_dir: str, fundacion_id: int) -> dict[str, Any]:
+def _get_or_create_config(
+    database_path: str,
+    base_dir: str,
+    fundacion_id: int,
+    tenant_root: str | os.PathLike[str] | None = None,
+) -> dict[str, Any]:
+    if tenant_root is None:
+        tenant_root = tenant_storage_root(Path(database_path).resolve().parent, fundacion_id) / 'institutional'
     conn = _connect(database_path)
     row = conn.execute('''
         SELECT * FROM configuracion_institucional
@@ -484,13 +513,21 @@ def _get_or_create_config(database_path: str, base_dir: str, fundacion_id: int) 
         ))
         conn.commit()
         row = conn.execute('SELECT * FROM configuracion_institucional WHERE id=last_insert_rowid()').fetchone()
-    data = _row_to_dict(row, base_dir) or {}
+    data = _row_to_dict(row, base_dir, tenant_root) or {}
     conn.close()
     return data
 
 
-def _manual_to_dict(row: sqlite3.Row, base_dir: str, database_path: str) -> dict[str, Any]:
-    data = _row_to_dict(row, base_dir) or {}
+def _manual_to_dict(
+    row: sqlite3.Row,
+    base_dir: str,
+    database_path: str,
+    tenant_root: str | os.PathLike[str] | None = None,
+) -> dict[str, Any]:
+    if tenant_root is None:
+        fundacion_id = int(row['fundacion_id'] or _user()['fundacion_id']) if 'fundacion_id' in row.keys() else _user()['fundacion_id']
+        tenant_root = tenant_storage_root(Path(database_path).resolve().parent, fundacion_id) / 'institutional'
+    data = _row_to_dict(row, base_dir, tenant_root) or {}
     conn = _connect(database_path)
     secs = conn.execute('''
         SELECT id, titulo, numero, pagina_inicio, pagina_fin, orden, resumen
@@ -512,29 +549,72 @@ def _count_pdf_pages(path: str) -> int | None:
 
 def register_institucional_normativo(app, database_path: str, base_dir: str) -> None:
     init_schema(database_path)
-    uploads_root = Path(base_dir) / 'static' / 'uploads'
-    logos_dir = uploads_root / 'logos'
-    fotos_dir = uploads_root / 'fotos_admin'
-    favicons_dir = uploads_root / 'favicons'
-    manuales_dir = uploads_root / 'manuales_operativos'
-    branding_root = Path(base_dir) / 'static' / 'assets' / 'branding'
-    originales_dir = branding_root / 'originales'
-    backups_branding_dir = branding_root / 'backups'
-    historial_dir = branding_root / 'historial'
-    for folder in (logos_dir, fotos_dir, favicons_dir, manuales_dir, branding_root, originales_dir, backups_branding_dir, historial_dir):
-        folder.mkdir(parents=True, exist_ok=True)
-    _repair_missing_branding_references(database_path, base_dir)
+    data_dir = Path(str(app.config.get('DATA_DIR') or (Path(base_dir).parent / 'data'))).resolve()
+
+    def _build_tenant_dirs(fundacion_id: int) -> dict[str, Path]:
+        root = (tenant_storage_root(data_dir, fundacion_id) / 'institutional').resolve()
+        uploads_root = root / 'uploads'
+        branding_root = root / 'branding'
+        directories = {
+            'root': root,
+            'uploads_root': uploads_root,
+            'logos_dir': uploads_root / 'logos',
+            'fotos_dir': uploads_root / 'fotos_admin',
+            'favicons_dir': uploads_root / 'favicons',
+            'manuales_dir': uploads_root / 'manuales_operativos',
+            'branding_root': branding_root,
+            'originales_dir': branding_root / 'originales',
+            'backups_branding_dir': branding_root / 'backups',
+            'historial_dir': branding_root / 'historial',
+        }
+        for folder in directories.values():
+            folder.mkdir(parents=True, exist_ok=True)
+        return directories
+
+    def _tenant_dirs() -> dict[str, Path]:
+        cached = getattr(g, 'institutional_tenant_dirs', None)
+        if cached:
+            return cached
+        directories = _build_tenant_dirs(_user()['fundacion_id'])
+        g.institutional_tenant_dirs = directories
+        return directories
+
+    def _serialize_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
+        return _row_to_dict(row, base_dir, _tenant_dirs()['root'])
+
+    def _institutional_config(fundacion_id: int) -> dict[str, Any]:
+        return _get_or_create_config(database_path, base_dir, fundacion_id, _tenant_dirs()['root'])
+
+    def _serialize_manual(row: sqlite3.Row) -> dict[str, Any]:
+        return _manual_to_dict(row, base_dir, database_path, _tenant_dirs()['root'])
 
     bp = Blueprint('institucional_normativo', __name__)
 
     @bp.before_request
     def _ensure_schema():
         init_schema(database_path)
+        directories = _tenant_dirs()
+        _repair_missing_branding_references(database_path, _user()['fundacion_id'])
+        g.institutional_tenant_dirs = directories
+
+    @bp.route('/api/institucional-archivos/<path:relative_path>', methods=['GET'])
+    def servir_archivo_institucional(relative_path: str):
+        directories = _tenant_dirs()
+        root = directories['root'].resolve()
+        candidate = (root / relative_path).resolve()
+        try:
+            if os.path.commonpath([str(candidate), str(root)]) != str(root):
+                return jsonify({'error': 'Ruta institucional no autorizada.'}), 403
+        except ValueError:
+            return jsonify({'error': 'Ruta institucional no autorizada.'}), 403
+        if not candidate.is_file():
+            return jsonify({'error': 'Archivo institucional no encontrado.'}), 404
+        return send_from_directory(str(root), str(candidate.relative_to(root)), as_attachment=False)
 
     @bp.route('/api/configuracion-institucional', methods=['GET'])
     def obtener_configuracion():
         user = _user()
-        return jsonify({'configuracion': _get_or_create_config(database_path, base_dir, user['fundacion_id'])}), 200
+        return jsonify({'configuracion': _institutional_config(user['fundacion_id'])}), 200
 
     @bp.route('/api/configuracion-institucional', methods=['POST'])
     @require_roles('SUPERADMIN', 'ADMINISTRADOR', 'GERENTE')
@@ -570,7 +650,7 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
         cfg = conn.execute('SELECT * FROM configuracion_institucional WHERE id=?', (cfg_id,)).fetchone()
         conn.close()
         _audit(database_path, 'GUARDAR_CONFIGURACION_INSTITUCIONAL', 'configuracion_institucional', cfg_id, values)
-        return jsonify({'message': 'Configuración institucional guardada correctamente.', 'configuracion': _row_to_dict(cfg, base_dir)}), 200
+        return jsonify({'message': 'Configuración institucional guardada correctamente.', 'configuracion': _serialize_row(cfg)}), 200
 
     @bp.route('/api/configuracion-institucional/logo', methods=['POST'])
     @require_roles('SUPERADMIN', 'ADMINISTRADOR', 'GERENTE')
@@ -589,9 +669,10 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
         }
         col, asset_type = mapping.get(tipo, mapping['principal'])
         user = _user()
-        cfg = _get_or_create_config(database_path, base_dir, user['fundacion_id'])
+        directories = _tenant_dirs()
+        cfg = _institutional_config(user['fundacion_id'])
         nombre = _safe_filename(f'LOGO_{tipo.upper()}_{user["fundacion_id"]}', file.filename)
-        path = (logos_dir / nombre).resolve()
+        path = (directories['logos_dir'] / nombre).resolve()
         file.save(str(path))
         if not path.is_file() or path.stat().st_size <= 0:
             return jsonify({'error': 'El servidor recibió el logo, pero no pudo guardarlo en disco.'}), 500
@@ -604,7 +685,7 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
         row = conn.execute('SELECT * FROM configuracion_institucional WHERE id=?', (cfg['id'],)).fetchone()
         conn.close()
         _audit(database_path, 'SUBIR_LOGO_INSTITUCIONAL', 'configuracion_institucional', cfg['id'], {'tipo': tipo, 'archivo': nombre})
-        return jsonify({'message': 'Logo institucional cargado correctamente.', 'configuracion': _row_to_dict(row, base_dir)}), 200
+        return jsonify({'message': 'Logo institucional cargado correctamente.', 'configuracion': _serialize_row(row)}), 200
 
     @bp.route('/api/configuracion-institucional/foto-admin', methods=['POST'])
     @require_roles('SUPERADMIN', 'ADMINISTRADOR', 'GERENTE')
@@ -614,9 +695,10 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
         except ValueError as exc:
             return jsonify({'error': str(exc)}), 400
         user = _user()
-        cfg = _get_or_create_config(database_path, base_dir, user['fundacion_id'])
+        directories = _tenant_dirs()
+        cfg = _institutional_config(user['fundacion_id'])
         nombre = _safe_filename(f'FOTO_ADMIN_{user["fundacion_id"]}', file.filename)
-        path = (fotos_dir / nombre).resolve()
+        path = (directories['fotos_dir'] / nombre).resolve()
         file.save(str(path))
         if not path.is_file() or path.stat().st_size <= 0:
             return jsonify({'error': 'El servidor recibió la foto, pero no pudo guardarla en disco.'}), 500
@@ -626,7 +708,7 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
         row = conn.execute('SELECT * FROM configuracion_institucional WHERE id=?', (cfg['id'],)).fetchone()
         conn.close()
         _audit(database_path, 'SUBIR_FOTO_ADMIN', 'configuracion_institucional', cfg['id'], {'archivo': nombre})
-        return jsonify({'message': 'Foto del administrador cargada correctamente.', 'configuracion': _row_to_dict(row, base_dir)}), 200
+        return jsonify({'message': 'Foto del administrador cargada correctamente.', 'configuracion': _serialize_row(row)}), 200
 
     @bp.route('/api/configuracion-institucional/favicon', methods=['POST'])
     @require_roles('SUPERADMIN', 'ADMINISTRADOR', 'GERENTE')
@@ -636,9 +718,10 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
         except ValueError as exc:
             return jsonify({'error': str(exc)}), 400
         user = _user()
-        cfg = _get_or_create_config(database_path, base_dir, user['fundacion_id'])
+        directories = _tenant_dirs()
+        cfg = _institutional_config(user['fundacion_id'])
         nombre = _safe_filename(f'FAVICON_{user["fundacion_id"]}', file.filename)
-        path = (favicons_dir / nombre).resolve()
+        path = (directories['favicons_dir'] / nombre).resolve()
         file.save(str(path))
         if not path.is_file() or path.stat().st_size <= 0:
             return jsonify({'error': 'El servidor recibió el favicon, pero no pudo guardarlo en disco.'}), 500
@@ -654,7 +737,7 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
         row = conn.execute('SELECT * FROM configuracion_institucional WHERE id=?', (cfg['id'],)).fetchone()
         conn.close()
         _audit(database_path, 'SUBIR_FAVICON_INSTITUCIONAL', 'configuracion_institucional', cfg['id'], {'archivo': nombre, 'tipo': asset_type})
-        return jsonify({'message': 'Favicon institucional cargado correctamente.', 'configuracion': _row_to_dict(row, base_dir)}), 200
+        return jsonify({'message': 'Favicon institucional cargado correctamente.', 'configuracion': _serialize_row(row)}), 200
 
 
     @bp.route('/api/identidad-visual/generar', methods=['POST'])
@@ -664,17 +747,18 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
             file = _require_file('file', ALLOWED_IMAGE_EXTENSIONS, MAX_IMAGE_MB)
             image, raw = _load_source_image(file)
             user = _user()
+            directories = _tenant_dirs()
             batch_id = uuid.uuid4().hex[:16]
             version = int(datetime.now().strftime('%Y%m%d%H%M%S'))
             original_name = _safe_filename(f'ORIGINAL_{user["fundacion_id"]}', file.filename)
-            (originales_dir / original_name).write_bytes(raw)
+            (directories['originales_dir'] / original_name).write_bytes(raw)
             remove_white = str(request.form.get('remove_white') or '').lower() in {'1','true','yes','on'}
             warning = None
             if image.width < 512 or image.height < 512:
                 warning = f'La imagen original es de {image.width}×{image.height}px; algunas versiones grandes pueden perder nitidez.'
-            batch_root = historial_dir / batch_id
+            batch_root = directories['historial_dir'] / batch_id
             generated = _generate_branding_assets(image, batch_root, remove_white)
-            zip_path = historial_dir / f'identidad_visual_{batch_id}.zip'
+            zip_path = directories['historial_dir'] / f'identidad_visual_{batch_id}.zip'
             with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
                 for _, path, _, _ in generated:
                     archive.write(path, path.relative_to(batch_root))
@@ -694,7 +778,7 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
     def descargar_lote_identidad(lote_id: str):
         if not re.fullmatch(r'[a-f0-9]{16}', lote_id or ''):
             return jsonify({'error': 'Identificador de lote inválido.'}), 400
-        path = historial_dir / f'identidad_visual_{lote_id}.zip'
+        path = _tenant_dirs()['historial_dir'] / f'identidad_visual_{lote_id}.zip'
         if not path.exists():
             return jsonify({'error': 'Paquete ZIP no encontrado.'}), 404
         return send_file(path, as_attachment=True, download_name=f'identidad_visual_{lote_id}.zip')
@@ -702,7 +786,7 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
     @bp.route('/api/identidad-visual/lote/<lote_id>/aplicar', methods=['POST'])
     @require_roles('SUPERADMIN', 'ADMINISTRADOR', 'GERENTE')
     def aplicar_lote_identidad(lote_id: str):
-        user = _user(); conn = _connect(database_path)
+        user = _user(); directories = _tenant_dirs(); conn = _connect(database_path)
         rows = conn.execute('SELECT * FROM identidad_visual_archivos WHERE fundacion_id=? AND lote_id=? ORDER BY id', (user['fundacion_id'], lote_id)).fetchall()
         if not rows:
             conn.close(); return jsonify({'error': 'No se encontró el lote solicitado.'}), 404
@@ -712,14 +796,14 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
         for row in rows:
             if row['tipo'] in preferred and row['nombre_archivo'] == preferred[row['tipo']]:
                 chosen[row['tipo']] = row
-        cfg = _get_or_create_config(database_path, base_dir, user['fundacion_id']); now=_now()
+        cfg = _institutional_config(user['fundacion_id']); now=_now()
         if not chosen:
             conn.close()
             return jsonify({'error': 'El lote no contiene recursos aplicables.'}), 400
         copied = []
         try:
             for tipo,row in chosen.items():
-                active_path = _copy_to_active_storage(row['archivo_path'], branding_root, tipo, lote_id)
+                active_path = _copy_to_active_storage(row['archivo_path'], directories['branding_root'], tipo, lote_id)
                 copied.append(active_path)
                 conn.execute('UPDATE identidad_visual_archivos SET activo=0, updated_at=? WHERE fundacion_id=? AND tipo=?', (now,user['fundacion_id'],tipo))
                 conn.execute('UPDATE identidad_visual_archivos SET activo=1, archivo_path=?, fecha_aplicacion=?, updated_at=? WHERE id=?', (str(active_path),now,now,row['id']))
@@ -732,7 +816,7 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
             return jsonify({'error': str(exc)}), 404
         conn.commit(); cfg_row=conn.execute('SELECT * FROM configuracion_institucional WHERE id=?',(cfg['id'],)).fetchone(); conn.close()
         _audit(database_path,'APLICAR_LOTE_IDENTIDAD_VISUAL','identidad_visual_archivos',None,{'lote_id':lote_id})
-        return jsonify({'message':'Recursos aplicados a toda la plataforma. Recarga el navegador para verlos.', 'configuracion':_row_to_dict(cfg_row,base_dir)}),200
+        return jsonify({'message':'Recursos aplicados a toda la plataforma. Recarga el navegador para verlos.', 'configuracion':_serialize_row(cfg_row)}),200
 
     @bp.route('/api/identidad-visual', methods=['GET'])
     def listar_identidad_visual():
@@ -741,22 +825,28 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
         rows = conn.execute('SELECT * FROM identidad_visual_archivos WHERE fundacion_id=? ORDER BY tipo ASC, activo DESC, created_at DESC, id DESC', (user['fundacion_id'],)).fetchall()
         conn.close()
         archivos = []
+        tenant_root = _tenant_dirs()['root']
         for row in rows:
             item = dict(row)
-            item['url'] = _public_path(item.get('archivo_path'), base_dir)
+            item['url'] = _public_path(item.get('archivo_path'), base_dir, tenant_root)
             archivos.append(item)
         return jsonify({'archivos': archivos}), 200
 
     @bp.route('/api/identidad-visual/<int:archivo_id>/descargar', methods=['GET'])
     def descargar_identidad_visual(archivo_id: int):
         user = _user()
+        directories = _tenant_dirs()
         conn = _connect(database_path)
         row = conn.execute('SELECT * FROM identidad_visual_archivos WHERE id=? AND fundacion_id=?', (archivo_id, user['fundacion_id'])).fetchone()
         conn.close()
         if not row:
             return jsonify({'error': 'Archivo de identidad visual no encontrado.'}), 404
         path = os.path.abspath(str(row['archivo_path'] or ''))
-        allowed_roots = [os.path.abspath(str(logos_dir)), os.path.abspath(str(favicons_dir)), os.path.abspath(str(branding_root))]
+        allowed_roots = [
+            os.path.abspath(str(directories['logos_dir'])),
+            os.path.abspath(str(directories['favicons_dir'])),
+            os.path.abspath(str(directories['branding_root'])),
+        ]
         if not any(path.startswith(root + os.sep) for root in allowed_roots):
             return jsonify({'error': 'Ruta no autorizada.'}), 403
         if not os.path.exists(path):
@@ -767,6 +857,7 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
     @require_roles('SUPERADMIN', 'ADMINISTRADOR', 'GERENTE')
     def activar_identidad_visual(archivo_id: int):
         user = _user()
+        directories = _tenant_dirs()
         conn = _connect(database_path)
         row = conn.execute('SELECT * FROM identidad_visual_archivos WHERE id=? AND fundacion_id=?', (archivo_id, user['fundacion_id'])).fetchone()
         if not row:
@@ -777,10 +868,15 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
         if not col:
             conn.close()
             return jsonify({'error': 'Tipo de archivo no compatible.'}), 400
-        cfg = _get_or_create_config(database_path, base_dir, user['fundacion_id'])
+        cfg = _institutional_config(user['fundacion_id'])
         now = _now()
         try:
-            active_path = _copy_to_active_storage(row['archivo_path'], branding_root, row['tipo'], f'restore-{archivo_id}-{int(datetime.now().timestamp())}')
+            active_path = _copy_to_active_storage(
+                row['archivo_path'],
+                directories['branding_root'],
+                row['tipo'],
+                f'restore-{archivo_id}-{int(datetime.now().timestamp())}',
+            )
         except FileNotFoundError as exc:
             conn.close()
             return jsonify({'error': str(exc)}), 404
@@ -791,7 +887,7 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
         cfg_row = conn.execute('SELECT * FROM configuracion_institucional WHERE id=?', (cfg['id'],)).fetchone()
         conn.close()
         _audit(database_path, 'ACTIVAR_IDENTIDAD_VISUAL', 'identidad_visual_archivos', archivo_id, {'tipo': row['tipo']})
-        return jsonify({'message': 'Archivo activado correctamente.', 'configuracion': _row_to_dict(cfg_row, base_dir)}), 200
+        return jsonify({'message': 'Archivo activado correctamente.', 'configuracion': _serialize_row(cfg_row)}), 200
 
     @bp.route('/api/manual-operativo', methods=['GET'])
     def listar_manuales():
@@ -801,7 +897,7 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
             SELECT * FROM manuales_operativos WHERE fundacion_id=? ORDER BY created_at DESC, id DESC
         ''', (user['fundacion_id'],)).fetchall()
         conn.close()
-        return jsonify({'manuales': [_row_to_dict(row, base_dir) for row in rows]}), 200
+        return jsonify({'manuales': [_serialize_row(row) for row in rows]}), 200
 
     @bp.route('/api/manual-operativo/vigente', methods=['GET'])
     def manual_vigente():
@@ -815,7 +911,7 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
         conn.close()
         if not row:
             return jsonify({'manual': None, 'message': 'No hay manual operativo vigente.'}), 200
-        return jsonify({'manual': _manual_to_dict(row, base_dir, database_path)}), 200
+        return jsonify({'manual': _serialize_manual(row)}), 200
 
     @bp.route('/api/manual-operativo/cargar', methods=['POST'])
     @require_roles('SUPERADMIN', 'ADMINISTRADOR', 'GERENTE', 'COORDINADOR')
@@ -825,6 +921,7 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
         except ValueError as exc:
             return jsonify({'error': str(exc)}), 400
         user = _user()
+        directories = _tenant_dirs()
         codigo = (request.form.get('codigo') or 'MT3.PP').strip()[:80]
         nombre_doc = (request.form.get('nombre') or 'Manual Técnico Modalidad Propia e Intercultural para la Atención a la Primera Infancia').strip()[:240]
         version = (request.form.get('version') or '2').strip()[:40]
@@ -835,7 +932,7 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
         if estado == 'histórico':
             estado = 'historico'
         nombre = _safe_filename(f'MANUAL_{codigo.replace(".", "_")}_{user["fundacion_id"]}', file.filename)
-        path = manuales_dir / nombre
+        path = directories['manuales_dir'] / nombre
         file.save(path)
         total_paginas = _count_pdf_pages(str(path))
         conn = _connect(database_path)
@@ -858,7 +955,7 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
         row = conn.execute('SELECT * FROM manuales_operativos WHERE id=?', (manual_id,)).fetchone()
         conn.close()
         _audit(database_path, 'CARGAR_MANUAL_OPERATIVO', 'manuales_operativos', manual_id, {'codigo': codigo, 'version': version, 'estado': estado, 'archivo': nombre})
-        return jsonify({'message': 'Manual operativo cargado correctamente.', 'manual': _manual_to_dict(row, base_dir, database_path)}), 201
+        return jsonify({'message': 'Manual operativo cargado correctamente.', 'manual': _serialize_manual(row)}), 201
 
     @bp.route('/api/manual-operativo/<int:manual_id>', methods=['GET'])
     def obtener_manual(manual_id: int):
@@ -868,7 +965,7 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
         conn.close()
         if not row:
             return jsonify({'error': 'Manual operativo no encontrado.'}), 404
-        return jsonify({'manual': _manual_to_dict(row, base_dir, database_path)}), 200
+        return jsonify({'manual': _serialize_manual(row)}), 200
 
     @bp.route('/api/manual-operativo/<int:manual_id>/vigente', methods=['POST'])
     @require_roles('SUPERADMIN', 'ADMINISTRADOR', 'GERENTE')
@@ -886,18 +983,19 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
         row = conn.execute('SELECT * FROM manuales_operativos WHERE id=?', (manual_id,)).fetchone()
         conn.close()
         _audit(database_path, 'MARCAR_MANUAL_VIGENTE', 'manuales_operativos', manual_id, {'codigo': row['codigo'], 'version': row['version']})
-        return jsonify({'message': 'Manual operativo marcado como vigente.', 'manual': _manual_to_dict(row, base_dir, database_path)}), 200
+        return jsonify({'message': 'Manual operativo marcado como vigente.', 'manual': _serialize_manual(row)}), 200
 
     @bp.route('/api/manual-operativo/<int:manual_id>/descargar', methods=['GET'])
     def descargar_manual(manual_id: int):
         user = _user()
+        directories = _tenant_dirs()
         conn = _connect(database_path)
         row = conn.execute('SELECT * FROM manuales_operativos WHERE id=? AND fundacion_id=?', (manual_id, user['fundacion_id'])).fetchone()
         conn.close()
         if not row:
             return jsonify({'error': 'Manual operativo no encontrado.'}), 404
         path = os.path.abspath(str(row['archivo_path'] or ''))
-        allowed_root = os.path.abspath(str(manuales_dir))
+        allowed_root = os.path.abspath(str(directories['manuales_dir']))
         if not path.startswith(allowed_root + os.sep):
             return jsonify({'error': 'Ruta de manual no autorizada.'}), 403
         if not os.path.exists(path):

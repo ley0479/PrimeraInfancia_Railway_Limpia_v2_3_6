@@ -4,7 +4,7 @@ import json
 from datetime import datetime, date, timedelta
 from typing import Any, Iterable
 
-from flask import g, request
+from flask import g, request, has_request_context
 
 from .schema import BILLING_SCHEMA_SQL, DEFAULT_PLANES, DEFAULT_PAQUETES, ALL_MODULES
 from modules.sqlalchemy_compat import CoreCompatRepository
@@ -59,13 +59,15 @@ class BillingRepository(CoreCompatRepository):
     def context(self) -> dict[str, Any]:
         try:
             from modules.seguridad.services import get_request_user_context
-            ctx = get_request_user_context()
+            ctx = get_request_user_context() if has_request_context() else {}
         except Exception:
             ctx = {}
-        user = getattr(g, 'current_user', None) or {}
+        user = (getattr(g, 'current_user', None) or {}) if has_request_context() else {}
         ctx.setdefault('usuario_id', user.get('id'))
         ctx.setdefault('fundacion_id', user.get('fundacion_id') or 1)
-        ctx.setdefault('rol', user.get('rol') or 'SUPERADMIN')
+        # Fuera de una petición se ejecuta bootstrap de catálogo central. Dentro
+        # de una petición, el rol siempre proviene de la sesión validada.
+        ctx.setdefault('rol', user.get('rol') or ('SYSTEM' if not has_request_context() else ''))
         ctx.setdefault('username', user.get('username') or 'sistema')
         return ctx
 

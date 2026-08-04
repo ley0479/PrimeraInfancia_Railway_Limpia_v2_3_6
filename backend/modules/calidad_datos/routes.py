@@ -8,6 +8,7 @@ from flask import Blueprint, g, jsonify, request, send_from_directory
 from werkzeug.utils import secure_filename
 
 from modules.seguridad.services import require_roles
+from modules.seguridad.tenant_context import tenant_path
 
 from .repository import CalidadDatosRepository
 from .services import (
@@ -50,8 +51,8 @@ def register_calidad_datos(app, database_path: str, upload_folder: str, output_f
     repo.init_schema()
 
     bp = Blueprint('calidad_datos', __name__, url_prefix='/api/calidad-datos')
-    module_upload = os.path.join(upload_folder, 'calidad_datos')
-    module_output = os.path.join(output_folder, 'calidad_datos')
+    module_upload = tenant_path(upload_folder, 'calidad_datos')
+    module_output = tenant_path(output_folder, 'calidad_datos')
     os.makedirs(module_upload, exist_ok=True)
     os.makedirs(module_output, exist_ok=True)
 

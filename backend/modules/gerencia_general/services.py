@@ -603,7 +603,9 @@ class GerenciaGeneralService:
                     f"""
                     SELECT c.*, co.nombre AS coordinador, f.nombre AS fundacion
                     FROM gp_estado_cumplimiento c
-                    LEFT JOIN gp_coordinadores co ON co.id=c.coordinador_id
+                    LEFT JOIN gp_coordinadores co
+                      ON co.id=c.coordinador_id
+                     AND COALESCE(co.fundacion_id, 1)=COALESCE(c.fundacion_id, 1)
                     LEFT JOIN fundaciones f ON f.id=c.fundacion_id
                     WHERE COALESCE(c.{porcentaje_col},0) < 80
                       AND (COALESCE(c.periodo,'')=? OR substr(COALESCE(c.fecha_creacion,''),1,7)=?) {scope}
@@ -633,7 +635,9 @@ class GerenciaGeneralService:
                        COUNT(*) AS pendientes,
                        SUM(CASE WHEN date(COALESCE(e.fecha_limite,'2999-12-31')) < date('now') THEN 1 ELSE 0 END) AS vencidos
                 FROM gp_entregables e
-                LEFT JOIN gp_coordinadores co ON co.id=e.coordinador_id
+                LEFT JOIN gp_coordinadores co
+                  ON co.id=e.coordinador_id
+                 AND COALESCE(co.fundacion_id, 1)=COALESCE(e.fundacion_id, 1)
                 LEFT JOIN fundaciones f ON f.id=e.fundacion_id
                 WHERE UPPER(COALESCE(e.estado,'PENDIENTE')) NOT IN ('APROBADO','CARGADO','CUMPLIDO','CERRADO')
                   AND (COALESCE(e.periodo,'')=? OR substr(COALESCE(e.fecha_limite,''),1,7)=?) {scope}

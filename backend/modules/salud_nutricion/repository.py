@@ -13,6 +13,7 @@ import json
 from typing import Any, Iterable
 
 from modules.sqlalchemy_compat import CoreCompatRepository
+from modules.seguridad.tenant_context import current_tenant_context
 from .schema import SCHEMA_SQL
 from .services import now_iso
 
@@ -27,6 +28,11 @@ def _security_context() -> dict:
 
 def _is_superadmin() -> bool:
     return str(_security_context().get('rol') or '').upper() == 'SUPERADMIN'
+
+
+def _allow_global() -> bool:
+    context = current_tenant_context()
+    return context.role == 'SUPERADMIN' and bool(context.allow_global)
 
 
 def _ctx_fundacion_id() -> int:
@@ -45,7 +51,7 @@ def _ctx_usuario_id() -> int | None:
 
 
 def _scope_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    if _is_superadmin():
+    if _allow_global():
         return rows
     fid = _ctx_fundacion_id()
     return [row for row in rows if row.get('fundacion_id') in (fid, None, '')]
@@ -259,19 +265,26 @@ class SaludNutricionRepository(CoreCompatRepository):
             self._insert_with_context('sn_alertas', campos, row)
 
     def latest_valoraciones(self, periodo: str | None = None) -> list[dict[str, Any]]:
-        where_periodo = "AND v.periodo = ?" if periodo else ""
-        params: list[Any] = [periodo] if periodo else []
+        fundacion_id = _ctx_fundacion_id()
+        where_periodo_v = "AND v.periodo = ?" if periodo else ""
+        where_periodo_x = "AND x.periodo = v.periodo" if periodo else ""
+        params: list[Any] = [fundacion_id]
+        if periodo:
+            params.append(periodo)
+        params.append(fundacion_id)
         sql = f"""
             SELECT v.*
             FROM sn_valoraciones v
             WHERE v.activo = 1
-              {where_periodo}
+              AND COALESCE(v.fundacion_id, 1) = ?
+              {where_periodo_v}
               AND NOT EXISTS (
                 SELECT 1
                 FROM sn_valoraciones x
                 WHERE x.documento = v.documento
                   AND x.activo = 1
-                  {"AND x.periodo = v.periodo" if periodo else ""}
+                  AND COALESCE(x.fundacion_id, 1) = ?
+                  {where_periodo_x}
                   AND (
                     COALESCE(x.fecha_valoracion, '') > COALESCE(v.fecha_valoracion, '')
                     OR (

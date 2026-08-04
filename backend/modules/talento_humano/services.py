@@ -5,6 +5,8 @@ import re
 import unicodedata
 from typing import Any
 
+from services.uds_catalog import aliases_lower as catalog_aliases_lower, normalize_unit as catalog_normalize_unit
+
 try:
     from flask import g
 except Exception:  # pragma: no cover
@@ -41,64 +43,11 @@ def normalizar_texto(value: Any) -> str:
     return ' '.join(text.split())
 
 
-UNIDAD_ALIASES = {
-    'uca UNIDAD DEMO 21': 'UNIDAD DEMO 21',
-    'UNIDAD DEMO 21': 'UNIDAD DEMO 21',
-    'uca UNIDAD DEMO 01': 'UNIDAD DEMO 01',
-    'UNIDAD DEMO 01': 'UNIDAD DEMO 01',
-    'UNIDAD DEMO 01': 'UNIDAD DEMO 01',
-    'uca UNIDAD DEMO 04': 'UNIDAD DEMO 04',
-    'UNIDAD DEMO 04': 'UNIDAD DEMO 04',
-    'uca UNIDAD DEMO 05': 'UNIDAD DEMO 05',
-    'UNIDAD DEMO 05': 'UNIDAD DEMO 05',
-    'uca UNIDAD DEMO 22': 'UNIDAD DEMO 22',
-    'UNIDAD DEMO 22': 'UNIDAD DEMO 22',
-    'UNIDAD DEMO 22': 'UNIDAD DEMO 22',
-    'uca UNIDAD DEMO 09': 'UNIDAD DEMO 09',
-    'UNIDAD DEMO 09': 'UNIDAD DEMO 09',
-    'UNIDAD DEMO 09': 'UNIDAD DEMO 09',
-    'uca UNIDAD DEMO 12': 'UNIDAD DEMO 12',
-    'UNIDAD DEMO 12': 'UNIDAD DEMO 12',
-    'UNIDAD DEMO 12': 'UNIDAD DEMO 12',
-    'uca UNIDAD DEMO 20': 'UNIDAD DEMO 20',
-    'UNIDAD DEMO 20': 'UNIDAD DEMO 20',
-    'UNIDAD DEMO 20': 'UNIDAD DEMO 20',
-    'uca UNIDAD DEMO 02': 'UNIDAD DEMO 02',
-    'UNIDAD DEMO 02': 'UNIDAD DEMO 02',
-    'UNIDAD DEMO 02': 'UNIDAD DEMO 02',
-    'UNIDAD DEMO 02': 'UNIDAD DEMO 02',
-    'uca UNIDAD DEMO 03': 'UNIDAD DEMO 03',
-    'UNIDAD DEMO 03': 'UNIDAD DEMO 03',
-    'UNIDAD DEMO 03': 'UNIDAD DEMO 03',
-    'uca UNIDAD DEMO 16': 'UNIDAD DEMO 16',
-    'UNIDAD DEMO 16': 'UNIDAD DEMO 16',
-    'UNIDAD DEMO 16': 'UNIDAD DEMO 16',
-    'uca UNIDAD DEMO 17': 'UNIDAD DEMO 17',
-    'UNIDAD DEMO 17': 'UNIDAD DEMO 17',
-    'UNIDAD DEMO 17': 'UNIDAD DEMO 17',
-    'uca UNIDAD DEMO 18': 'UNIDAD DEMO 18',
-    'UNIDAD DEMO 18': 'UNIDAD DEMO 18',
-    'UNIDAD DEMO 18': 'UNIDAD DEMO 18',
-    'UNIDAD DEMO 18': 'UNIDAD DEMO 18',
-    'uca UNIDAD DEMO 11': 'UNIDAD DEMO 11',
-    'uca UNIDAD DEMO 11': 'UNIDAD DEMO 11',
-    'UNIDAD DEMO 11': 'UNIDAD DEMO 11',
-}
+UNIDAD_ALIASES = catalog_aliases_lower()
 
 
 def normalizar_unidad(value: Any) -> str:
-    raw = limpiar_valor(value).upper()
-    if not raw:
-        return ''
-    key = normalizar_texto(raw)
-    if key in UNIDAD_ALIASES:
-        return UNIDAD_ALIASES[key]
-    if key.startswith('uca '):
-        key2 = key[4:].strip()
-        if key2 in UNIDAD_ALIASES:
-            return UNIDAD_ALIASES[key2]
-        return key2.upper()
-    return raw
+    return catalog_normalize_unit(value, preserve_unknown=True)
 
 
 def dividir_nombre(nombre: str) -> tuple[str, str]:
@@ -471,29 +420,40 @@ class TalentoHumanoService:
 
     def fuente_maestra(self) -> dict[str, Any]:
         ctx = self.context()
-        fundacion_id = ctx.get('fundacion_id') or 1
-        superadmin = ctx.get('rol') == 'SUPERADMIN'
-        filtro = "1=1" if superadmin else "(fundacion_id = ? OR fundacion_id IS NULL)"
-        params = [] if superadmin else [fundacion_id]
+        fundacion_id = int(ctx.get('fundacion_id') or 1)
+        allow_global = (
+            ctx.get('rol') == 'SUPERADMIN'
+            and bool(getattr(g, 'allow_global_tenant_access', False))
+        )
+        filtro_personas = "1=1" if allow_global else "COALESCE(fundacion_id, 1) = ?"
+        params_personas = [] if allow_global else [fundacion_id]
         personas = self.repo.fetch_all(
             f"""
             SELECT id, documento, nombre, cargo, tipo_equipo, rol_normalizado, unidad,
                    telefono, coordinador, contrato, estado, activo, fecha_actualizacion
             FROM th_personas
-            WHERE {filtro}
+            WHERE {filtro_personas}
             ORDER BY rol_normalizado, unidad, nombre
             """,
-            params,
+            params_personas,
         )
+        if allow_global:
+            join_personas = 'p.id = a.persona_id'
+            filtro_asignaciones = '1=1'
+            params_asignaciones: list[Any] = []
+        else:
+            join_personas = 'p.id = a.persona_id AND COALESCE(p.fundacion_id, 1) = ?'
+            filtro_asignaciones = 'COALESCE(a.fundacion_id, 1) = ?'
+            params_asignaciones = [fundacion_id, fundacion_id]
         asignaciones = self.repo.fetch_all(
             f"""
             SELECT a.id, a.persona_id, p.nombre, p.documento, a.rol, a.unidad,
                    a.coordinador_id, a.coordinador_nombre, a.estado, a.fecha_actualizacion
             FROM th_asignaciones a
-            LEFT JOIN th_personas p ON p.id = a.persona_id
-            WHERE {filtro.replace('fundacion_id', 'a.fundacion_id')}
+            LEFT JOIN th_personas p ON {join_personas}
+            WHERE {filtro_asignaciones}
             ORDER BY a.unidad, a.rol, p.nombre
             """,
-            params,
+            params_asignaciones,
         )
         return {'resumen': self.resumen_integracion(), 'personas': personas, 'asignaciones': asignaciones}

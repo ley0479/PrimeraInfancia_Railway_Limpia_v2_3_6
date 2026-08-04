@@ -5,6 +5,8 @@ import sqlite3
 from datetime import datetime, timedelta
 import json
 
+from modules.seguridad.tenant_context import current_tenant_id
+
 from models import (
     AlertaNivel, AlertaConfiguracion, EstadoUsuario, 
     EstadoNutricion, TipoGestante
@@ -105,13 +107,17 @@ class MotorAlertas:
         # 1. Controles vencidos
         fecha_vencimiento = (datetime.now() - timedelta(days=AlertaConfiguracion.DIAS_CONTROL_NUTRICION)).isoformat()
         
+        fid = int(current_tenant_id(1) or 1)
         cursor.execute("""
             SELECT DISTINCT b.id, b.nombres, b.documento, b.unidad
             FROM beneficiarios b
-            LEFT JOIN peso_talla pt ON b.id = pt.beneficiario_id
+            LEFT JOIN peso_talla pt
+              ON b.id = pt.beneficiario_id
+             AND COALESCE(pt.fundacion_id, 1) = ?
             WHERE b.estado = ?
-            AND (pt.id IS NULL OR pt.fecha_medicion < ?)
-        """, (EstadoUsuario.ACTIVO, fecha_vencimiento))
+              AND COALESCE(b.fundacion_id, 1) = ?
+              AND (pt.id IS NULL OR pt.fecha_medicion < ?)
+        """, (fid, EstadoUsuario.ACTIVO, fid, fecha_vencimiento))
         
         vencidos = cursor.fetchall()
         
@@ -140,14 +146,19 @@ class MotorAlertas:
         cursor.execute("""
             SELECT DISTINCT b.id, b.nombres, b.documento, b.unidad, pt.estado_nutricional
             FROM beneficiarios b
-            JOIN peso_talla pt ON b.id = pt.beneficiario_id
-            WHERE b.estado = ? AND pt.estado_nutricional IN (?, ?)
-            AND pt.id = (
-                SELECT id FROM peso_talla 
-                WHERE beneficiario_id = b.id
-                ORDER BY fecha_medicion DESC LIMIT 1
-            )
-        """, (EstadoUsuario.ACTIVO, EstadoNutricion.DESNUTRICION, EstadoNutricion.RIESGO))
+            JOIN peso_talla pt
+              ON b.id = pt.beneficiario_id
+             AND COALESCE(pt.fundacion_id, 1) = ?
+            WHERE b.estado = ?
+              AND COALESCE(b.fundacion_id, 1) = ?
+              AND pt.estado_nutricional IN (?, ?)
+              AND pt.id = (
+                  SELECT id FROM peso_talla ptx
+                  WHERE ptx.beneficiario_id = b.id
+                    AND COALESCE(ptx.fundacion_id, 1) = ?
+                  ORDER BY ptx.fecha_medicion DESC LIMIT 1
+              )
+        """, (fid, EstadoUsuario.ACTIVO, fid, EstadoNutricion.DESNUTRICION, EstadoNutricion.RIESGO, fid))
         
         criticos = cursor.fetchall()
         

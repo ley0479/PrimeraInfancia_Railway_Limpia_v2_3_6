@@ -8,6 +8,8 @@ from typing import Any, Iterable
 
 from flask import g, request
 
+from modules.seguridad.tenant_context import current_tenant_context
+
 from .schema import SCHEMA_SQL, EXISTING_GP_TABLES, MULTITENANT_COLUMNS, CALENDAR_EXTRA_COLUMNS, COORDINADOR_EXTRA_COLUMNS
 
 
@@ -139,7 +141,8 @@ class GestionCoordinadorRepository:
 
     def fundacion_clause(self, alias: str = '') -> tuple[str, list[Any]]:
         ctx = self.context()
-        if ctx.get('rol') == 'SUPERADMIN':
+        tenant_context = current_tenant_context()
+        if tenant_context.role == 'SUPERADMIN' and tenant_context.allow_global:
             return '1=1', []
         field = f"{alias}.fundacion_id" if alias else 'fundacion_id'
         return f"({field} = ? OR {field} IS NULL)", [ctx.get('fundacion_id') or 1]
@@ -213,13 +216,23 @@ class GestionCoordinadorRepository:
 
     def list_coordinators_summary(self, periodo: str) -> list[dict[str, Any]]:
         where, params = self.coordinator_scope_clause('c')
+        fid = int(self.context().get('fundacion_id') or 1)
         coordinadores = self.fetch_all(
             f"""
             SELECT c.*,
-                   (SELECT COUNT(*) FROM gp_docentes d WHERE d.coordinador_id=c.id AND d.activo=1) AS docentes_asignados,
-                   (SELECT COUNT(*) FROM gp_equipos_interdisciplinarios e WHERE e.coordinador_id=c.id AND e.activo=1) AS equipo_asignado,
-                   (SELECT COUNT(*) FROM gp_entregables en WHERE en.coordinador_id=c.id AND en.activo=1 AND en.periodo=? AND COALESCE(en.estado,'Pendiente') NOT IN ('Aprobado','Cumplido fuera de fecha')) AS pendientes_mes,
-                   (SELECT COUNT(*) FROM gp_alertas a WHERE a.coordinador_id=c.id AND a.leida=0) AS alertas_abiertas
+                   (SELECT COUNT(*) FROM gp_docentes d
+                     WHERE d.coordinador_id=c.id AND d.activo=1
+                       AND COALESCE(d.fundacion_id, 1)={fid}) AS docentes_asignados,
+                   (SELECT COUNT(*) FROM gp_equipos_interdisciplinarios e
+                     WHERE e.coordinador_id=c.id AND e.activo=1
+                       AND COALESCE(e.fundacion_id, 1)={fid}) AS equipo_asignado,
+                   (SELECT COUNT(*) FROM gp_entregables en
+                     WHERE en.coordinador_id=c.id AND en.activo=1 AND en.periodo=?
+                       AND COALESCE(en.fundacion_id, 1)={fid}
+                       AND COALESCE(en.estado,'Pendiente') NOT IN ('Aprobado','Cumplido fuera de fecha')) AS pendientes_mes,
+                   (SELECT COUNT(*) FROM gp_alertas a
+                     WHERE a.coordinador_id=c.id AND a.leida=0
+                       AND COALESCE(a.fundacion_id, 1)={fid}) AS alertas_abiertas
             FROM gp_coordinadores c
             WHERE {where} AND c.activo=1
             ORDER BY c.nombre
@@ -346,11 +359,13 @@ class GestionCoordinadorRepository:
         if coordinador_id:
             where += ' AND a.coordinador_id=?'
             params.append(coordinador_id)
+        fid = int(self.context().get('fundacion_id') or 1)
         return self.fetch_all(
             f"""
             SELECT a.*, c.nombre AS coordinador_nombre
             FROM gp_asignaciones_coordinador a
-            LEFT JOIN gp_coordinadores c ON c.id=a.coordinador_id
+            LEFT JOIN gp_coordinadores c
+              ON c.id=a.coordinador_id AND COALESCE(c.fundacion_id, 1)={fid}
             WHERE {where}
             ORDER BY a.estado DESC, c.nombre, a.tipo_talento, a.nombre
             """,
@@ -456,12 +471,15 @@ class GestionCoordinadorRepository:
         if filters.get('fecha'):
             where += ' AND ev.fecha=?'
             params.append(filters['fecha'])
+        fid = int(self.context().get('fundacion_id') or 1)
         return self.fetch_all(
             f"""
             SELECT ev.*, c.nombre AS coordinador_nombre, d.nombre AS docente_nombre_real
             FROM gp_calendario_eventos ev
-            LEFT JOIN gp_coordinadores c ON c.id=ev.coordinador_id
-            LEFT JOIN gp_docentes d ON d.id=ev.docente_id
+            LEFT JOIN gp_coordinadores c
+              ON c.id=ev.coordinador_id AND COALESCE(c.fundacion_id, 1)={fid}
+            LEFT JOIN gp_docentes d
+              ON d.id=ev.docente_id AND COALESCE(d.fundacion_id, 1)={fid}
             WHERE {where}
             ORDER BY ev.fecha, COALESCE(ev.hora,''), ev.titulo
             """,

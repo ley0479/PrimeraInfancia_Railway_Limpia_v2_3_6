@@ -5,6 +5,7 @@ import os
 from datetime import date
 
 from flask import Blueprint, jsonify, request, send_from_directory, send_file
+from modules.seguridad.tenant_context import tenant_path
 from werkzeug.utils import secure_filename
 from modules.operational_jobs import start_job
 
@@ -36,7 +37,7 @@ def _filters_from_request() -> dict:
 def register_calendario_inteligente(app, database_path: str, upload_folder: str) -> None:
     repo = CalendarioInteligenteRepository(database_path, upload_folder)
     repo.init_schema()
-    module_upload = os.path.join(upload_folder, "calendario_inteligente")
+    module_upload = tenant_path(upload_folder, "calendario_inteligente")
     os.makedirs(module_upload, exist_ok=True)
 
     bp = Blueprint("calendario_inteligente", __name__, url_prefix="/api/calendario-inteligente")

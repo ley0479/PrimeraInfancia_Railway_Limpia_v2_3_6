@@ -8,6 +8,7 @@ import os
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request, send_from_directory, send_file
+from modules.seguridad.tenant_context import tenant_path
 from werkzeug.utils import secure_filename
 
 from .repository import SaludNutricionRepository
@@ -47,8 +48,8 @@ def register_salud_nutricion(app, database_path: str, upload_folder: str, output
     repo.init_schema()
 
     bp = Blueprint('salud_nutricion_inteligente', __name__, url_prefix='/api/salud-nutricion')
-    module_upload = os.path.join(upload_folder, 'salud_nutricion')
-    module_reports = os.path.join(output_folder, 'salud_nutricion')
+    module_upload = tenant_path(upload_folder, 'salud_nutricion')
+    module_reports = tenant_path(output_folder, 'salud_nutricion')
     os.makedirs(module_upload, exist_ok=True)
     os.makedirs(module_reports, exist_ok=True)
     entregables_service = EntregablesSaludNutricionService(repo, output_folder, upload_folder)

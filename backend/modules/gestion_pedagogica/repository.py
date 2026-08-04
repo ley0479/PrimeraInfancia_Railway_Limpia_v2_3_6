@@ -8,6 +8,8 @@ import sqlite3
 from datetime import datetime
 from typing import Any, Iterable
 
+from modules.seguridad.tenant_context import current_tenant_context
+
 from .schema import SCHEMA_SQL, DEFAULT_ENTREGABLES
 
 
@@ -31,8 +33,20 @@ def _is_superadmin() -> bool:
     return _security_context().get('rol') == 'SUPERADMIN'
 
 
+def _allow_global() -> bool:
+    context = current_tenant_context()
+    return context.role == 'SUPERADMIN' and bool(context.allow_global)
+
+
+def _tenant_id() -> int:
+    try:
+        return int(_security_context().get('fundacion_id') or 1)
+    except Exception:
+        return 1
+
+
 def _scope_rows(rows: list[dict]) -> list[dict]:
-    if _is_superadmin():
+    if _allow_global():
         return rows
     fid = _security_context().get('fundacion_id') or 1
     return [row for row in rows if row.get('fundacion_id') in (fid, None, '')]
@@ -240,11 +254,14 @@ class GestionPedagogicaRepository:
         if coordinador_id:
             where += " AND e.coordinador_id = ?"
             params = (coordinador_id,)
+        fid = _tenant_id()
+        where += f" AND COALESCE(e.fundacion_id, 1)={fid}"
         return self.fetch_all(
             f"""
             SELECT e.*, c.nombre AS coordinador_nombre
             FROM gp_equipos_interdisciplinarios e
-            LEFT JOIN gp_coordinadores c ON c.id = e.coordinador_id
+            LEFT JOIN gp_coordinadores c
+              ON c.id = e.coordinador_id AND COALESCE(c.fundacion_id, 1)={fid}
             {where}
             ORDER BY c.nombre, e.rol, e.nombre
             """,
@@ -317,11 +334,14 @@ class GestionPedagogicaRepository:
         if coordinador_id:
             where += " AND d.coordinador_id = ?"
             params = (coordinador_id,)
+        fid = _tenant_id()
+        where += f" AND COALESCE(d.fundacion_id, 1)={fid}"
         return self.fetch_all(
             f"""
             SELECT d.*, c.nombre AS coordinador_nombre
             FROM gp_docentes d
-            LEFT JOIN gp_coordinadores c ON c.id = d.coordinador_id
+            LEFT JOIN gp_coordinadores c
+              ON c.id = d.coordinador_id AND COALESCE(c.fundacion_id, 1)={fid}
             {where}
             ORDER BY c.nombre, d.unidad, d.nombre
             """,
@@ -401,12 +421,16 @@ class GestionPedagogicaRepository:
         if estado:
             where.append("e.estado = ?")
             params.append(estado)
+        fid = _tenant_id()
+        where.append(f"COALESCE(e.fundacion_id, 1)={fid}")
         return self.fetch_all(
             f"""
             SELECT e.*, c.nombre AS coordinador_nombre, d.nombre_original AS documento_nombre
             FROM gp_entregables e
-            LEFT JOIN gp_coordinadores c ON c.id = e.coordinador_id
-            LEFT JOIN gp_documentos d ON d.id = e.documento_id
+            LEFT JOIN gp_coordinadores c
+              ON c.id = e.coordinador_id AND COALESCE(c.fundacion_id, 1)={fid}
+            LEFT JOIN gp_documentos d
+              ON d.id = e.documento_id AND COALESCE(d.fundacion_id, 1)={fid}
             WHERE {' AND '.join(where)}
             ORDER BY e.fecha_limite, e.prioridad DESC, e.tipo
             """,

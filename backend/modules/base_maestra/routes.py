@@ -6,6 +6,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request, send_from_directory
 
 from modules.seguridad.services import require_roles
+from modules.seguridad.tenant_context import tenant_path
 
 from .repository import BaseMaestraRepository
 from .services import (
@@ -43,8 +44,8 @@ def register_base_maestra(app, database_path: str, upload_folder: str, output_fo
     repo.init_schema()
 
     bp = Blueprint('base_maestra', __name__, url_prefix='/api/base-maestra')
-    module_upload = os.path.join(upload_folder, 'base_maestra')
-    module_output = os.path.join(output_folder, 'base_maestra')
+    module_upload = tenant_path(upload_folder, 'base_maestra')
+    module_output = tenant_path(output_folder, 'base_maestra')
     os.makedirs(module_upload, exist_ok=True)
     os.makedirs(module_output, exist_ok=True)
 

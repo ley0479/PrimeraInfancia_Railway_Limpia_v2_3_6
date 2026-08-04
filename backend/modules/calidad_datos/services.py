@@ -10,6 +10,8 @@ import unicodedata
 from datetime import datetime, timedelta
 from typing import Any
 
+from services.uds_catalog import normalize_unit as catalog_normalize_unit
+
 import pandas as pd
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
@@ -150,32 +152,7 @@ def inferir_edad_meses(valor: Any) -> int | None:
 
 
 def normalize_unidad(valor: Any) -> str:
-    texto = valor_upper(valor)
-    texto = unicodedata.normalize('NFKD', texto)
-    texto = ''.join(ch for ch in texto if not unicodedata.combining(ch))
-    texto = re.sub(r'\s+', ' ', texto.replace('-', ' ')).strip()
-    if texto.startswith('UCA '):
-        texto = texto[4:].strip()
-    aliases = {
-        'UNIDAD DEMO 21': 'UNIDAD DEMO 21',
-        'UNIDAD DEMO 01': 'UNIDAD DEMO 01',
-        'UNIDAD DEMO 18': 'UNIDAD DEMO 18',
-        'UNIDAD DEMO 18': 'UNIDAD DEMO 18',
-        'UNIDAD DEMO 12': 'UNIDAD DEMO 12',
-        'UNIDAD DEMO 09': 'UNIDAD DEMO 09',
-        'UNIDAD DEMO 02': 'UNIDAD DEMO 02',
-        'UNIDAD DEMO 02': 'UNIDAD DEMO 02',
-        'UNIDAD DEMO 02': 'UNIDAD DEMO 02',
-        'UNIDAD DEMO 03': 'UNIDAD DEMO 03',
-        'UNIDAD DEMO 02': 'UNIDAD DEMO 02',
-        'UNIDAD DEMO 03': 'UNIDAD DEMO 03',
-        'UNIDAD DEMO 22': 'UNIDAD DEMO 22',
-        '15': 'UNIDAD DEMO 05',
-        'UNIDAD DEMO 20': 'UNIDAD DEMO 20',
-        'UNIDAD DEMO 11': 'UNIDAD DEMO 11',
-        'UNIDAD DEMO 11': 'UNIDAD DEMO 11',
-    }
-    return aliases.get(texto, texto)
+    return catalog_normalize_unit(valor, preserve_unknown=True)
 
 
 def clasificar_cargo(cargo: Any) -> str:
@@ -453,10 +430,13 @@ def docentes_por_unidad_desde_db(database_path: str, fundacion_id: int = 1) -> t
             rows = cur.execute("""
                 SELECT p.documento, p.nombre, p.rol_normalizado, a.unidad
                 FROM th_personas p
-                LEFT JOIN th_asignaciones a ON a.persona_id = p.id AND COALESCE(a.estado,'ACTIVO')='ACTIVO'
+                LEFT JOIN th_asignaciones a
+                  ON a.persona_id = p.id
+                 AND COALESCE(a.estado,'ACTIVO')='ACTIVO'
+                 AND COALESCE(a.fundacion_id, 1) = ?
                 WHERE UPPER(COALESCE(p.rol_normalizado,'')) IN ('DOCENTE','AGENTE EDUCATIVO')
-                  AND (p.fundacion_id = ? OR p.fundacion_id IS NULL)
-            """, (fundacion_id,)).fetchall()
+                  AND COALESCE(p.fundacion_id, 1) = ?
+            """, (fundacion_id, fundacion_id)).fetchall()
             for r in rows:
                 unidad = normalize_unidad(r['unidad'])
                 row = dict(r)

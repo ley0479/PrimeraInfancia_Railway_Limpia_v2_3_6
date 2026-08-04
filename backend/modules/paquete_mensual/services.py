@@ -57,10 +57,17 @@ def ensure_dir(path: str | Path) -> Path:
 class PaqueteMensualService:
     def __init__(self, database_path: str, output_folder: str, base_dir: str | None = None):
         self.database_path = database_path
-        self.output_folder = ensure_dir(Path(output_folder))
+        self._output_folder = output_folder
         self.base_dir = Path(base_dir or Path(database_path).parent)
         self.templates_folder = self.base_dir / 'templates_originales'
-        self.paquetes_folder = ensure_dir(self.output_folder / 'paquete_mensual')
+
+    @property
+    def output_folder(self) -> Path:
+        return ensure_dir(Path(os.fspath(self._output_folder)))
+
+    @property
+    def paquetes_folder(self) -> Path:
+        return ensure_dir(self.output_folder / 'paquete_mensual')
 
     def connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.database_path)

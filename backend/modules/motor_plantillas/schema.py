@@ -73,6 +73,8 @@ CREATE TABLE IF NOT EXISTS plantillas_oficiales (
     nombre TEXT NOT NULL,
     descripcion TEXT,
     activo INTEGER DEFAULT 1,
+    fundacion_id INTEGER DEFAULT 1,
+    usuario_creador_id INTEGER,
     created_at TEXT,
     updated_at TEXT
 );
@@ -98,6 +100,7 @@ CREATE TABLE IF NOT EXISTS plantillas_oficiales_versiones (
     mapeo_json TEXT,
     productos_json TEXT,
     usuario_carga INTEGER,
+    fundacion_id INTEGER DEFAULT 1,
     created_at TEXT,
     updated_at TEXT,
     FOREIGN KEY (plantilla_oficial_id) REFERENCES plantillas_oficiales(id),
@@ -115,6 +118,7 @@ CREATE TABLE IF NOT EXISTS plantillas_oficiales_mapeos (
     fila_fin INTEGER,
     obligatorio INTEGER DEFAULT 0,
     config_json TEXT,
+    fundacion_id INTEGER DEFAULT 1,
     created_at TEXT,
     updated_at TEXT,
     FOREIGN KEY (version_id) REFERENCES plantillas_oficiales_versiones(id)
@@ -131,6 +135,7 @@ CREATE TABLE IF NOT EXISTS plantillas_oficiales_productos (
     grupo_etario_aplica TEXT,
     orden INTEGER DEFAULT 0,
     activo INTEGER DEFAULT 1,
+    fundacion_id INTEGER DEFAULT 1,
     created_at TEXT,
     updated_at TEXT,
     FOREIGN KEY (version_id) REFERENCES plantillas_oficiales_versiones(id)
@@ -146,6 +151,7 @@ CREATE TABLE IF NOT EXISTS plantillas_oficiales_pruebas (
     resultado_json TEXT,
     created_at TEXT,
     usuario_id INTEGER,
+    fundacion_id INTEGER DEFAULT 1,
     FOREIGN KEY (version_id) REFERENCES plantillas_oficiales_versiones(id)
 );
 
@@ -156,10 +162,17 @@ CREATE TABLE IF NOT EXISTS plantillas_oficiales_auditoria (
     version_id INTEGER,
     mp_plantilla_id INTEGER,
     usuario_id INTEGER,
+    fundacion_id INTEGER DEFAULT 1,
     detalle_json TEXT,
     created_at TEXT
 );
 
+CREATE INDEX IF NOT EXISTS idx_plantillas_oficiales_fundacion ON plantillas_oficiales(fundacion_id);
+CREATE INDEX IF NOT EXISTS idx_plantillas_versiones_fundacion ON plantillas_oficiales_versiones(fundacion_id);
+CREATE INDEX IF NOT EXISTS idx_plantillas_mapeos_fundacion ON plantillas_oficiales_mapeos(fundacion_id);
+CREATE INDEX IF NOT EXISTS idx_plantillas_productos_fundacion ON plantillas_oficiales_productos(fundacion_id);
+CREATE INDEX IF NOT EXISTS idx_plantillas_pruebas_fundacion ON plantillas_oficiales_pruebas(fundacion_id);
+CREATE INDEX IF NOT EXISTS idx_plantillas_auditoria_fundacion ON plantillas_oficiales_auditoria(fundacion_id);
 CREATE INDEX IF NOT EXISTS idx_plantillas_oficiales_tipo ON plantillas_oficiales(tipo_formato);
 CREATE INDEX IF NOT EXISTS idx_plantillas_versiones_tipo_estado ON plantillas_oficiales_versiones(tipo_formato, estado);
 CREATE INDEX IF NOT EXISTS idx_plantillas_versiones_mp ON plantillas_oficiales_versiones(mp_plantilla_id);

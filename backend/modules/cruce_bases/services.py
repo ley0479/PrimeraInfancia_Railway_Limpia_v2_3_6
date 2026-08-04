@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from services.uds_catalog import aliases_upper as catalog_aliases_upper, normalize_unit as catalog_normalize_unit
+
 import pandas as pd
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -23,20 +25,7 @@ MESES_ES = {
     9: 'SEPTIEMBRE', 10: 'OCTUBRE', 11: 'NOVIEMBRE', 12: 'DICIEMBRE'
 }
 
-ALIAS_UNIDADES = {
-    'UCA UNIDAD DEMO 01': 'UNIDAD DEMO 01', 'UNIDAD DEMO 01': 'UNIDAD DEMO 01', 'UCA UNIDAD DEMO 01': 'UNIDAD DEMO 01',
-    'UCA UNIDAD DEMO 21': 'UNIDAD DEMO 21', 'UNIDAD DEMO 21': 'UNIDAD DEMO 21',
-    'UCA UNIDAD DEMO 22': 'UNIDAD DEMO 22', 'UNIDAD DEMO 22': 'UNIDAD DEMO 22',
-    'UCA UNIDAD DEMO 09': 'UNIDAD DEMO 09', 'UNIDAD DEMO 09': 'UNIDAD DEMO 09', 'UCA UNIDAD DEMO 12': 'UNIDAD DEMO 12', 'UNIDAD DEMO 12': 'UNIDAD DEMO 12',
-    'UCA UNIDAD DEMO 02': 'UNIDAD DEMO 02', 'UNIDAD DEMO 02': 'UNIDAD DEMO 02', 'UNIDAD DEMO 02': 'UNIDAD DEMO 02',
-    'UCA UNIDAD DEMO 03': 'UNIDAD DEMO 03', 'UNIDAD DEMO 03': 'UNIDAD DEMO 03',
-    'UCA UNIDAD DEMO 16': 'UNIDAD DEMO 16', 'UNIDAD DEMO 16': 'UNIDAD DEMO 16',
-    'UCA UNIDAD DEMO 17': 'UNIDAD DEMO 17', 'UNIDAD DEMO 17': 'UNIDAD DEMO 17',
-    'UCA UNIDAD DEMO 18': 'UNIDAD DEMO 18', 'UNIDAD DEMO 18': 'UNIDAD DEMO 18', 'UNIDAD DEMO 18': 'UNIDAD DEMO 18', 'UNIDAD DEMO 18': 'UNIDAD DEMO 18',
-    'UCA UNIDAD DEMO 11': 'UNIDAD DEMO 11', 'UCA UNIDAD DEMO 11': 'UNIDAD DEMO 11', 'UNIDAD DEMO 11': 'UNIDAD DEMO 11',
-    'UCA UNIDAD DEMO 20': 'UNIDAD DEMO 20', 'UNIDAD DEMO 20': 'UNIDAD DEMO 20',
-    'UCA UNIDAD DEMO 04': 'UNIDAD DEMO 04', 'UCA UNIDAD DEMO 05': 'UNIDAD DEMO 05', '15': 'UNIDAD DEMO 05',
-}
+ALIAS_UNIDADES = catalog_aliases_upper()
 
 
 def now_iso() -> str:
@@ -67,22 +56,7 @@ def normalizar_texto(valor: Any) -> str:
 
 
 def normalize_unidad(valor: Any) -> str:
-    import unicodedata
-    texto = limpiar_valor(valor).upper()
-    if not texto:
-        return ''
-    texto = unicodedata.normalize('NFKD', texto)
-    texto = ''.join(ch for ch in texto if not unicodedata.combining(ch))
-    texto = re.sub(r'[,.;:]+$', '', texto)
-    texto = re.sub(r'\s+', ' ', texto).strip()
-    if texto in {'ACTIVO', 'INACTIVO', 'PENDIENTE', 'SIN UNIDAD', 'UNIDAD DE SERVICIO'}:
-        return ''
-    if texto in ALIAS_UNIDADES:
-        return ALIAS_UNIDADES[texto]
-    if texto.startswith('UCA '):
-        sin = texto[4:].strip()
-        return ALIAS_UNIDADES.get(sin, sin)
-    return ALIAS_UNIDADES.get(texto, texto)
+    return catalog_normalize_unit(valor, preserve_unknown=True)
 
 
 def parse_fecha(valor: Any) -> str:

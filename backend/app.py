@@ -34,6 +34,21 @@ from database import configure_database, get_db_connection as database_connectio
 from modules.print_master import aplicar_configuracion_impresion_libro, infer_print_format
 from modules.plantillas_oficiales import iter_plantillas_oficiales_para_generacion
 from modules.operational_jobs import configure as configure_operational_jobs, start_job, get_job, list_jobs
+from modules.seguridad.tenant_context import tenant_path, resolve_tenant_path
+from modules.seguridad.runtime_diagnostics import (
+    configure_application_logging,
+    logging_health,
+    project_instance_id,
+    write_exception_report,
+)
+from services.uds_catalog import (
+    INVALID_UNIT_VALUES as UDS_INVALID_UNIT_VALUES,
+    aliases_upper as uds_aliases_upper,
+    canonical_units as uds_canonical_units,
+    equivalent_values as uds_equivalent_values,
+    normalization_map as uds_normalization_map,
+    normalize_unit as uds_normalize_unit,
+)
 
 app = Flask(__name__)
 _APP_CONFIGURED = False
@@ -101,16 +116,20 @@ def create_app(config_name=None):
 
 # Configuración temprana: rutas y módulos históricos consumen estas constantes.
 create_app(os.environ.get('APP_ENV') or os.environ.get('FLASK_ENV'))
+configure_application_logging(app)
 
 BASE_DIR = app.config['BASE_DIR']
-UPLOAD_FOLDER = app.config['UPLOAD_FOLDER']
+# Las carpetas operativas se resuelven por fundación durante cada petición.
+# Plantillas oficiales y backups globales permanecen compartidos y solo el
+# SUPERADMIN puede administrarlos.
+UPLOAD_FOLDER = tenant_path(app.config['UPLOAD_FOLDER'])
 TEMPLATES_FOLDER = app.config['TEMPLATES_FOLDER']
-OUTPUT_FOLDER = app.config['OUTPUT_FOLDER']
+OUTPUT_FOLDER = tenant_path(app.config['OUTPUT_FOLDER'])
 BACKUPS_FOLDER = app.config['BACKUPS_FOLDER']
-DOCUMENTOS_FOLDER = app.config['DOCUMENTOS_FOLDER']
-CUENTAS_COBRO_FOLDER = app.config['CUENTAS_COBRO_FOLDER']
-LOG_FOLDER = app.config['LOG_FOLDER']
-LOCAL_STORAGE_PATH = app.config['LOCAL_STORAGE_PATH']
+DOCUMENTOS_FOLDER = tenant_path(app.config['DOCUMENTOS_FOLDER'])
+CUENTAS_COBRO_FOLDER = tenant_path(app.config['CUENTAS_COBRO_FOLDER'])
+LOG_FOLDER = tenant_path(app.config['LOG_FOLDER'])
+LOCAL_STORAGE_PATH = tenant_path(app.config['LOCAL_STORAGE_PATH'])
 DATABASE_PATH = app.config['DATABASE_PATH']
 DATABASE_URL = app.config['DATABASE_URL']
 
@@ -119,7 +138,7 @@ for folder in [UPLOAD_FOLDER, TEMPLATES_FOLDER, OUTPUT_FOLDER, BACKUPS_FOLDER, D
     os.makedirs(folder, exist_ok=True)
 
 # Jobs operativos en segundo plano para evitar timeouts 524 en túnel online.
-configure_operational_jobs(os.path.join(LOG_FOLDER, 'jobs'))
+configure_operational_jobs(tenant_path(LOG_FOLDER, 'jobs'))
 
 app.config.setdefault('MAX_CONTENT_LENGTH', AlertaConfiguracion.TAMAÑO_MAX_MB * 1024 * 1024)
 ALLOWED_BASE_EXTENSIONS = {'.xlsx', '.xls', '.xlsm', '.csv', '.txt', '.tsv', '.tab', '.dat', '.ods', '.html', '.htm', '.json', '.docx', '.pdf'}
@@ -258,7 +277,7 @@ except Exception as exc:
 # Paquete Mensual Completo: consolida formatos y reportes operativos.
 try:
     from modules.paquete_mensual import register_paquete_mensual
-    register_paquete_mensual(app, DATABASE_PATH, OUTPUT_FOLDER, BASE_DIR)
+    register_paquete_mensual(app, DATABASE_PATH, OUTPUT_FOLDER, app.config['DATA_DIR'])
 except Exception as exc:
     print(f'Paquete Mensual no pudo registrarse: {exc}')
 
@@ -294,9 +313,9 @@ except Exception as exc:
     print(f'Configuración Institucional / Motor Normativo no pudo registrarse: {exc}')
 
 
-KNOWN_UNITS = [f'UNIDAD DEMO {indice:02d}' for indice in range(1, 33)]
+KNOWN_UNITS = uds_canonical_units()
 
-UNIT_NORMALIZATION_MAP = {unidad: unidad for unidad in KNOWN_UNITS}
+UNIT_NORMALIZATION_MAP = uds_normalization_map()
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(TEMPLATES_FOLDER, exist_ok=True)
@@ -430,7 +449,9 @@ def rol_actual():
 
 
 def filtro_fundacion_sql(alias=None):
-    if rol_actual() == 'SUPERADMIN':
+    # SUPERADMIN también trabaja dentro de su fundación por defecto. El acceso
+    # global se concede únicamente en rutas centrales explícitas y auditadas.
+    if rol_actual() == 'SUPERADMIN' and bool(getattr(g, 'allow_global_tenant_access', False)):
         return '1=1', []
     pref = f'{alias}.' if alias else ''
     return f'COALESCE({pref}fundacion_id, 1) = ?', [fundacion_actual_id()]
@@ -746,9 +767,11 @@ def ensure_runtime_schema(cursor):
             criterio TEXT,
             nivel_alerta TEXT DEFAULT 'AMARILLO',
             activa INTEGER DEFAULT 1,
+            fundacion_id INTEGER DEFAULT 1,
             fecha_creacion TEXT NOT NULL
         )
     """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_reglas_cumplimiento_fundacion ON reglas_cumplimiento(fundacion_id)")
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS estandares_icbf (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -820,7 +843,7 @@ def ensure_runtime_schema(cursor):
         ensure_column(cursor, 'entregables_operacion', col, definition)
 
 
-def seed_compliance_catalog(cursor):
+def seed_compliance_catalog(cursor, fundacion_id=1):
     ahora = datetime.now().isoformat()
     estandares = [
         ('EST-01', 'Proceso Pedagógico', 'Planeaciones e informes pedagógicos cargados para el periodo.', 'Planeación, informe pedagógico y evidencias'),
@@ -848,10 +871,10 @@ def seed_compliance_catalog(cursor):
     for codigo, componente, descripcion, frecuencia, criterio, nivel in reglas:
         cursor.execute("""
             INSERT INTO reglas_cumplimiento
-            (codigo, componente, descripcion, frecuencia, criterio, nivel_alerta, activa, fecha_creacion)
-            SELECT ?, ?, ?, ?, ?, ?, 1, ?
-            WHERE NOT EXISTS (SELECT 1 FROM reglas_cumplimiento WHERE codigo = ?)
-        """, (codigo, componente, descripcion, frecuencia, criterio, nivel, ahora, codigo))
+            (codigo, componente, descripcion, frecuencia, criterio, nivel_alerta, activa, fundacion_id, fecha_creacion)
+            SELECT ?, ?, ?, ?, ?, ?, 1, ?, ?
+            WHERE NOT EXISTS (SELECT 1 FROM reglas_cumplimiento WHERE codigo = ? AND fundacion_id = ?)
+        """, (codigo, componente, descripcion, frecuencia, criterio, nivel, int(fundacion_id or 1), ahora, codigo, int(fundacion_id or 1)))
 
 
 def init_db():
@@ -870,14 +893,23 @@ def init_db():
         INSERT INTO configuracion (clave, valor, tipo, fecha_actualizacion)
         SELECT ?, ?, ?, ?
         WHERE NOT EXISTS (SELECT 1 FROM configuracion WHERE clave = ?)
-    """, ('VERSION', app.config.get('APP_VERSION', '2.3.6-railway-clean'), 'STRING', datetime.now().isoformat(), 'VERSION'))
+    """, ('VERSION', app.config.get('APP_VERSION', '2.3.7-railway-operativa'), 'STRING', datetime.now().isoformat(), 'VERSION'))
     cursor.execute(
         "UPDATE configuracion SET valor=?, fecha_actualizacion=? WHERE clave='VERSION'",
-        (app.config.get('APP_VERSION', '2.3.6-railway-clean'), datetime.now().isoformat())
+        (app.config.get('APP_VERSION', '2.3.7-railway-operativa'), datetime.now().isoformat())
     )
 
     conn.commit()
     conn.close()
+
+    # Completa el esquema de seguridad y aplica la migración tenant de forma
+    # idempotente tanto en desarrollo local como en Railway. Así una base nueva
+    # nunca queda con restricciones UNIQUE globales incompatibles con varias
+    # fundaciones.
+    from modules.seguridad.services import ensure_security_schema
+    from migrations.migrate_multitenant_phase3 import migrate as migrate_multitenant_phase3
+    ensure_security_schema(DATABASE_PATH)
+    migrate_multitenant_phase3(DATABASE_PATH)
 
 
 def es_extension_valida(filename, allowed_ext):
@@ -1234,8 +1266,8 @@ def guardar_reglas_documentales(cursor, reglas):
         if cursor.rowcount == 0:
             cursor.execute("""
                 INSERT INTO reglas_cumplimiento
-                (documento_id, codigo, componente, descripcion, frecuencia, criterio, nivel_alerta, activa, fecha_creacion)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+                (documento_id, codigo, componente, descripcion, frecuencia, criterio, nivel_alerta, activa, fundacion_id, fecha_creacion)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
             """, (
                 regla.get('documento_id'),
                 regla['codigo'],
@@ -1244,6 +1276,7 @@ def guardar_reglas_documentales(cursor, reglas):
                 regla['frecuencia'],
                 regla['criterio'],
                 regla['nivel_alerta'],
+                fundacion_actual_id(),
                 ahora
             ))
 
@@ -1291,89 +1324,9 @@ MESES_ES = {
     12: 'DICIEMBRE'
 }
 
-ALIAS_UNIDADES_CUENTAME = {
-    'UCA UNIDAD DEMO 21': 'UNIDAD DEMO 21',
-    'UNIDAD DEMO 21': 'UNIDAD DEMO 21',
-    'UCA UNIDAD DEMO 01': 'UNIDAD DEMO 01',
-    'UNIDAD DEMO 01': 'UNIDAD DEMO 01',
-    'UCA UNIDAD DEMO 04': 'UNIDAD DEMO 04',
-    'UNIDAD DEMO 04': 'UNIDAD DEMO 04',
-    'UCA UNIDAD DEMO 05': 'UNIDAD DEMO 05',
-    'UNIDAD DEMO 05': 'UNIDAD DEMO 05',
-    'UCA UNIDAD DEMO 22': 'UNIDAD DEMO 22',
-    'UNIDAD DEMO 22': 'UNIDAD DEMO 22',
-    'UNIDAD DEMO 22': 'UNIDAD DEMO 22',
-    'UCA UNIDAD DEMO 09': 'UNIDAD DEMO 09',
-    'UNIDAD DEMO 09': 'UNIDAD DEMO 09',
-    'UNIDAD DEMO 09': 'UNIDAD DEMO 09',
-    'UCA UNIDAD DEMO 12': 'UNIDAD DEMO 12',
-    'UNIDAD DEMO 12': 'UNIDAD DEMO 12',
-    'UNIDAD DEMO 12': 'UNIDAD DEMO 12',
-    'UCA UNIDAD DEMO 20': 'UNIDAD DEMO 20',
-    'UNIDAD DEMO 20': 'UNIDAD DEMO 20',
-    'UCA UNIDAD DEMO 02': 'UNIDAD DEMO 02',
-    'UCA UNIDAD DEMO 02': 'UNIDAD DEMO 02',
-    'UNIDAD DEMO 02': 'UNIDAD DEMO 02',
-    'UNIDAD DEMO 02': 'UNIDAD DEMO 02',
-    'UCA UNIDAD DEMO 03': 'UNIDAD DEMO 03',
-    'UCA UNIDAD DEMO 03': 'UNIDAD DEMO 03',
-    'UNIDAD DEMO 03': 'UNIDAD DEMO 03',
-    'UNIDAD DEMO 03': 'UNIDAD DEMO 03',
-    'UCA UNIDAD DEMO 16': 'UNIDAD DEMO 16',
-    'UNIDAD DEMO 16': 'UNIDAD DEMO 16',
-    'UNIDAD DEMO 16': 'UNIDAD DEMO 16',
-    'UCA UNIDAD DEMO 17': 'UNIDAD DEMO 17',
-    'UNIDAD DEMO 17': 'UNIDAD DEMO 17',
-    'UNIDAD DEMO 17': 'UNIDAD DEMO 17',
-    'UNIDAD DEMO 18': 'UNIDAD DEMO 18',
-    'UNIDAD DEMO 18': 'UNIDAD DEMO 18',
-    'UCA UNIDAD DEMO 11': 'UNIDAD DEMO 11',
-    'UCA UNIDAD DEMO 11': 'UNIDAD DEMO 11',
-    'UNIDAD DEMO 11': 'UNIDAD DEMO 11',
-    'UNIDAD DEMO 11': 'UNIDAD DEMO 11',
-    'UNIDAD DEMO 11': 'UNIDAD DEMO 11'
-}
+ALIAS_UNIDADES_CUENTAME = uds_aliases_upper()
 
-ALIAS_UNIDADES_CUENTAME.update({
-    # Correcciones de escritura y equivalencias entre Cuéntame, hojas de Excel y tablero.
-    'UCA UNIDAD DEMO 18': 'UNIDAD DEMO 18',
-    'UNIDAD DEMO 18': 'UNIDAD DEMO 18',
-    'UCA UNIDAD DEMO 18': 'UNIDAD DEMO 18',
-    'UNIDAD DEMO 18': 'UNIDAD DEMO 18',
-    'UCA UNIDAD DEMO 18': 'UNIDAD DEMO 18',
-    'UNIDAD DEMO 18': 'UNIDAD DEMO 18',
-    'UCA UNIDAD DEMO 18': 'UNIDAD DEMO 18',
-    'UNIDAD DEMO 01': 'UNIDAD DEMO 01',
-    'UCA UNIDAD DEMO 01': 'UNIDAD DEMO 01',
-    'UNIDAD DEMO 21': 'UNIDAD DEMO 21',
-    'UCA UNIDAD DEMO 21': 'UNIDAD DEMO 21',
-    'UNIDAD DEMO 02': 'UNIDAD DEMO 02',
-    'UNIDAD DEMO 02': 'UNIDAD DEMO 02',
-    'UNIDAD DEMO 20': 'UNIDAD DEMO 20',
-    'UCA UNIDAD DEMO 20': 'UNIDAD DEMO 20',
-    '15': 'UNIDAD DEMO 05',
-    'UCA 15': 'UNIDAD DEMO 05',
-    'UNIDAD DEMO 12': 'UNIDAD DEMO 12',
-    'UCA UNIDAD DEMO 12': 'UNIDAD DEMO 12',
-    'UNIDAD DEMO 11': 'UNIDAD DEMO 11',
-    'UNIDAD DEMO 11': 'UNIDAD DEMO 11',
-    'UNIDAD DEMO 11': 'UNIDAD DEMO 11',
-    'UNIDAD DEMO 11': 'UNIDAD DEMO 11',
-    'UCA UNIDAD DEMO 11': 'UNIDAD DEMO 11',
-    'UCA UNIDAD DEMO 11': 'UNIDAD DEMO 11',
-    'UCA UNIDAD DEMO 06': 'UNIDAD DEMO 06',
-    'UCA UNIDAD DEMO 07': 'UNIDAD DEMO 07',
-    'UCA UNIDAD DEMO 08': 'UNIDAD DEMO 08',
-    'UCA UNIDAD DEMO 14': 'UNIDAD DEMO 14',
-    'UCA UNIDAD DEMO 13': 'UNIDAD DEMO 13',
-    'UCA UNIDAD DEMO 19': 'UNIDAD DEMO 19'
-})
-
-UNIDADES_INVALIDAS = {
-    '', 'ACTIVO', 'ACTIVA', 'INACTIVO', 'INACTIVA', 'RETIRADO', 'RETIRADA',
-    'FALLECIDO', 'FALLECIDA', 'TRASLADADO', 'TRASLADADA', 'PENDIENTE',
-    'UNIDAD DE SERVICIO', 'TIPO DE UNIDAD', 'SIN UNIDAD'
-}
+UNIDADES_INVALIDAS = set(UDS_INVALID_UNIT_VALUES)
 
 
 
@@ -2430,39 +2383,8 @@ def resumen_talento_maestro():
     return TalentoHumanoService().resumen_integracion()
 
 def normalize_unidad(unidad):
-    """Normaliza unidades quitando prefijo UCA y corrigiendo alias frecuentes."""
-    if unidad is None:
-        return ''
-    texto = str(unidad).strip().upper().replace('\t', ' ')
-    texto = unicodedata.normalize('NFKD', texto)
-    texto = ''.join(ch for ch in texto if not unicodedata.combining(ch))
-    texto = texto.replace('-', ' ')
-    texto = texto.replace('#', ' # ')
-    texto = re.sub(r'[,.;:]+$', '', texto)
-    texto = re.sub(r'\s+', ' ', texto).strip()
-
-    if texto in UNIDADES_INVALIDAS:
-        return ''
-
-    if texto in ALIAS_UNIDADES_CUENTAME:
-        return ALIAS_UNIDADES_CUENTAME[texto]
-
-    if texto in ConfiguracionSistema.NORMALIZACION_UNIDADES:
-        return ConfiguracionSistema.NORMALIZACION_UNIDADES[texto]
-
-    if texto.startswith('UCA '):
-        sin_prefijo = re.sub(r'\s+', ' ', texto[4:].strip())
-        sin_prefijo = re.sub(r'[,.;:]+$', '', sin_prefijo)
-        if sin_prefijo in ALIAS_UNIDADES_CUENTAME:
-            return ALIAS_UNIDADES_CUENTAME[sin_prefijo]
-        if sin_prefijo in ConfiguracionSistema.NORMALIZACION_UNIDADES:
-            return ConfiguracionSistema.NORMALIZACION_UNIDADES[sin_prefijo]
-        return sin_prefijo
-
-    if texto == 'UNIDAD DEMO 18':
-        return 'UNIDAD DEMO 18'
-
-    return texto
+    """Normaliza una UDS mediante el catálogo central y conserva desconocidas."""
+    return uds_normalize_unit(unidad, preserve_unknown=True)
 
 
 def unidad_es_valida(unidad):
@@ -2503,16 +2425,8 @@ def clasificar_grupo_edad(tipo_beneficiario='', fecha_nacimiento=None, edad_mese
 
 
 def equivalentes_unidad(unidad):
-    """Devuelve claves normalizadas equivalentes para comparar unidad vs hoja de Excel."""
-    unidad_norm = normalize_unidad(unidad)
-    base = normalizar_texto_clave(unidad_norm)
-    equivalentes = {base}
-    for origen, destino in ALIAS_UNIDADES_CUENTAME.items():
-        if normalize_unidad(destino) == unidad_norm:
-            equivalentes.add(normalizar_texto_clave(origen))
-            equivalentes.add(normalizar_texto_clave(destino))
-    equivalentes.add(normalizar_texto_clave(f'UCA {unidad_norm}'))
-    return {e for e in equivalentes if e}
+    """Devuelve claves equivalentes de la UDS según el catálogo central."""
+    return {normalizar_texto_clave(valor) for valor in uds_equivalent_values(unidad) if valor}
 
 
 def detectar_columna_unidad(df):
@@ -2633,13 +2547,13 @@ def sincronizar_unidades_desde_dataframe(df):
             if not unidad_norm:
                 continue
             cursor.execute("""
-                INSERT INTO unidades (nombre, total_usuarios, total_gestantes, fecha_actualizacion)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(nombre) DO UPDATE SET
+                INSERT INTO unidades (nombre, total_usuarios, total_gestantes, fecha_actualizacion, fundacion_id)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(fundacion_id, nombre) DO UPDATE SET
                     total_usuarios = excluded.total_usuarios,
                     total_gestantes = excluded.total_gestantes,
                     fecha_actualizacion = excluded.fecha_actualizacion
-            """, (unidad_norm, int(total), int(gestantes.get(unidad, 0)), ahora))
+            """, (unidad_norm, int(total), int(gestantes.get(unidad, 0)), ahora, fundacion_actual_id()))
         conn.commit()
         conn.close()
     except Exception as exc:
@@ -2659,18 +2573,19 @@ def obtener_ultimas_valoraciones_salud():
         if 'sn_valoraciones' not in tables:
             conn.close()
             return {}
+        fid = fundacion_actual_id()
         rows = cursor.execute("""
             SELECT v.*
             FROM sn_valoraciones v
             INNER JOIN (
-                SELECT documento, MAX(fecha_valoracion || printf('%010d', id)) AS max_key
-                FROM sn_valoraciones
-                WHERE activo = 1
-                GROUP BY documento
+                SELECT sv.documento, MAX(sv.fecha_valoracion || printf('%010d', sv.id)) AS max_key
+                FROM sn_valoraciones sv
+                WHERE sv.activo = 1 AND COALESCE(sv.fundacion_id, 1) = ?
+                GROUP BY sv.documento
             ) ult ON ult.documento = v.documento
                  AND ult.max_key = (v.fecha_valoracion || printf('%010d', v.id))
-            WHERE v.activo = 1
-        """).fetchall()
+            WHERE v.activo = 1 AND COALESCE(v.fundacion_id, 1) = ?
+        """, (fid, fid)).fetchall()
         conn.close()
         return {str(row['documento']).strip(): dict(row) for row in rows if row['documento']}
     except Exception as exc:
@@ -3180,18 +3095,23 @@ def guardar_beneficiarios_actuales(df):
     unidades_catalogo = sorted({u for u in set(ConfiguracionSistema.UNIDADES) | unidades_detectadas if u})
     for unidad in unidades_catalogo:
         cursor.execute("""
-            INSERT INTO unidades (nombre, total_usuarios, total_gestantes, fecha_actualizacion)
+            INSERT INTO unidades (nombre, total_usuarios, total_gestantes, fecha_actualizacion, fundacion_id)
             VALUES (?, (
-                SELECT COUNT(*) FROM beneficiarios WHERE unidad = ? AND estado = ?
+                SELECT COUNT(*) FROM beneficiarios
+                WHERE unidad = ? AND estado = ? AND COALESCE(fundacion_id, 1) = ?
             ), (
                 SELECT COUNT(*) FROM beneficiarios
                 WHERE unidad = ? AND estado = ? AND UPPER(tipo_beneficiario) LIKE '%GESTANTE%'
-            ), ?)
-            ON CONFLICT(nombre) DO UPDATE SET
+                  AND COALESCE(fundacion_id, 1) = ?
+            ), ?, ?)
+            ON CONFLICT(fundacion_id, nombre) DO UPDATE SET
                 total_usuarios = excluded.total_usuarios,
                 total_gestantes = excluded.total_gestantes,
                 fecha_actualizacion = excluded.fecha_actualizacion
-        """, (unidad, unidad, EstadoUsuario.ACTIVO, unidad, EstadoUsuario.ACTIVO, ahora))
+        """, (
+            unidad, unidad, EstadoUsuario.ACTIVO, fundacion_actual_id(),
+            unidad, EstadoUsuario.ACTIVO, fundacion_actual_id(), ahora, fundacion_actual_id()
+        ))
 
     cursor.execute('UPDATE unidades SET fundacion_id = ?, fecha_actualizacion = ? WHERE fundacion_id IS NULL', (fundacion_actual_id(), ahora))
     conn.commit()
@@ -3230,16 +3150,19 @@ def contar_edad_retiro(cursor):
 
 def contar_peso_talla_vencido(cursor):
     limite = (datetime.now() - timedelta(days=AlertaConfiguracion.DIAS_CONTROL_NUTRICION)).date().isoformat()
+    fid = fundacion_actual_id()
     cursor.execute("""
         SELECT COUNT(*) as total
         FROM beneficiarios b
         WHERE b.estado = ?
-        AND NOT EXISTS (
-            SELECT 1 FROM peso_talla pt
-            WHERE pt.beneficiario_id = b.id
-            AND date(COALESCE(pt.fecha_medicion, pt.fecha_toma)) >= date(?)
-        )
-    """, (EstadoUsuario.ACTIVO, limite))
+          AND COALESCE(b.fundacion_id, 1) = ?
+          AND NOT EXISTS (
+              SELECT 1 FROM peso_talla pt
+              WHERE pt.beneficiario_id = b.id
+                AND COALESCE(pt.fundacion_id, 1) = ?
+                AND date(COALESCE(pt.fecha_medicion, pt.fecha_toma)) >= date(?)
+          )
+    """, (EstadoUsuario.ACTIVO, fid, fid, limite))
     return cursor.fetchone()['total']
 
 
@@ -4231,7 +4154,14 @@ def sincronizar():
 # ==================== RUTAS: SALUD ====================
 @app.route('/api/health', methods=['GET'])
 def health():
-    """Estado mínimo, sin métricas personales ni información operativa."""
+    """Estado mínimo y huella de instancia, sin datos personales.
+
+    ``project_instance_id`` permite que los scripts distingan dos copias de la
+    plataforma que intentan usar el mismo puerto 5000. Así el túnel no termina
+    publicando accidentalmente un backend viejo de otra carpeta.
+    """
+    instance_id = project_instance_id(app.config)
+    log_status = logging_health(app.config)
     try:
         conn = get_db_connection()
         conn.execute('SELECT 1').fetchone()
@@ -4241,10 +4171,20 @@ def health():
             'database': 'ok',
             'version': app.config.get('APP_VERSION', 'unknown'),
             'environment': app.config.get('APP_ENV', 'unknown'),
+            'server_mode': app.config.get('SERVER_MODE', 'LOCAL'),
+            'public_tunnel_mode': bool(app.config.get('PUBLIC_TUNNEL_MODE', False)),
+            'project_instance_id': instance_id,
+            'logging': log_status,
             'timestamp': datetime.now().isoformat(timespec='seconds'),
         }), 200
-    except Exception:
-        return jsonify({'status': 'error', 'database': 'unavailable'}), 503
+    except Exception as exc:
+        app.logger.error('Healthcheck de base falló instance_id=%s: %s', instance_id, exc)
+        return jsonify({
+            'status': 'error',
+            'database': 'unavailable',
+            'project_instance_id': instance_id,
+            'logging': log_status,
+        }), 503
 
 
 
@@ -4983,12 +4923,16 @@ def trimestre_fecha(fecha_texto):
 def generar_boa_nutricion(cursor=None):
     """Construye detalle BOA de nutrición y talla con riesgo, vencimiento y trimestre."""
     conn = get_db_connection()
+    fid = fundacion_actual_id()
     filas = conn.execute("""
         SELECT p.*, b.nombres, b.apellidos, b.fecha_nacimiento
         FROM peso_talla p
-        LEFT JOIN beneficiarios b ON b.id = p.beneficiario_id
+        LEFT JOIN beneficiarios b
+          ON b.id = p.beneficiario_id
+         AND COALESCE(b.fundacion_id, 1) = ?
+        WHERE COALESCE(p.fundacion_id, 1) = ?
         ORDER BY COALESCE(p.fecha_medicion, p.fecha_toma, p.fecha_carga) DESC
-    """).fetchall()
+    """, (fid, fid)).fetchall()
     detalles = []
     resumen = {'ADECUADO': 0, 'RIESGO': 0, 'DESNUTRICION': 0, 'SOBREPESO': 0, 'PENDIENTE': 0}
     controles = {'al_dia': 0, 'proximo_vencer': 0, 'vencido': 0, 'pendiente': 0}
@@ -5857,13 +5801,13 @@ def manejar_unidades():
     ahora = datetime.now().isoformat()
 
     cursor.execute("""
-        INSERT INTO unidades (nombre, direccion, telefono, total_usuarios, total_gestantes, fecha_actualizacion)
-        VALUES (?, ?, ?, 0, 0, ?)
-        ON CONFLICT(nombre) DO UPDATE SET
+        INSERT INTO unidades (nombre, direccion, telefono, total_usuarios, total_gestantes, fecha_actualizacion, fundacion_id)
+        VALUES (?, ?, ?, 0, 0, ?, ?)
+        ON CONFLICT(fundacion_id, nombre) DO UPDATE SET
             direccion = excluded.direccion,
             telefono = excluded.telefono,
             fecha_actualizacion = excluded.fecha_actualizacion
-    """, (nombre, direccion, telefono, ahora))
+    """, (nombre, direccion, telefono, ahora, fundacion_actual_id()))
     conn.commit()
     conn.close()
 
@@ -9071,6 +9015,115 @@ def _alpha59_obtener_usuarios_unidad(unidad):
     return _alpha59_deduplicar_usuarios(usuarios)
 
 
+
+@app.route('/api/formatos/diagnostico', methods=['GET'])
+def formatos_diagnostico_previo():
+    """Preflight sin datos personales para RPP, Bienestarina y RAM."""
+    unidad_solicitada = str(request.args.get('unidad') or '').strip()
+    try:
+        mes = max(1, min(12, int(request.args.get('mes') or datetime.now().month)))
+        anio = max(2020, min(2100, int(request.args.get('anio') or request.args.get('año') or datetime.now().year)))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'Mes o año inválido.'}), 400
+
+    unidad_normalizada = normalize_unidad(unidad_solicitada)
+    unidades_conocidas = set(uds_canonical_units())
+    unidad_conocida = bool(unidad_normalizada and unidad_normalizada in unidades_conocidas)
+    usuarios = _alpha59_obtener_usuarios_unidad(unidad_normalizada) if unidad_normalizada else []
+
+    disponibles = {}
+    try:
+        entries = iter_plantillas_oficiales_para_generacion(TEMPLATES_FOLDER, mes=mes, anio=anio)
+    except Exception as exc:
+        entries = []
+        plantillas_error = str(exc)
+    else:
+        plantillas_error = ''
+    for tipo in ('rpp', 'bienestarina', 'ram'):
+        entry = next((item for item in entries if item.get('tipo') == tipo), None)
+        disponibles[tipo] = {
+            'disponible': bool(entry and entry.get('ruta') and os.path.exists(entry.get('ruta'))),
+            'version': entry.get('version') if entry else None,
+            'archivo': os.path.basename(str(entry.get('ruta') or '')) if entry else None,
+            'source': entry.get('source') if entry else None,
+            'fechaVigencia': entry.get('fecha_vigencia') if entry else None,
+            'fechaVigenciaFin': entry.get('fecha_vigencia_fin') if entry else None,
+        }
+
+    try:
+        from services.rpp_minutas_service import obtener_minuta_vigente
+        minuta = obtener_minuta_vigente(DATABASE_PATH, mes=mes, anio=anio)
+    except Exception as exc:
+        minuta = None
+        minuta_error = str(exc)
+    else:
+        minuta_error = ''
+
+    minuta_mes = int(minuta.get('mes') or 0) if minuta else None
+    minuta_anio = int(minuta.get('anio') or 0) if minuta else None
+    minuta_periodo_exacto = bool(minuta and minuta_mes == mes and minuta_anio == anio)
+    grupos = len(minuta.get('grupos') or []) if minuta else 0
+    productos = sum(len(grupo.get('productos') or []) for grupo in (minuta.get('grupos') or [])) if minuta else 0
+
+    razones = []
+    if not unidad_solicitada:
+        razones.append('Debe indicar una UDS.')
+    elif not unidad_conocida:
+        razones.append('La UDS no pertenece al catálogo operativo central.')
+    if not usuarios:
+        razones.append('No se encontraron participantes asociados a la UDS.')
+    for tipo, info in disponibles.items():
+        if not info['disponible']:
+            razones.append(f'No existe plantilla {tipo.upper()} aplicable al periodo.')
+    if not minuta:
+        razones.append('No existe una minuta RPP vigente.')
+    elif not minuta_periodo_exacto:
+        razones.append(f'La minuta RPP vigente corresponde a {minuta_mes:02d}/{minuta_anio}, no exactamente a {mes:02d}/{anio}.')
+
+    ready_common = unidad_conocida and bool(usuarios)
+    storage_diagnostic = diagnostico_almacenamiento()
+    result = {
+        'ok': True,
+        'periodo': {'mes': mes, 'anio': anio},
+        'unidad': {
+            'solicitada': unidad_solicitada,
+            'normalizada': unidad_normalizada,
+            'conocida': unidad_conocida,
+        },
+        'participantes': {
+            'total': len(usuarios),
+            'incluyeDatosPersonales': False,
+        },
+        'plantillas': disponibles,
+        'rppMinuta': {
+            'disponible': bool(minuta),
+            'periodoExacto': minuta_periodo_exacto,
+            'mes': minuta_mes,
+            'anio': minuta_anio,
+            'version': minuta.get('version') if minuta else None,
+            'codigo': minuta.get('codigo') if minuta else None,
+            'grupos': grupos,
+            'productos': productos,
+            'errorTecnico': minuta_error or None,
+        },
+        'preparado': {
+            'bienestarina': bool(ready_common and disponibles['bienestarina']['disponible']),
+            'ram': bool(ready_common and disponibles['ram']['disponible']),
+            'rpp': bool(ready_common and disponibles['rpp']['disponible'] and minuta_periodo_exacto),
+        },
+        'razones': razones,
+        'errorPlantillas': plantillas_error or None,
+        'storage': {
+            'dataDir': str(app.config.get('DATA_DIR') or ''),
+            'databaseInsideDataDir': storage_diagnostic.get('databaseInsideDataDir'),
+            'persistentVolumeDeclared': storage_diagnostic.get('persistentVolumeDeclared'),
+            'dataDirTargetsExpectedMount': storage_diagnostic.get('dataDirTargetsExpectedMount'),
+            'volumeStatus': storage_diagnostic.get('volumeStatus'),
+        },
+    }
+    return jsonify(result)
+
+
 def _alpha59_edad_meses(user):
     try:
         val = user.get('EdadMeses') if user.get('EdadMeses') not in (None, '') else user.get('edad_meses')
@@ -10489,7 +10542,10 @@ def detectar_ip_local():
 
 
 def modo_acceso_actual(host):
-    modo_env = os.environ.get('SERVER_MODE', '').strip().upper()
+    """Determina el modo de acceso sin confundir Railway con red local."""
+    if str(app.config.get('APP_ENV') or '').lower() == 'production':
+        return 'RAILWAY_PUBLICO' if resolver_url_publica() else 'PRODUCCION_SIN_DOMINIO'
+    modo_env = str(os.environ.get('SERVER_MODE', '')).strip().upper()
     if modo_env:
         return modo_env
     if host in {'0.0.0.0', '::'}:
@@ -10497,17 +10553,49 @@ def modo_acceso_actual(host):
     return 'LOCAL'
 
 
-def leer_enlace_publico_tunel():
-    """Lee el último enlace público generado por el script de túnel.
+def _normalizar_url_publica(valor):
+    raw = str(valor or '').strip()
+    if not raw:
+        return ''
+    if not re.match(r'^https?://', raw, flags=re.I):
+        raw = 'https://' + raw.lstrip('/')
+    return raw.rstrip('/')
 
-    El enlace local 127.0.0.1 nunca debe compartirse con otro equipo; este
-    archivo contiene el HTTPS público de Cloudflare/ngrok cuando existe.
-    """
+
+def resolver_url_publica():
+    """Resuelve el enlace público estable de Railway sin exponer localhost."""
+    candidatos = [
+        app.config.get('PUBLIC_APP_URL'),
+        os.environ.get('PUBLIC_APP_URL'),
+        app.config.get('FRONTEND_ORIGIN'),
+        os.environ.get('FRONTEND_ORIGIN'),
+        app.config.get('RAILWAY_PUBLIC_DOMAIN'),
+        os.environ.get('RAILWAY_PUBLIC_DOMAIN'),
+    ]
+    for valor in candidatos:
+        url = _normalizar_url_publica(valor)
+        if url and not re.search(r'(^|//)(localhost|127\.0\.0\.1)(:|/|$)', url, flags=re.I):
+            return url
+    if has_request_context():
+        try:
+            url = _normalizar_url_publica(request.url_root)
+            if url and not re.search(r'(^|//)(localhost|127\.0\.0\.1)(:|/|$)', url, flags=re.I):
+                return url
+        except Exception:
+            pass
+    return ''
+
+
+def leer_enlace_publico_tunel():
+    """Compatibilidad histórica: Railway tiene prioridad sobre túneles locales."""
+    url_railway = resolver_url_publica()
+    if url_railway:
+        return url_railway
     posibles = [
         _project_path('ENLACE_PUBLICO_TUNEL.txt') if '_project_path' in globals() else os.path.abspath(os.path.join(BASE_DIR, '..', 'ENLACE_PUBLICO_TUNEL.txt')),
         os.path.abspath(os.path.join(BASE_DIR, '..', 'ENLACE_PUBLICO_TUNEL.txt')),
     ]
-    patron = re.compile(r'https://[^\s]+(?:trycloudflare\.com|ngrok-free\.app|ngrok\.io)')
+    patron = re.compile(r'https://(?:[a-zA-Z0-9-]+\.trycloudflare\.com|[a-zA-Z0-9-]+\.ngrok-free\.app|[a-zA-Z0-9-]+\.ngrok\.io)')
     for ruta in posibles:
         try:
             if ruta and os.path.exists(ruta):
@@ -10526,31 +10614,71 @@ def configuracion_acceso_compartido():
     if user.get('rol') not in {'SUPERADMIN', 'GERENTE'}:
         return jsonify({'error': 'No tienes permiso para ver la configuración de acceso.'}), 403
 
+    es_produccion = str(app.config.get('APP_ENV') or '').lower() == 'production'
     backend_host = os.environ.get('FLASK_HOST') or os.environ.get('HOST') or '127.0.0.1'
     backend_port = int(os.environ.get('FLASK_PORT') or os.environ.get('PORT') or 5000)
     frontend_port = int(os.environ.get('FRONTEND_PORT') or 8080)
     ip_local = detectar_ip_local()
     modo = modo_acceso_actual(backend_host)
     allowed_origins = os.environ.get('ALLOWED_ORIGINS', '').strip()
+    url_publica = resolver_url_publica()
+    url_tunel = '' if es_produccion else leer_enlace_publico_tunel()
 
-    frontend_local = f'http://127.0.0.1:{frontend_port}/frontend/index.html'
-    frontend_red = f'http://{ip_local}:{frontend_port}/frontend/index.html'
-    backend_local = f'http://127.0.0.1:{backend_port}'
-    backend_red = f'http://{ip_local}:{backend_port}'
+    frontend_local = '' if es_produccion else f'http://127.0.0.1:{frontend_port}/frontend/index.html'
+    frontend_red = '' if es_produccion else f'http://{ip_local}:{frontend_port}/frontend/index.html'
+    backend_local = '' if es_produccion else f'http://127.0.0.1:{backend_port}'
+    backend_red = '' if es_produccion else f'http://{ip_local}:{backend_port}'
+    enlace_principal = url_publica or url_tunel or frontend_red or frontend_local
+    tunnel_active = bool(url_tunel and not es_produccion)
+
+    if es_produccion:
+        instrucciones = [
+            'Comparte únicamente el enlace HTTPS público de Railway mostrado en este panel.',
+            'El frontend y la API funcionan bajo el mismo dominio; no uses localhost ni el puerto 5000 desde otros equipos.',
+            'Crea una cuenta individual para cada usuario y asigna el rol mínimo necesario.',
+            'Comprueba que Railway tenga un volumen persistente montado en /data antes de cargar información operativa.',
+        ]
+    elif tunnel_active:
+        instrucciones = [
+            'Comparte el enlace HTTPS trycloudflare.com mostrado en este panel.',
+            'Mantén abiertas la ventana del backend y la ventana del túnel durante toda la prueba.',
+            'El enlace es temporal y cambia al reiniciar el túnel.',
+            'No compartas el usuario SUPERADMIN; crea usuarios individuales de prueba.',
+        ]
+    else:
+        instrucciones = [
+            'En este computador usa el enlace local.',
+            'En la misma red WiFi usa el enlace de red local y verifica el firewall.',
+            'Para probar desde internet, ejecuta INICIAR_PLATAFORMA_TUNEL_ONLINE.bat.',
+            'No compartas el usuario administrador; crea un usuario por compañero.',
+        ]
 
     return jsonify({
+        'ok': True,
+        'entorno': app.config.get('APP_ENV'),
+        'esProduccion': es_produccion,
         'modo': modo,
-        'ipLocal': ip_local,
+        'ipLocal': '' if es_produccion else ip_local,
         'backendHost': backend_host,
         'backendPort': backend_port,
         'frontendPort': frontend_port,
+        'publicAppUrl': url_publica,
+        'urlPrincipalCompartir': enlace_principal,
+        'backendUrlPublico': url_publica or url_tunel,
         'backendUrlLocal': backend_local,
         'backendUrlRedLocal': backend_red,
         'frontendUrlLocal': frontend_local,
         'frontendUrlRedLocal': frontend_red,
         'urlCompartirWifi': frontend_red,
-        'urlTunelPublico': leer_enlace_publico_tunel(),
-        'notaTunel': 'Para otro computador use el enlace HTTPS de Cloudflare/ngrok, no http://127.0.0.1:5000.',
+        # Campo histórico conservado para no romper el frontend previo.
+        'urlTunelPublico': url_publica or url_tunel,
+        'notaTunel': (
+            'Railway publica la plataforma mediante un dominio HTTPS estable.'
+            if es_produccion else
+            ('Quick Tunnel Cloudflare activo y verificado.' if tunnel_active else
+             'Ejecuta INICIAR_PLATAFORMA_TUNEL_ONLINE.bat para generar un enlace temporal de internet.')
+        ),
+        'tunnelActive': tunnel_active,
         'cors': {
             'allowedOriginsEnv': allowed_origins,
             'origenesActivos': parse_allowed_origins(),
@@ -10561,13 +10689,7 @@ def configuracion_acceso_compartido():
             'fundacion': user.get('fundacion_nombre'),
             'estado': 'AUTENTICADO',
         },
-        'instruccionesRapidas': [
-            'Para internet/otro computador ejecuta INICIAR_PLATAFORMA_TUNEL_ONLINE.bat.',
-            'Comparte únicamente el enlace HTTPS que termina en .trycloudflare.com o ngrok; no compartas http://127.0.0.1:5000.',
-            'El enlace público queda guardado en ENLACE_PUBLICO_TUNEL.txt.',
-            'Para WiFi local usa INICIAR_PLATAFORMA_UNICA.bat opción 2 o scripts\\iniciar_red_local.bat.',
-            'No compartas el usuario admin; crea un usuario por compañero.'
-        ]
+        'instruccionesRapidas': instrucciones,
     })
 
 
@@ -10576,10 +10698,77 @@ def acceso_ping():
     return jsonify({
         'ok': True,
         'backend': 'online',
-        'ipLocal': detectar_ip_local(),
+        'publicAppUrl': resolver_url_publica(),
+        'ipLocal': '' if str(app.config.get('APP_ENV') or '').lower() == 'production' else detectar_ip_local(),
         'fecha': datetime.now().isoformat(timespec='seconds')
     })
 
+
+
+def _directorio_escribible(path_value):
+    path = Path(str(path_value or '')).expanduser()
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / '.primera_infancia_write_probe'
+        probe.write_text('ok', encoding='utf-8')
+        probe.unlink(missing_ok=True)
+        return True
+    except Exception:
+        return False
+
+
+def diagnostico_almacenamiento():
+    data_dir = Path(str(app.config.get('DATA_DIR') or '')).resolve()
+    database_path = Path(str(app.config.get('DATABASE_PATH') or '')).resolve()
+    declared_mount = str(os.environ.get('RAILWAY_VOLUME_MOUNT_PATH') or '').strip()
+    try:
+        database_inside = database_path.is_relative_to(data_dir)
+    except Exception:
+        database_inside = str(database_path).startswith(str(data_dir) + os.sep)
+    dirs = {
+        'data': data_dir,
+        'templates': Path(str(app.config.get('TEMPLATES_FOLDER') or '')),
+        'uploads': Path(str(app.config.get('UPLOAD_FOLDER') or '')),
+        'outputs': Path(str(app.config.get('OUTPUT_FOLDER') or '')),
+        'backups': Path(str(app.config.get('BACKUPS_FOLDER') or '')),
+        'logs': Path(str(app.config.get('LOG_FOLDER') or '')),
+    }
+    writable = {key: _directorio_escribible(value) for key, value in dirs.items()}
+    expected_mount = str(data_dir) == '/data'
+    try:
+        volume_declared = bool(declared_mount) and Path(declared_mount).resolve() == data_dir
+    except Exception:
+        volume_declared = False
+    volume_status = 'detected' if volume_declared else ('expected_path_unverified' if expected_mount else 'not_detected')
+    return {
+        'dataDir': str(data_dir),
+        'databasePath': str(database_path),
+        'databaseInsideDataDir': database_inside,
+        'directoriesWritable': writable,
+        'allRequiredDirectoriesWritable': all(writable.values()),
+        'railwayVolumeMountPath': declared_mount,
+        'persistentVolumeDeclared': volume_declared,
+        'dataDirTargetsExpectedMount': expected_mount,
+        'volumeStatus': volume_status,
+        'initializationMarkerPresent': (data_dir / '.primera_infancia_initialized.json').exists(),
+        'managedSeedStatePresent': (data_dir / '.primera_infancia_seed_state.json').exists(),
+        'requiresRedeployPersistenceTest': True,
+        'persistenceVerified': False,
+        'nota': (
+            'La ruta y la escritura pueden comprobarse automáticamente. La variable de montaje solo confirma el volumen cuando Railway la expone; '
+            'la persistencia real debe verificarse creando un registro ficticio y ejecutando un redeploy.'
+        )
+    }
+
+
+@app.route('/api/acceso/storage-health', methods=['GET'])
+def acceso_storage_health():
+    user = usuario_actual() or {}
+    if user.get('rol') not in {'SUPERADMIN', 'GERENTE'}:
+        return jsonify({'error': 'No tienes permiso para revisar el almacenamiento.'}), 403
+    result = diagnostico_almacenamiento()
+    status = 200 if result.get('allRequiredDirectoriesWritable') and result.get('databaseInsideDataDir') else 503
+    return jsonify({'ok': status == 200, 'storage': result}), status
 
 
 # ------------------------------------------------------------
@@ -10958,24 +11147,32 @@ def servir_assets(filename):
 
 @app.route('/api/acceso/tunel-info', methods=['GET'])
 def acceso_tunel_info():
-    """Información mínima para diagnosticar el modo túnel online."""
+    """Compatibilidad de diagnóstico: informa primero el dominio público de Railway."""
+    es_produccion = str(app.config.get('APP_ENV') or '').lower() == 'production'
+    url_publica = resolver_url_publica()
     return jsonify({
         'ok': True,
-        'modo': os.environ.get('SERVER_MODE', 'LOCAL'),
-        'publicTunnelMode': os.environ.get('PUBLIC_TUNNEL_MODE', '').strip() in {'1', 'true', 'TRUE', 'si', 'SI'},
+        'modo': modo_acceso_actual(app.config.get('FLASK_HOST', '127.0.0.1')),
+        'publicTunnelMode': False if es_produccion else os.environ.get('PUBLIC_TUNNEL_MODE', '').strip().lower() in {'1', 'true', 'si', 'sí'},
         'frontendServidoPorBackend': True,
-        'urlLocalUnificada': 'http://127.0.0.1:5000/frontend/index.html',
-        'enlacePublicoActual': leer_enlace_publico_tunel(),
-        'mensaje': 'El enlace para otro computador es el HTTPS generado por cloudflared/ngrok. No use 127.0.0.1 en equipos remotos.'
+        'publicAppUrl': url_publica,
+        'urlLocalUnificada': '' if es_produccion else 'http://127.0.0.1:5000/frontend/index.html',
+        'enlacePublicoActual': url_publica or leer_enlace_publico_tunel(),
+        'mensaje': (
+            'Comparta el dominio HTTPS de Railway; frontend y API usan el mismo origen.'
+            if es_produccion else
+            'En equipos remotos use un enlace HTTPS público, nunca 127.0.0.1.'
+        )
     })
 
 
 @app.errorhandler(Exception)
 def manejar_error_global(exc):
-    """Respuesta JSON controlada para errores API y log técnico.
+    """Respuesta JSON controlada y reporte técnico no vacío.
 
-    Alpha24: evita que el navegador reciba HTML genérico o mensajes vacíos
-    cuando una ruta del menú falla. El detalle completo queda en backend/logs.
+    El detalle se guarda en la carpeta operativa real ``data/logs`` (o en el
+    volumen configurado), no en el marcador vacío ``backend/logs``. Además se
+    imprime en la consola como respaldo si Windows impide escribir el archivo.
     """
     if isinstance(exc, HTTPException):
         if has_request_context() and str(request.path or '').startswith('/api/'):
@@ -10983,23 +11180,52 @@ def manejar_error_global(exc):
         return exc
 
     trace_id = datetime.now().strftime('%Y%m%d%H%M%S%f')
+    report = write_exception_report(
+        exc,
+        trace_id,
+        app.config,
+        request_obj=request if has_request_context() else None,
+        g_obj=g if has_request_context() else None,
+    )
     try:
-        logs_dir = LOG_FOLDER
-        os.makedirs(logs_dir, exist_ok=True)
-        with open(os.path.join(logs_dir, f'error_api_{trace_id}.log'), 'w', encoding='utf-8') as fh:
-            fh.write(f'Fecha: {datetime.now().isoformat()}\n')
-            if has_request_context():
-                fh.write(f'Ruta: {request.method} {request.path}\n')
-            fh.write(traceback.format_exc())
+        app.logger.error(
+            'Error API trace_id=%s instance_id=%s log=%s',
+            trace_id,
+            report.get('instance_id'),
+            report.get('reference') or 'stderr',
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
     except Exception:
         pass
 
     if has_request_context() and str(request.path or '').startswith('/api/'):
-        return jsonify({
-            'error': 'Error técnico del servidor. Revisa logs/error_api_%s.log' % trace_id,
-            'trace_id': trace_id
-        }), 500
+        payload = {
+            'error': 'Error técnico del servidor.',
+            'code': 'INTERNAL_SERVER_ERROR',
+            'trace_id': trace_id,
+            'instance_id': report.get('instance_id'),
+        }
+        # En desarrollo local/túnel se muestra únicamente una referencia
+        # relativa; nunca la ruta absoluta del computador o del volumen.
+        if str(app.config.get('APP_ENV') or '').lower() != 'production':
+            payload['log_file'] = report.get('reference') or 'consola del backend'
+            payload['log_written'] = bool(report.get('written'))
+        response = jsonify(payload)
+        response.status_code = 500
+        response.headers['X-Trace-Id'] = trace_id
+        return response
     raise exc
+
+# Última barrera de aislamiento: se instala después de registrar y migrar
+# todos los módulos, de modo que las consultas SQLite ejecutadas durante una
+# petición multi-fundación queden automáticamente acotadas o fallen cerradas.
+try:
+    from modules.seguridad.tenant_sql_guard import install_sqlite_tenant_guard
+    install_sqlite_tenant_guard()
+except Exception as exc:
+    if not bool(app.config.get('SINGLE_TENANT_MODE', True)):
+        raise RuntimeError('No se pudo activar el cortafuegos SQL multi-fundación.') from exc
+    print(f'Cortafuegos SQL multi-fundación no pudo activarse: {exc}')
 
 # Alias WSGI compatible. Producción debe importar backend/wsgi.py.
 application = app

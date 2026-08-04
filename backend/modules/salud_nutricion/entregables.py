@@ -21,6 +21,8 @@ from docx.shared import Inches
 from openpyxl import Workbook
 from werkzeug.utils import secure_filename
 
+from modules.seguridad.tenant_context import current_tenant_context, current_tenant_id
+
 from .services import now_iso
 
 ALLOWED_EVIDENCE_EXT = {'.png', '.jpg', '.jpeg', '.webp', '.pdf', '.doc', '.docx', '.xlsx', '.xls'}
@@ -209,10 +211,20 @@ def _split_uds(value: Any) -> list[str]:
 class EntregablesSaludNutricionService:
     def __init__(self, repo, output_folder: str, upload_folder: str):
         self.repo = repo
-        self.output_folder = Path(output_folder) / 'salud_nutricion' / 'entregables'
-        self.upload_folder = Path(upload_folder) / 'salud_nutricion' / 'entregables'
-        self.output_folder.mkdir(parents=True, exist_ok=True)
-        self.upload_folder.mkdir(parents=True, exist_ok=True)
+        self._output_folder = output_folder
+        self._upload_folder = upload_folder
+
+    @property
+    def output_folder(self) -> Path:
+        path = Path(os.fspath(self._output_folder)) / 'salud_nutricion' / 'entregables'
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @property
+    def upload_folder(self) -> Path:
+        path = Path(os.fspath(self._upload_folder)) / 'salud_nutricion' / 'entregables'
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
     def init_schema(self) -> None:
         self.repo.execute_script(ENTREGABLES_SCHEMA_SQL)
@@ -255,7 +267,12 @@ class EntregablesSaludNutricionService:
         uds_list = _split_uds(payload.get('uds') or payload.get('unidades') or 'TODAS')
         coordinador = str(payload.get('coordinador') or '').strip()
         responsable = str(payload.get('responsable') or payload.get('usuario') or 'Enfermera/Nutricionista').strip()
-        fundacion_id = int(payload.get('fundacion_id') or 1)
+        context = current_tenant_context()
+        requested_fundacion = payload.get('fundacion_id')
+        if context.role == 'SUPERADMIN' and context.allow_global and requested_fundacion:
+            fundacion_id = int(requested_fundacion)
+        else:
+            fundacion_id = int(context.tenant_id or 1)
         corporacion_id = int(payload.get('corporacion_id') or 1)
         now = now_iso()
         creados = 0
@@ -283,7 +300,8 @@ class EntregablesSaludNutricionService:
         return {'mes': mes, 'anio': anio, 'uds': uds_list, 'creados': creados, 'existentes': existentes}
 
     def listar(self, filtros: dict[str, Any]) -> dict[str, Any]:
-        where = ['1=1']
+        fundacion_id = int(current_tenant_id(1) or 1)
+        where = [f'COALESCE(m.fundacion_id, 1) = {fundacion_id}']
         params: list[Any] = []
         if filtros.get('mes'):
             where.append('m.mes = ?')
@@ -302,10 +320,16 @@ class EntregablesSaludNutricionService:
             SELECT m.*, c.nombre, c.actividad, c.evidencias_requeridas, c.requiere_acta, c.requiere_listado,
                    c.requiere_fotos, c.minimo_fotos, c.requiere_oficio, c.requiere_formato_excel,
                    c.requiere_word, c.requiere_pdf, c.plantilla_asociada,
-                   (SELECT COUNT(*) FROM sn_entregables_evidencias e WHERE e.entregable_id = m.id) AS fotos_cargadas,
-                   (SELECT COUNT(*) FROM sn_entregables_archivos a WHERE a.entregable_id = m.id) AS archivos_generados
+                   (SELECT COUNT(*) FROM sn_entregables_evidencias e
+                     WHERE e.entregable_id = m.id
+                       AND COALESCE(e.fundacion_id, 1) = {fundacion_id}) AS fotos_cargadas,
+                   (SELECT COUNT(*) FROM sn_entregables_archivos a
+                     WHERE a.entregable_id = m.id
+                       AND COALESCE(a.fundacion_id, 1) = {fundacion_id}) AS archivos_generados
             FROM sn_entregables_mes m
-            JOIN sn_entregables_catalogo c ON c.id = m.catalogo_id
+            JOIN sn_entregables_catalogo c
+              ON c.id = m.catalogo_id
+             AND (c.fundacion_id IS NULL OR c.fundacion_id = {fundacion_id})
             WHERE {' AND '.join(where)}
             ORDER BY m.anio DESC, m.mes DESC, m.uds ASC, c.id ASC
             LIMIT 3000
@@ -316,14 +340,18 @@ class EntregablesSaludNutricionService:
         return {'entregables': rows, 'resumen': resumen}
 
     def detalle(self, entregable_id: int) -> dict[str, Any] | None:
+        fundacion_id = int(current_tenant_id(1) or 1)
         row = self.repo.fetch_one(
-            """
+            f"""
             SELECT m.*, c.nombre, c.actividad, c.evidencias_requeridas, c.requiere_acta, c.requiere_listado,
                    c.requiere_fotos, c.minimo_fotos, c.requiere_oficio, c.requiere_formato_excel,
                    c.requiere_word, c.requiere_pdf, c.plantilla_asociada
             FROM sn_entregables_mes m
-            JOIN sn_entregables_catalogo c ON c.id = m.catalogo_id
+            JOIN sn_entregables_catalogo c
+              ON c.id = m.catalogo_id
+             AND (c.fundacion_id IS NULL OR c.fundacion_id = {fundacion_id})
             WHERE m.id = ?
+              AND COALESCE(m.fundacion_id, 1) = {fundacion_id}
             """,
             (entregable_id,),
         )

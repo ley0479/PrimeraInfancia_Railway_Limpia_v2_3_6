@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from datetime import datetime
 from flask import Blueprint, jsonify, request, send_from_directory
+from modules.seguridad.tenant_context import tenant_path
 from werkzeug.utils import secure_filename
 
 from .repository import GestionCoordinadorRepository, now_iso
@@ -18,7 +19,7 @@ def json_payload() -> dict:
 def register_gestion_coordinador(app, database_path: str, upload_folder: str) -> None:
     repo = GestionCoordinadorRepository(database_path)
     repo.init_schema()
-    module_upload = os.path.join(upload_folder, 'gestion_coordinador')
+    module_upload = tenant_path(upload_folder, 'gestion_coordinador')
     os.makedirs(module_upload, exist_ok=True)
 
     bp = Blueprint('gestion_coordinador', __name__, url_prefix='/api/gestion-coordinador')
@@ -171,11 +172,13 @@ def register_gestion_coordinador(app, database_path: str, upload_folder: str) ->
         alertas_calc = generate_alerts_for_activities(actividades)
         # También se devuelven alertas guardadas en gp_alertas.
         where, params = repo.entity_scope_clause('a')
+        fid = int(repo.context().get('fundacion_id') or 1)
         guardadas = repo.fetch_all(
             f"""
             SELECT a.*, c.nombre AS coordinador_nombre
             FROM gp_alertas a
-            LEFT JOIN gp_coordinadores c ON c.id=a.coordinador_id
+            LEFT JOIN gp_coordinadores c
+              ON c.id=a.coordinador_id AND COALESCE(c.fundacion_id, 1)={fid}
             WHERE {where}
             ORDER BY a.fecha_alerta DESC, a.fecha_creacion DESC LIMIT 200
             """,

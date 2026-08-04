@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 
 from flask import Blueprint, Response, g, jsonify, request, send_from_directory
+from modules.seguridad.tenant_context import tenant_path
 from werkzeug.utils import secure_filename
 
 from .repository import CruceBasesRepository, now_iso
@@ -52,8 +53,8 @@ def register_cruce_bases(app, database_path: str, upload_folder: str, output_fol
     repo = CruceBasesRepository(database_path)
     repo.init_schema()
     bp = Blueprint('cruce_bases', __name__, url_prefix='/api/cruce-bases')
-    module_upload = os.path.join(upload_folder, 'cruce_bases')
-    module_reports = os.path.join(output_folder, 'cruce_bases')
+    module_upload = tenant_path(upload_folder, 'cruce_bases')
+    module_reports = tenant_path(output_folder, 'cruce_bases')
     os.makedirs(module_upload, exist_ok=True)
     os.makedirs(module_reports, exist_ok=True)
     try:

@@ -53,10 +53,23 @@ class BillingService:
         self.repo.init_schema()
         self.refresh_all_subscription_states()
 
+    def authorized_fundacion_id(self, fundacion_id: int | None = None) -> int:
+        current = int(self.repo.current_fundacion_id() or 1)
+        fid = int(fundacion_id or current)
+        if not self.repo.is_superadmin() and fid != current:
+            raise PermissionError('No tienes permiso para operar sobre otra fundación.')
+        return fid
+
     def refresh_all_subscription_states(self) -> None:
         conn = self.repo.connect()
         cur = conn.cursor()
-        rows = cur.execute("SELECT * FROM suscripciones_fundacion").fetchall()
+        if self.repo.is_superadmin() or self.repo.context().get('rol') == 'SYSTEM':
+            rows = cur.execute("SELECT * FROM suscripciones_fundacion").fetchall()
+        else:
+            rows = cur.execute(
+                "SELECT * FROM suscripciones_fundacion WHERE fundacion_id=?",
+                (self.repo.current_fundacion_id(),),
+            ).fetchall()
         for row in rows:
             estado = normalize_estado_suscripcion(row['fecha_vencimiento'], row['estado'], int(row['dias_gracia'] or 0))
             cur.execute("UPDATE suscripciones_fundacion SET estado=?, fecha_actualizacion=? WHERE id=?", (estado, now_iso(), row['id']))
@@ -163,7 +176,7 @@ class BillingService:
 
     def get_subscription(self, fundacion_id: int | None = None) -> dict[str, Any]:
         self.refresh_all_subscription_states()
-        fid = fundacion_id or self.repo.current_fundacion_id()
+        fid = self.authorized_fundacion_id(fundacion_id)
         row = self.repo.fetch_one(
             """
             SELECT s.*, f.nombre AS fundacion_nombre, f.nit AS fundacion_nit, p.nombre AS plan_nombre, p.precio_mensual,
@@ -191,7 +204,9 @@ class BillingService:
         return subscription_to_api(row)
 
     def upsert_subscription(self, data: dict[str, Any], fundacion_id: int | None = None) -> dict[str, Any]:
-        fid = fundacion_id or int(data.get('fundacion_id') or self.repo.current_fundacion_id())
+        fid = self.authorized_fundacion_id(
+            fundacion_id or int(data.get('fundacion_id') or self.repo.current_fundacion_id())
+        )
         before = self.get_subscription(fid)
         plan_id = int(data.get('plan_id') or before.get('plan_id') or 1)
         plan = self.repo.fetch_one("SELECT * FROM planes_suscripcion WHERE id=?", (plan_id,))
@@ -255,7 +270,7 @@ class BillingService:
         return guardado, ruta
 
     def registrar_pago(self, data: dict[str, Any], file=None) -> dict[str, Any]:
-        fid = int(data.get('fundacion_id') or self.repo.current_fundacion_id())
+        fid = self.authorized_fundacion_id(int(data.get('fundacion_id') or self.repo.current_fundacion_id()))
         sub = self.get_subscription(fid)
         plan_id = int(data.get('plan_id') or sub.get('plan_id') or 1)
         plan = self.repo.fetch_one("SELECT * FROM planes_suscripcion WHERE id=?", (plan_id,))
@@ -295,6 +310,7 @@ class BillingService:
         return {'pago': pago, 'suscripcion': updated}
 
     def registrar_movimiento_credito(self, fundacion_id: int, tipo: str, accion: str, creditos: int, descripcion: str = '', referencia_tipo: str | None = None, referencia_id: str | None = None) -> dict[str, Any]:
+        fundacion_id = self.authorized_fundacion_id(fundacion_id)
         sub = self.get_subscription(fundacion_id)
         saldo_anterior = int(sub.get('creditos_disponibles') or 0)
         if tipo.upper() == 'CONSUMO':
@@ -319,7 +335,7 @@ class BillingService:
         return mov
 
     def asignar_creditos(self, data: dict[str, Any]) -> dict[str, Any]:
-        fid = int(data.get('fundacion_id') or self.repo.current_fundacion_id())
+        fid = self.authorized_fundacion_id(int(data.get('fundacion_id') or self.repo.current_fundacion_id()))
         creditos = int(data.get('creditos') or 0)
         if creditos <= 0:
             paquete_id = data.get('paquete_id')
@@ -331,6 +347,7 @@ class BillingService:
         return self.registrar_movimiento_credito(fid, 'ASIGNACION', data.get('accion') or 'asignacion_manual', creditos, data.get('descripcion') or 'Asignación manual de créditos', referencia_tipo='paquete', referencia_id=str(data.get('paquete_id') or 'manual'))
 
     def consumir_creditos(self, fundacion_id: int, accion: str, referencia_tipo: str | None = None, referencia_id: str | None = None, descripcion: str = '') -> dict[str, Any]:
+        fundacion_id = self.authorized_fundacion_id(fundacion_id)
         costo = int(CREDIT_COSTS.get(accion, 0))
         if costo <= 0:
             return {}

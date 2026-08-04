@@ -55,9 +55,19 @@ class ReportesGerencialesService:
 
     def __init__(self, database_path: str, output_folder: str):
         self.database_path = database_path
-        self.output_folder = Path(output_folder)
-        self.reportes_folder = self.output_folder / 'reportes_gerenciales'
-        self.reportes_folder.mkdir(parents=True, exist_ok=True)
+        self._output_folder = output_folder
+
+    @property
+    def output_folder(self) -> Path:
+        path = Path(os.fspath(self._output_folder))
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @property
+    def reportes_folder(self) -> Path:
+        path = self.output_folder / 'reportes_gerenciales'
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
     def connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.database_path)

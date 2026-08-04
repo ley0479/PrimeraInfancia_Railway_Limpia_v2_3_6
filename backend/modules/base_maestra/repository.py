@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .schema import SCHEMA_SQL
+from modules.seguridad.tenant_context import current_tenant_context, strict_tenant_mode
 
 
 def now_iso() -> str:
@@ -42,28 +43,67 @@ class BaseMaestraRepository:
             conn.commit()
 
     def _seed_corporaciones(self, conn: sqlite3.Connection) -> None:
+        """Crea una corporación operativa por fundación sin cruces entre tenants.
+
+        En una petición multi-fundación solo se inicializa la fundación del
+        contexto autenticado. Durante bootstrap (sin tenant) se pueden recorrer
+        todas las fundaciones, porque todavía no existe una sesión de usuario.
+        """
         now = now_iso()
+        context = current_tenant_context()
+        tenant_id = int(context.tenant_id or 0)
         try:
-            rows = conn.execute("SELECT id, nombre, nit, representante, estado FROM fundaciones ORDER BY id").fetchall()
+            if strict_tenant_mode() and tenant_id and not context.allow_global:
+                rows = conn.execute(
+                    "SELECT id, nombre, nit, representante, estado FROM fundaciones WHERE id=?",
+                    (tenant_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT id, nombre, nit, representante, estado FROM fundaciones ORDER BY id"
+                ).fetchall()
         except Exception:
             rows = []
+
         for row in rows:
+            fid = int(row['id'])
+            exists = conn.execute(
+                "SELECT id FROM corporaciones WHERE fundacion_id=? LIMIT 1",
+                (fid,),
+            ).fetchone()
+            if exists:
+                continue
             conn.execute(
                 """
-                INSERT INTO corporaciones (fundacion_id, nombre, nit, representante, estado, fecha_creacion, fecha_actualizacion)
-                SELECT ?, ?, ?, ?, COALESCE(?, 'ACTIVA'), ?, ?
-                WHERE NOT EXISTS (SELECT 1 FROM corporaciones WHERE fundacion_id = ?)
+                INSERT INTO corporaciones
+                (fundacion_id, nombre, nit, representante, estado, fecha_creacion, fecha_actualizacion)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (row['id'], row['nombre'], row['nit'] if 'nit' in row.keys() else None, row['representante'] if 'representante' in row.keys() else None, row['estado'], now, now, row['id']),
+                (
+                    fid,
+                    row['nombre'],
+                    row['nit'] if 'nit' in row.keys() else None,
+                    row['representante'] if 'representante' in row.keys() else None,
+                    row['estado'] or 'ACTIVA',
+                    now,
+                    now,
+                ),
             )
-        conn.execute(
-            """
-            INSERT INTO corporaciones (fundacion_id, nombre, estado, fecha_creacion, fecha_actualizacion)
-            SELECT 1, 'Fundación Principal', 'ACTIVA', ?, ?
-            WHERE NOT EXISTS (SELECT 1 FROM corporaciones WHERE fundacion_id = 1)
-            """,
-            (now, now),
-        )
+
+        # Compatibilidad para una base muy antigua sin tabla fundaciones.
+        if not rows and (not strict_tenant_mode() or tenant_id in {0, 1}):
+            exists = conn.execute(
+                "SELECT id FROM corporaciones WHERE fundacion_id=1 LIMIT 1"
+            ).fetchone()
+            if not exists:
+                conn.execute(
+                    """
+                    INSERT INTO corporaciones
+                    (fundacion_id, nombre, estado, fecha_creacion, fecha_actualizacion)
+                    VALUES (1, 'Fundación Principal', 'ACTIVA', ?, ?)
+                    """,
+                    (now, now),
+                )
 
     def fetch_all(self, sql: str, params: Iterable[Any] = ()) -> list[dict[str, Any]]:
         with self.connect() as conn:
@@ -82,6 +122,43 @@ class BaseMaestraRepository:
 
     def json_dumps(self, value: Any) -> str:
         return json.dumps(value, ensure_ascii=False, default=str)
+
+    def ensure_corporacion_for_foundation(
+        self,
+        fundacion_id: int,
+        nombre: str,
+        nit: str | None = None,
+        representante: str | None = None,
+        estado: str = 'ACTIVA',
+    ) -> int:
+        """Garantiza una corporación operativa vinculada a una fundación."""
+        fid = int(fundacion_id or 0)
+        if fid <= 0:
+            raise ValueError('fundacion_id inválido para corporación.')
+        self.init_schema()
+        row = self.fetch_one(
+            "SELECT id FROM corporaciones WHERE fundacion_id=? LIMIT 1",
+            (fid,),
+        )
+        if row:
+            return int(row['id'])
+        new_id = self.execute(
+            """
+            INSERT INTO corporaciones
+            (fundacion_id, nombre, nit, representante, estado, fecha_creacion, fecha_actualizacion)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                fid,
+                str(nombre or f'Fundación {fid}').strip(),
+                nit,
+                representante,
+                str(estado or 'ACTIVA').upper(),
+                now_iso(),
+                now_iso(),
+            ),
+        )
+        return int(new_id)
 
     def corporacion_para_fundacion(self, fundacion_id: int | None) -> int:
         fundacion_id = int(fundacion_id or 1)

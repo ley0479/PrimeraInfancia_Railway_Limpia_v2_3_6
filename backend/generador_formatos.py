@@ -14,6 +14,7 @@ from openpyxl.styles import PatternFill, Alignment, Font, Border, Side
 
 from modules.print_master import aplicar_configuracion_impresion_libro
 from modules.plantillas_oficiales import get_plantilla_oficial, generar_desde_plantilla_oficial
+from modules.seguridad.tenant_context import current_tenant_id
 from models import ConfiguracionSistema, EstadoUsuario
 
 
@@ -538,14 +539,19 @@ class GeneradorFormatos:
         cursor = conn.cursor()
         
         # Obtener mediciones del período
+        fid = int(current_tenant_id(1) or 1)
         cursor.execute("""
             SELECT b.nombres, b.documento, pt.peso, pt.talla, pt.estado_nutricional
             FROM peso_talla pt
-            JOIN beneficiarios b ON pt.beneficiario_id = b.id
-            WHERE b.unidad = ? AND strftime('%Y', pt.fecha_medicion) = ?
-                  AND strftime('%m', pt.fecha_medicion) = ?
+            JOIN beneficiarios b
+              ON pt.beneficiario_id = b.id
+             AND COALESCE(b.fundacion_id, 1) = ?
+            WHERE b.unidad = ?
+              AND COALESCE(pt.fundacion_id, 1) = ?
+              AND strftime('%Y', pt.fecha_medicion) = ?
+              AND strftime('%m', pt.fecha_medicion) = ?
             ORDER BY b.nombres
-        """, (unidad, str(año), f"{mes:02d}"))
+        """, (fid, unidad, fid, str(año), f"{mes:02d}"))
         
         registros = [dict(row) for row in cursor.fetchall()]
         conn.close()

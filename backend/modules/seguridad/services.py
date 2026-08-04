@@ -6,11 +6,13 @@ import json
 import re
 import secrets
 import sqlite3
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
 from functools import wraps
+from pathlib import Path
 from typing import Any, Mapping
 
 from flask import current_app, g, has_request_context, jsonify, redirect, request
@@ -59,8 +61,9 @@ PATH_ROLE_RULES = sorted([
     ('/api/panel-comercial', MANAGEMENT),
     ('/api/gerencia-general', MANAGEMENT),
     ('/api/acceso', MANAGEMENT),
-    ('/api/backups', MANAGEMENT),
+    ('/api/backups', frozenset({'SUPERADMIN'})),
     ('/api/configuracion-institucional', MANAGEMENT),
+    ('/api/institucional-archivos', ALL_ROLES),
     ('/api/identidad-visual', MANAGEMENT),
     ('/api/fundaciones', MANAGEMENT),
     ('/api/usuarios', MANAGEMENT),
@@ -120,17 +123,56 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode('utf-8')).hexdigest()
 
 
+_WAL_INIT_LOCK = threading.RLock()
+_WAL_INITIALIZED_DATABASES: set[str] = set()
+
+
+def _database_cache_key(database_path: str) -> str:
+    raw = str(database_path or '')
+    if raw == ':memory:' or raw.startswith('file::memory:'):
+        return raw
+    try:
+        return str(Path(raw).expanduser().resolve())
+    except Exception:
+        return raw
+
+
 def connect(database_path: str) -> sqlite3.Connection:
+    """Abre SQLite con espera y WAL sin bloquear cada petición.
+
+    Ejecutar ``PRAGMA journal_mode=WAL`` en *todas* las conexiones puede pedir
+    un bloqueo exclusivo. Bajo un túnel, donde healthchecks y login pueden
+    coincidir, ese patrón producía errores intermitentes ``database is locked``.
+    El modo WAL ahora se configura una sola vez por proceso y, si la base está
+    temporalmente ocupada, la conexión continúa con el modo ya existente.
+    """
     timeout = 30
     if has_request_context():
         timeout = max(5, int(current_app.config.get('SQLITE_TIMEOUT_SECONDS', 30)))
     conn = sqlite3.connect(database_path, timeout=timeout)
-    conn.row_factory = sqlite3.Row
-    conn.execute('PRAGMA foreign_keys = ON')
-    conn.execute(f'PRAGMA busy_timeout = {timeout * 1000}')
-    conn.execute('PRAGMA journal_mode = WAL')
-    conn.execute('PRAGMA synchronous = NORMAL')
-    return conn
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute('PRAGMA foreign_keys = ON')
+        conn.execute(f'PRAGMA busy_timeout = {timeout * 1000}')
+
+        cache_key = _database_cache_key(database_path)
+        if cache_key not in _WAL_INITIALIZED_DATABASES:
+            with _WAL_INIT_LOCK:
+                if cache_key not in _WAL_INITIALIZED_DATABASES:
+                    try:
+                        conn.execute('PRAGMA journal_mode = WAL').fetchone()
+                        _WAL_INITIALIZED_DATABASES.add(cache_key)
+                    except sqlite3.OperationalError as exc:
+                        message = str(exc).lower()
+                        if 'locked' not in message and 'busy' not in message:
+                            raise
+                        # Otro request puede estar terminando una escritura. El
+                        # busy_timeout seguirá protegiendo las operaciones reales.
+        conn.execute('PRAGMA synchronous = NORMAL')
+        return conn
+    except Exception:
+        conn.close()
+        raise
 
 
 def table_exists(cursor: sqlite3.Cursor, table: str) -> bool:
@@ -176,8 +218,26 @@ def ensure_security_schema(database_path: str) -> None:
         'reset_expira': 'TEXT',
         'fecha_actualizacion': 'TEXT',
         'debe_cambiar_password': 'INTEGER DEFAULT 0',
+        'eliminado_en': 'TEXT',
+        'eliminado_por': 'INTEGER',
+        'motivo_eliminacion': 'TEXT',
     }.items():
         ensure_column(cur, 'usuarios_app', col, definition)
+
+    for col, definition in {
+        'eliminado_en': 'TEXT',
+        'eliminado_por': 'INTEGER',
+        'motivo_eliminacion': 'TEXT',
+    }.items():
+        ensure_column(cur, 'fundaciones', col, definition)
+
+    for col, definition in {
+        'fundacion_id': 'INTEGER',
+        'metodo': "TEXT DEFAULT 'EMAIL_LINK'",
+        'solicitado_por': 'INTEGER',
+        'ip': 'TEXT',
+    }.items():
+        ensure_column(cur, 'recuperacion_password', col, definition)
 
     for table in MULTITENANT_TABLES:
         for col, definition in MULTITENANT_COLUMNS.items():
@@ -541,6 +601,22 @@ def invalidate_user_sessions(database_path: str, user_id: int) -> None:
 
 def build_password_reset_url(token: str) -> str:
     base = str(current_app.config.get('PASSWORD_RESET_PUBLIC_URL') or current_app.config.get('PUBLIC_APP_URL') or '').rstrip('/')
+
+    # Un Quick Tunnel se crea después de iniciar Flask. Por eso, en modo túnel
+    # el enlace se resuelve en el momento de la solicitud desde el archivo que
+    # genera el script de Windows, sin almacenar el token en ese archivo.
+    if bool(current_app.config.get('PUBLIC_TUNNEL_MODE', False)):
+        try:
+            project_dir = Path(str(current_app.config.get('PROJECT_DIR') or '')).resolve()
+            link_file = project_dir / 'ENLACE_PUBLICO_TUNEL.txt'
+            if link_file.is_file():
+                content = link_file.read_text(encoding='utf-8', errors='ignore')
+                match = re.search(r'(?im)^Base:\s*(https://[a-z0-9-]+\.trycloudflare\.com)\s*$', content)
+                if match:
+                    base = match.group(1).rstrip('/')
+        except Exception:
+            pass
+
     if not base:
         return ''
     return f"{base}/#restablecer?reset_token={urllib.parse.quote(token)}"

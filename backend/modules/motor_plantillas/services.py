@@ -11,6 +11,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from services.uds_catalog import normalize_unit as catalog_normalize_unit
+
 from openpyxl import load_workbook
 
 from modules.print_master import aplicar_configuracion_impresion_libro, infer_print_format
@@ -353,23 +355,7 @@ def table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
 
 
 def normalize_unit(value: Any) -> str:
-    text = str(value or '').strip().upper()
-    text = unicodedata.normalize('NFKD', text)
-    text = ''.join(ch for ch in text if not unicodedata.combining(ch))
-    text = re.sub(r'\s+', ' ', text)
-    if text.startswith('UCA '):
-        text = text[4:].strip()
-    aliases = {
-        'UNIDAD DEMO 01': 'UNIDAD DEMO 01',
-        'UNIDAD DEMO 21': 'UNIDAD DEMO 21',
-        'UNIDAD DEMO 12': 'UNIDAD DEMO 12',
-        'UNIDAD DEMO 09': 'UNIDAD DEMO 09',
-        'UNIDAD DEMO 18': 'UNIDAD DEMO 18',
-        'UNIDAD DEMO 18': 'UNIDAD DEMO 18',
-        'UNIDAD DEMO 02': 'UNIDAD DEMO 02',
-        'UNIDAD DEMO 03': 'UNIDAD DEMO 03',
-    }
-    return aliases.get(text, text)
+    return catalog_normalize_unit(value, preserve_unknown=True)
 
 
 def get_users_by_unit(database_path: str, unidad: str, limit: int = 20) -> list[dict]:

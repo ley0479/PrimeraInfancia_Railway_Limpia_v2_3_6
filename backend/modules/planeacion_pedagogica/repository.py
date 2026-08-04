@@ -6,6 +6,8 @@ import sqlite3
 from datetime import datetime
 from typing import Any, Iterable
 
+from modules.seguridad.tenant_context import current_tenant_context
+
 from .schema import SCHEMA_SQL, TIPOS_ACTIVIDAD_DEFAULT
 
 
@@ -149,7 +151,8 @@ class PlaneacionRepository:
 
     def _scope(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         ctx = self.context()
-        if ctx.get('rol') == 'SUPERADMIN':
+        tenant_context = current_tenant_context()
+        if tenant_context.role == 'SUPERADMIN' and tenant_context.allow_global:
             return rows
         fid = ctx.get('fundacion_id') or 1
         scoped = []
@@ -160,7 +163,8 @@ class PlaneacionRepository:
 
     def scope_clause(self, alias: str = '') -> tuple[str, list[Any]]:
         ctx = self.context()
-        if ctx.get('rol') == 'SUPERADMIN':
+        tenant_context = current_tenant_context()
+        if tenant_context.role == 'SUPERADMIN' and tenant_context.allow_global:
             return '1=1', []
         field = f'{alias}.fundacion_id' if alias else 'fundacion_id'
         return f'({field} = ? OR {field} IS NULL)', [ctx.get('fundacion_id') or 1]
@@ -251,12 +255,15 @@ class PlaneacionRepository:
         if estado:
             clause += ' AND p.estado=?'
             params.append(estado)
+        fid = int(self.context().get('fundacion_id') or 1)
         return self.fetch_all(
             f"""
             SELECT p.*, c.nombre AS coordinador_nombre, d.nombre AS docente_nombre
             FROM pp_planeaciones p
-            LEFT JOIN gp_coordinadores c ON c.id=p.coordinador_id
-            LEFT JOIN gp_docentes d ON d.id=p.docente_id
+            LEFT JOIN gp_coordinadores c
+              ON c.id=p.coordinador_id AND COALESCE(c.fundacion_id, 1)={fid}
+            LEFT JOIN gp_docentes d
+              ON d.id=p.docente_id AND COALESCE(d.fundacion_id, 1)={fid}
             WHERE {clause} AND p.activo=1
             ORDER BY p.fecha_creacion DESC, p.id DESC
             """,
@@ -265,12 +272,15 @@ class PlaneacionRepository:
 
     def get_planeacion(self, planeacion_id: int) -> dict[str, Any] | None:
         clause, params = self.coordinator_filter_clause('p')
+        fid = int(self.context().get('fundacion_id') or 1)
         row = self.fetch_one(
             f"""
             SELECT p.*, c.nombre AS coordinador_nombre, d.nombre AS docente_nombre
             FROM pp_planeaciones p
-            LEFT JOIN gp_coordinadores c ON c.id=p.coordinador_id
-            LEFT JOIN gp_docentes d ON d.id=p.docente_id
+            LEFT JOIN gp_coordinadores c
+              ON c.id=p.coordinador_id AND COALESCE(c.fundacion_id, 1)={fid}
+            LEFT JOIN gp_docentes d
+              ON d.id=p.docente_id AND COALESCE(d.fundacion_id, 1)={fid}
             WHERE {clause} AND p.id=? AND p.activo=1
             """,
             params + [planeacion_id],

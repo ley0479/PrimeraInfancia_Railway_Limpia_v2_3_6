@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from datetime import datetime
 from flask import Blueprint, jsonify, request, send_from_directory
+from modules.seguridad.tenant_context import tenant_path
 from werkzeug.utils import secure_filename
 
 from .repository import PlaneacionRepository, now_iso
@@ -34,8 +35,8 @@ def safe_filename(prefix: str, filename: str) -> str:
 def register_planeacion_pedagogica(app, database_path: str, upload_folder: str, output_folder: str) -> None:
     repo = PlaneacionRepository(database_path)
     repo.init_schema()
-    module_upload = os.path.join(upload_folder, 'planeacion_pedagogica')
-    module_output = os.path.join(output_folder, 'planeacion_pedagogica')
+    module_upload = tenant_path(upload_folder, 'planeacion_pedagogica')
+    module_output = tenant_path(output_folder, 'planeacion_pedagogica')
     os.makedirs(module_upload, exist_ok=True)
     os.makedirs(module_output, exist_ok=True)
 
@@ -177,7 +178,14 @@ def register_planeacion_pedagogica(app, database_path: str, upload_folder: str, 
         if periodo:
             where += " AND substr(COALESCE(a.fecha_programada,''),1,7)=?"
             params.append(periodo)
-        rows = repo.fetch_all(f"SELECT a.*, p.tema AS planeacion_tema FROM pp_actividades a LEFT JOIN pp_planeaciones p ON p.id=a.planeacion_id WHERE {where} AND a.activo=1 ORDER BY a.fecha_programada, a.id", params)
+        fid = int(repo.context().get('fundacion_id') or 1)
+        rows = repo.fetch_all(
+            f"SELECT a.*, p.tema AS planeacion_tema "
+            f"FROM pp_actividades a "
+            f"LEFT JOIN pp_planeaciones p ON p.id=a.planeacion_id AND COALESCE(p.fundacion_id, 1)={fid} "
+            f"WHERE {where} AND a.activo=1 ORDER BY a.fecha_programada, a.id",
+            params,
+        )
         return jsonify({'actividades': rows}), 200
 
     @bp.route('/actividades/<int:actividad_id>', methods=['PUT', 'PATCH'])
@@ -260,7 +268,14 @@ def register_planeacion_pedagogica(app, database_path: str, upload_folder: str, 
         if planeacion_id:
             where += ' AND d.planeacion_id=?'
             params.append(planeacion_id)
-        rows = repo.fetch_all(f"SELECT d.*, p.tema AS planeacion_tema FROM pp_documentos_generados d LEFT JOIN pp_planeaciones p ON p.id=d.planeacion_id WHERE {where} ORDER BY d.fecha_generacion DESC", params)
+        fid = int(repo.context().get('fundacion_id') or 1)
+        rows = repo.fetch_all(
+            f"SELECT d.*, p.tema AS planeacion_tema "
+            f"FROM pp_documentos_generados d "
+            f"LEFT JOIN pp_planeaciones p ON p.id=d.planeacion_id AND COALESCE(p.fundacion_id, 1)={fid} "
+            f"WHERE {where} ORDER BY d.fecha_generacion DESC",
+            params,
+        )
         return jsonify({'documentos': rows}), 200
 
     @bp.route('/documentos-generados/<int:documento_id>/download', methods=['GET'])

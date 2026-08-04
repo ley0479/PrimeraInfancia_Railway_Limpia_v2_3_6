@@ -10,6 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from modules.seguridad.tenant_context import current_tenant_context
+
 try:
     from pypdf import PdfReader
 except Exception:  # pragma: no cover
@@ -464,6 +466,136 @@ def _ensure_minuta(conn: sqlite3.Connection, codigo: str, nombre: str, fundacion
     return int(cur.lastrowid)
 
 
+def seed_minuta_sanitizada_desde_json(
+    database_path: str,
+    seed_path: str | os.PathLike[str],
+    *,
+    fundacion_id: int = 1,
+    corporacion_id: int = 1,
+) -> dict[str, Any]:
+    """Instala una minuta no personal solo cuando no existen versiones RPP."""
+    init_schema(database_path)
+    path = Path(seed_path)
+    if not path.is_file():
+        return {'created': False, 'reason': 'seed_missing', 'path': str(path)}
+    seed = json.loads(path.read_text(encoding='utf-8'))
+    if not seed.get('sanitizada') or seed.get('contiene_datos_personales') is not False:
+        raise RuntimeError('La semilla RPP no confirma sanitización.')
+    groups = seed.get('grupos') or []
+    if not isinstance(groups, list) or not groups:
+        raise RuntimeError('La semilla RPP no contiene grupos.')
+
+    conn = connect(database_path)
+    try:
+        existing_count = int(conn.execute(
+            'SELECT COUNT(*) FROM rpp_minutas_versiones WHERE fundacion_id=? AND corporacion_id=?',
+            (int(fundacion_id), int(corporacion_id)),
+        ).fetchone()[0])
+        if existing_count:
+            return {'created': False, 'reason': 'existing_versions', 'existing_versions': existing_count}
+
+        codigo = str(seed.get('codigo') or 'F2.G36.PP').strip()
+        nombre = str(seed.get('nombre') or 'Ración Para Preparar Mensual').strip()
+        minuta_id = _ensure_minuta(conn, codigo, nombre, int(fundacion_id), int(corporacion_id))
+        metadata_json = {
+            'seed_id': seed.get('seed_id'),
+            'sanitizada': True,
+            'contiene_datos_personales': False,
+            'fuente': seed.get('fuente'),
+            'grupos': groups,
+        }
+        cur = conn.execute("""
+            INSERT INTO rpp_minutas_versiones
+            (minuta_id, codigo, nombre, version, mes, anio, fecha_elaboracion, estado,
+             archivo_path, archivo_original, fundacion_id, corporacion_id, usuario_carga,
+             observaciones, metadata_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', 'semilla_json_sanitizada', ?, ?, NULL, ?, ?, ?, ?)
+        """, (
+            minuta_id,
+            codigo,
+            nombre,
+            str(seed.get('version') or seed.get('version_semilla') or '1.0'),
+            int(seed.get('mes') or 1),
+            int(seed.get('anio') or datetime.now().year),
+            str(seed.get('fecha_elaboracion') or ''),
+            str(seed.get('estado') or 'borrador').lower(),
+            int(fundacion_id),
+            int(corporacion_id),
+            str(seed.get('observaciones') or ''),
+            json.dumps(metadata_json, ensure_ascii=False),
+            now_iso(),
+            now_iso(),
+        ))
+        version_id = int(cur.lastrowid)
+        product_count = 0
+        for group_order, group in enumerate(groups, start=1):
+            group_code = canonical_group(group.get('grupo_etario') or group.get('nombre_grupo') or '')
+            group_name = str(group.get('nombre_grupo') or group_code).strip()
+            gcur = conn.execute("""
+                INSERT INTO rpp_minutas_grupos
+                (minuta_version_id, grupo_etario, nombre_grupo, orden, activo, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 1, ?, ?)
+            """, (
+                version_id,
+                group_code,
+                group_name,
+                int(group.get('orden') or group_order),
+                now_iso(),
+                now_iso(),
+            ))
+            group_id = int(gcur.lastrowid)
+            for product_order, product in enumerate(group.get('productos') or [], start=1):
+                name = str(product.get('nombre_producto') or '').strip()
+                if not name:
+                    continue
+                conn.execute("""
+                    INSERT INTO rpp_minutas_productos
+                    (grupo_id, componente, nombre_producto, cantidad, unidad_medida, frecuencia,
+                     orden, aplica_bienestarina_cada_dos_meses, activo, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                """, (
+                    group_id,
+                    str(product.get('componente') or ''),
+                    name,
+                    str(product.get('cantidad') or ''),
+                    str(product.get('unidad_medida') or ''),
+                    str(product.get('frecuencia') or 'UNA VEZ AL MES'),
+                    int(product.get('orden') or product_order),
+                    1 if product.get('aplica_bienestarina_cada_dos_meses') else 0,
+                    now_iso(),
+                    now_iso(),
+                ))
+                product_count += 1
+        conn.execute(
+            'INSERT INTO rpp_minutas_auditoria '
+            '(accion, minuta_version_id, usuario_id, detalle_json, created_at) VALUES (?, ?, NULL, ?, ?)',
+            (
+                'INSTALAR_SEMILLA_SANITIZADA',
+                version_id,
+                json.dumps({
+                    'seed_id': seed.get('seed_id'),
+                    'grupos': len(groups),
+                    'productos': product_count,
+                    'sin_datos_personales': True,
+                }, ensure_ascii=False),
+                now_iso(),
+            ),
+        )
+        conn.commit()
+        return {
+            'created': True,
+            'version_id': version_id,
+            'groups': len(groups),
+            'products': product_count,
+            'period': f"{int(seed.get('anio') or 0):04d}-{int(seed.get('mes') or 0):02d}",
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def guardar_minuta_desde_archivo(database_path: str, archivo_path: str, metadata: dict, destino_folder: str | None = None) -> dict:
     init_schema(database_path)
     codigo = metadata.get('codigo') or 'F2.G36.PP'
@@ -522,8 +654,15 @@ def guardar_minuta_desde_archivo(database_path: str, archivo_path: str, metadata
 def listar_minutas(database_path: str, mes: int | None = None, anio: int | None = None) -> list[dict]:
     init_schema(database_path)
     conn = connect(database_path)
-    params = []
-    where = []
+    params: list[Any] = []
+    where: list[str] = []
+    context = current_tenant_context()
+    if context.tenant_id and not context.allow_global:
+        where.extend([
+            'COALESCE(v.fundacion_id, 1)=?',
+            'COALESCE(m.fundacion_id, 1)=?',
+        ])
+        params.extend([int(context.tenant_id), int(context.tenant_id)])
     if mes:
         where.append('v.mes=?')
         params.append(int(mes))
@@ -531,12 +670,35 @@ def listar_minutas(database_path: str, mes: int | None = None, anio: int | None 
         where.append('v.anio=?')
         params.append(int(anio))
     sql_where = 'WHERE ' + ' AND '.join(where) if where else ''
-    rows = conn.execute(f'''SELECT v.*, m.nombre AS nombre_minuta FROM rpp_minutas_versiones v JOIN rpp_minutas m ON m.id=v.minuta_id {sql_where} ORDER BY v.created_at DESC''', params).fetchall()
+    rows = conn.execute(
+        f'''SELECT v.*, m.nombre AS nombre_minuta
+            FROM rpp_minutas_versiones v
+            JOIN rpp_minutas m
+              ON m.id=v.minuta_id
+             AND COALESCE(m.fundacion_id, 1)=COALESCE(v.fundacion_id, 1)
+            {sql_where}
+            ORDER BY v.created_at DESC''',
+        params,
+    ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 
-def obtener_minuta_vigente(database_path: str, mes: int | None = None, anio: int | None = None, fundacion_id: int = 1, corporacion_id: int = 1) -> dict | None:
+def obtener_minuta_vigente(
+    database_path: str,
+    mes: int | None = None,
+    anio: int | None = None,
+    fundacion_id: int = 1,
+    corporacion_id: int = 1,
+    *,
+    permitir_fallback: bool = False,
+) -> dict | None:
+    """Obtiene la minuta vigente aplicable al periodo solicitado.
+
+    Por seguridad operativa, cuando se suministra mes o año no se reutiliza
+    silenciosamente una minuta de otro periodo. El fallback a la última versión
+    solo puede activarse de forma explícita para diagnósticos históricos.
+    """
     init_schema(database_path)
     conn = connect(database_path)
     params = [fundacion_id, corporacion_id]
@@ -547,9 +709,17 @@ def obtener_minuta_vigente(database_path: str, mes: int | None = None, anio: int
     if anio:
         where.append('v.anio=?')
         params.append(int(anio))
-    row = conn.execute(f'''SELECT v.* FROM rpp_minutas_versiones v WHERE {' AND '.join(where)} ORDER BY v.created_at DESC LIMIT 1''', params).fetchone()
-    if not row and (mes or anio):
-        row = conn.execute('''SELECT v.* FROM rpp_minutas_versiones v WHERE v.estado='vigente' AND v.fundacion_id=? AND v.corporacion_id=? ORDER BY v.anio DESC, v.mes DESC, v.created_at DESC LIMIT 1''', [fundacion_id, corporacion_id]).fetchone()
+    row = conn.execute(
+        f'''SELECT v.* FROM rpp_minutas_versiones v WHERE {' AND '.join(where)} ORDER BY v.created_at DESC LIMIT 1''',
+        params,
+    ).fetchone()
+    if not row and (permitir_fallback or not (mes or anio)):
+        row = conn.execute(
+            '''SELECT v.* FROM rpp_minutas_versiones v
+               WHERE v.estado='vigente' AND v.fundacion_id=? AND v.corporacion_id=?
+               ORDER BY v.anio DESC, v.mes DESC, v.created_at DESC LIMIT 1''',
+            [fundacion_id, corporacion_id],
+        ).fetchone()
     if not row:
         conn.close()
         return None

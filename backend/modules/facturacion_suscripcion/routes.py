@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from flask import Blueprint, jsonify, request, send_from_directory
+from modules.seguridad.tenant_context import tenant_path
 
 from .repository import BillingRepository, now_iso
 from .schema import ALL_MODULES, CREDIT_COSTS, METODOS_PAGO, ESTADOS_SUSCRIPCION
@@ -28,7 +29,7 @@ def require_superadmin(repo: BillingRepository):
 
 
 def register_facturacion(app, database_path: str, upload_folder: str) -> None:
-    module_upload = os.path.join(upload_folder, 'facturacion')
+    module_upload = tenant_path(upload_folder, 'facturacion')
     os.makedirs(module_upload, exist_ok=True)
     repo = BillingRepository(database_path)
     service = BillingService(repo, module_upload)
@@ -120,6 +121,8 @@ def register_facturacion(app, database_path: str, upload_folder: str) -> None:
         if request.method == 'GET':
             fundacion_id = request.args.get('fundacion_id', type=int)
             if fundacion_id:
+                if not repo.is_superadmin() and repo.current_fundacion_id() != fundacion_id:
+                    return jsonify({'error': 'No tienes permiso para ver esta suscripción.'}), 403
                 return jsonify({'suscripcion': service.get_subscription(fundacion_id)}), 200
             return jsonify({'suscripciones': service.list_suscripciones()}), 200
         denied = require_superadmin(repo)
@@ -168,10 +171,12 @@ def register_facturacion(app, database_path: str, upload_folder: str) -> None:
     @bp.route('/pagos/<int:pago_id>/comprobante', methods=['GET'])
     def descargar_comprobante(pago_id: int):
         pago = repo.fetch_one('SELECT * FROM pagos_suscripcion WHERE id=?', (pago_id,))
-        if not pago or not pago.get('comprobante_ruta') or not os.path.exists(pago['comprobante_ruta']):
+        if not pago:
             return jsonify({'error': 'Comprobante no encontrado.'}), 404
         if not repo.is_superadmin() and int(pago.get('fundacion_id') or 0) != repo.current_fundacion_id():
             return jsonify({'error': 'No tienes permiso para este comprobante.'}), 403
+        if not pago.get('comprobante_ruta') or not os.path.exists(pago['comprobante_ruta']):
+            return jsonify({'error': 'Comprobante no encontrado.'}), 404
         carpeta = os.path.dirname(pago['comprobante_ruta'])
         nombre = os.path.basename(pago['comprobante_ruta'])
         return send_from_directory(carpeta, nombre, as_attachment=True)

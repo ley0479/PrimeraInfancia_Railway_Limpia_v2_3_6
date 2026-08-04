@@ -13,6 +13,7 @@ from flask import Blueprint, g, jsonify, request, send_file
 from werkzeug.utils import secure_filename
 
 from modules.seguridad.services import require_roles
+from modules.seguridad.tenant_context import tenant_path
 from modules.print_master import print_master_config_public
 
 from .repository import MotorPlantillasRepository
@@ -62,10 +63,22 @@ def register_motor_plantillas(app, database_path: str, templates_folder: str, ou
     init_schema(database_path)
     init_minutas_schema(database_path)
     repo = MotorPlantillasRepository(database_path)
-    motor_folder = Path(templates_folder) / 'motor_plantillas'
-    motor_folder.mkdir(parents=True, exist_ok=True)
-    Path(output_folder).mkdir(parents=True, exist_ok=True)
-    ram_rules_path = Path(templates_folder).resolve().parent / 'config' / 'ram_v3_instrucciones.json'
+    custom_templates = tenant_path(
+        Path(app.config['DATA_DIR']) / 'custom_templates',
+        'motor_plantillas',
+    )
+
+    def motor_folder_path() -> Path:
+        path = Path(os.fspath(custom_templates))
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def output_folder_path() -> Path:
+        path = Path(os.fspath(output_folder))
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    ram_rules_path = Path(__file__).resolve().parents[2] / 'config' / 'ram_v3_instrucciones.json'
     ram_template_path = Path(templates_folder) / 'oficiales' / 'plantilla_ram_oficial_v3.xlsx'
 
     bp = Blueprint('motor_plantillas', __name__, url_prefix='/api/motor-plantillas')
@@ -165,7 +178,7 @@ def register_motor_plantillas(app, database_path: str, templates_folder: str, ou
         version = (request.form.get('version') or '1.0').strip()[:30]
         nombre_original = sanitize_name(file.filename)
         nombre_guardado = f"MP_{tipo}_{datetime.now().strftime('%Y%m%d%H%M%S')}_{nombre_original}"
-        ruta = motor_folder / nombre_guardado
+        ruta = motor_folder_path() / nombre_guardado
         file.save(ruta)
         archivo_hash = sha256_file(ruta)
 
@@ -297,7 +310,7 @@ def register_motor_plantillas(app, database_path: str, templates_folder: str, ou
         limit = max(1, min(50, limit))
         version = repo.get_version_by_template(plantilla_id)
         productos = repo.get_products(version['id']) if version else []
-        result = apply_mapping_to_copy(database_path, plantilla['ruta_archivo'], mapping, unidad, output_folder, limit=limit, tipo_formato=plantilla.get('tipo'), productos=productos)
+        result = apply_mapping_to_copy(database_path, plantilla['ruta_archivo'], mapping, unidad, os.fspath(output_folder_path()), limit=limit, tipo_formato=plantilla.get('tipo'), productos=productos)
         prueba_id = repo.save_test(plantilla_id, active.get('id') if active else None, unidad, result, current_user())
         return jsonify({
             'message': 'Prueba generada correctamente.' if result.get('ok') else 'La prueba no se pudo generar por errores de mapeo.',
@@ -406,7 +419,7 @@ def register_motor_plantillas(app, database_path: str, templates_folder: str, ou
             return jsonify({'error': 'No hay mapeo para probar.'}), 400
         productos = data.get('productos') or repo.get_products(version_id)
         limit = max(1, min(50, int(data.get('limite') or data.get('limit') or 20)))
-        result = apply_mapping_to_copy(database_path, plantilla['ruta_archivo'], mapping, unidad, output_folder, limit=limit, tipo_formato=plantilla.get('tipo'), productos=productos)
+        result = apply_mapping_to_copy(database_path, plantilla['ruta_archivo'], mapping, unidad, os.fspath(output_folder_path()), limit=limit, tipo_formato=plantilla.get('tipo'), productos=productos)
         prueba_id = repo.save_test(int(plantilla['id']), active.get('id') if active else None, unidad, result, current_user())
         return jsonify({'message': 'Prueba versionada generada correctamente.' if result.get('ok') else 'La prueba versionada falló.', 'prueba_id': prueba_id, 'resultado': result, 'download_url': f'/api/motor-plantillas/pruebas/{prueba_id}/descargar' if result.get('ok') else None})
 
@@ -462,7 +475,7 @@ def register_motor_plantillas(app, database_path: str, templates_folder: str, ou
             return jsonify({'error': 'Solo se permiten minutas PDF o Excel.'}), 400
         user = current_user()
         safe = sanitize_name(file.filename)
-        folder = motor_folder / 'minutas_rpp'
+        folder = motor_folder_path() / 'minutas_rpp'
         folder.mkdir(parents=True, exist_ok=True)
         temp_path = folder / f"UPLOAD_MINUTA_{datetime.now().strftime('%Y%m%d%H%M%S')}_{safe}"
         file.save(temp_path)
