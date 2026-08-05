@@ -327,6 +327,53 @@ async function iniciarSesionDesdeToken() {
     }
 }
 
+function crearIdSolicitudLogin() {
+    try {
+        if (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
+            return globalThis.crypto.randomUUID();
+        }
+    } catch (_) {}
+    return `login-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+async function leerRespuestaJsonSegura(response) {
+    const raw = await response.text();
+    if (!raw) return {};
+    try {
+        return JSON.parse(raw);
+    } catch (_) {
+        return {
+            error: response.ok
+                ? 'El servidor respondió en un formato inesperado.'
+                : `El servidor devolvió una respuesta técnica no válida (HTTP ${response.status}).`
+        };
+    }
+}
+
+function mensajeErrorLogin(response, data, requestId) {
+    const code = String(data?.code || '').trim();
+    const traceId = String(data?.trace_id || response.headers.get('X-Trace-Id') || '').trim();
+    const logFile = String(data?.log_file || '').trim();
+
+    if (response.status === 503 && code === 'LOGIN_DATABASE_BUSY') {
+        return data?.error || 'La base local está ocupada. Espera dos segundos e intenta una sola vez.';
+    }
+    if (response.status === 429) {
+        const retry = Number(data?.retry_after || 0);
+        return retry
+            ? `Demasiados intentos. Espera ${retry} segundos antes de volver a intentar.`
+            : (data?.error || 'Demasiados intentos. Intenta nuevamente más tarde.');
+    }
+    if (response.status >= 500) {
+        const parts = [data?.error || 'Error técnico del servidor.'];
+        if (traceId) parts.push(`Código: ${traceId}.`);
+        if (logFile) parts.push(`Registro: ${logFile}.`);
+        else parts.push('Ejecuta DIAGNOSTICAR_LOGIN_TUNEL.bat y revisa data/logs.');
+        return parts.join(' ');
+    }
+    return data?.error || `No se pudo iniciar sesión (HTTP ${response.status}; solicitud ${requestId}).`;
+}
+
 function configurarFormularioLogin() {
     const form = document.getElementById('login-form');
     if (!form || form.dataset.bound === '1') return;
@@ -337,16 +384,25 @@ function configurarFormularioLogin() {
         const password = document.getElementById('login-password')?.value || '';
         const recordar = document.getElementById('login-recordar')?.checked || false;
         const msg = document.getElementById('login-message');
+        const requestId = crearIdSolicitudLogin();
         if (msg) msg.textContent = 'Validando credenciales...';
         try {
             limpiarSesionLocal();
             const resp = await fetchOriginalPrimeraInfancia(`${backendUrl}/api/auth/login`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Client-Request-ID': requestId
+                },
                 body: JSON.stringify({ username, password })
             });
-            const data = await resp.json();
-            if (!resp.ok) throw new Error(data.error || 'No se pudo iniciar sesión');
+            const data = await leerRespuestaJsonSegura(resp);
+            if (!resp.ok) {
+                throw new Error(mensajeErrorLogin(resp, data, requestId));
+            }
+            if (!data.token || !data.usuario) {
+                throw new Error(`El servidor no devolvió una sesión válida. Solicitud: ${requestId}.`);
+            }
             guardarSesion(data.token, data.usuario, recordar);
             if (msg) msg.textContent = '';
             if (data.usuario?.debe_cambiar_password) {
@@ -355,31 +411,85 @@ function configurarFormularioLogin() {
                 location.reload();
             }
         } catch (error) {
-            if (msg) msg.textContent = error.message || 'Error de autenticación';
+            if (msg) {
+                msg.textContent = error?.message || 'No fue posible comunicarse con el servidor. Revisa el túnel y ejecuta el diagnóstico.';
+            }
         }
     });
 }
 
-async function recuperarPassword() {
-    const username = document.getElementById('login-username')?.value.trim();
-    const msg = document.getElementById('login-message');
-    if (!username) {
-        if (msg) msg.textContent = 'Escribe el usuario o correo para generar recuperación.';
-        return;
+let passwordResetToken = '';
+
+function mostrarPanelRestablecimiento({ token = '', mostrarCodigo = false, codigo = '', mensaje = '' } = {}) {
+    passwordResetToken = token || '';
+    mostrarLogin();
+    document.getElementById('login-form')?.classList.add('hidden');
+    document.getElementById('forced-password-panel')?.classList.add('hidden');
+    document.getElementById('password-reset-panel')?.classList.remove('hidden');
+    document.getElementById('reset-code-container')?.classList.toggle('hidden', !mostrarCodigo);
+    const codeInput = document.getElementById('reset-code');
+    if (codeInput) codeInput.value = codigo || '';
+    const codeBox = document.getElementById('local-recovery-code-box');
+    if (codeBox) {
+        codeBox.classList.toggle('hidden', !codigo);
+        codeBox.textContent = codigo
+            ? `Código temporal: ${codigo}. Se muestra una sola vez y vence pronto.`
+            : '';
     }
-    try {
-        const resp = await fetchOriginalPrimeraInfancia(`${backendUrl}/api/auth/recuperar`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username })
-        });
-        const data = await resp.json();
-        if (msg) msg.textContent = data.message || 'Si la cuenta existe, recibirás las instrucciones de recuperación.';
-    } catch (error) {
-        if (msg) msg.textContent = 'No se pudo generar la recuperación.';
-    }
+    const modeMessage = document.getElementById('reset-mode-message');
+    if (modeMessage && mensaje) modeMessage.textContent = mensaje;
+    const resetMessage = document.getElementById('reset-password-message');
+    if (resetMessage) resetMessage.textContent = '';
 }
 
+async function recuperarPassword() {
+    const identifier = document.getElementById('login-username')?.value.trim();
+    const msg = document.getElementById('login-message');
+    if (!identifier) {
+        if (msg) msg.textContent = 'Escribe el usuario o correo para iniciar la recuperación.';
+        return;
+    }
+    if (msg) msg.textContent = 'Generando instrucciones seguras...';
+    try {
+        const response = await fetchOriginalPrimeraInfancia(`${backendUrl}/api/auth/recuperar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: identifier })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            const retry = Number(data.retry_after || 0);
+            throw new Error(retry
+                ? `Demasiados intentos. Espera ${retry} segundos antes de volver a solicitar recuperación.`
+                : (data.error || 'No se pudo iniciar la recuperación.'));
+        }
+        if (data.delivery === 'local_code' && data.local_recovery_code) {
+            mostrarPanelRestablecimiento({
+                token: data.local_recovery_code,
+                mostrarCodigo: true,
+                codigo: data.local_recovery_code,
+                mensaje: 'Modo local: usa el código temporal mostrado. Esta alternativa se desactiva cuando el túnel público está activo.'
+            });
+            return;
+        }
+        if (data.delivery === 'development_token' && data.development_reset_token) {
+            mostrarPanelRestablecimiento({
+                token: data.development_reset_token,
+                mostrarCodigo: true,
+                codigo: data.development_reset_token,
+                mensaje: 'Modo de desarrollo: token temporal de un solo uso.'
+            });
+            return;
+        }
+        if (msg) {
+            msg.textContent = data.delivery === 'email'
+                ? 'Revisa tu correo. El enlace es de un solo uso y vence pronto.'
+                : (data.message || 'Si la cuenta existe, recibirás instrucciones de recuperación.');
+        }
+    } catch (error) {
+        if (msg) msg.textContent = error.message || 'No se pudo generar la recuperación. Revisa la conexión e inténtalo de nuevo.';
+    }
+}
 
 function mostrarCambioPasswordObligatorio() {
     mostrarLogin();
@@ -387,8 +497,6 @@ function mostrarCambioPasswordObligatorio() {
     document.getElementById('password-reset-panel')?.classList.add('hidden');
     document.getElementById('forced-password-panel')?.classList.remove('hidden');
 }
-
-let passwordResetToken = '';
 
 function leerTokenRestablecimiento() {
     const queryToken = new URLSearchParams(window.location.search).get('reset_token') || '';
@@ -399,37 +507,56 @@ function leerTokenRestablecimiento() {
 }
 
 function prepararRestablecimientoDesdeUrl() {
-    passwordResetToken = leerTokenRestablecimiento();
-    if (!passwordResetToken) return false;
-    // El fragmento no se envía al servidor. Además se retira de la barra de
-    // direcciones para reducir exposición por capturas, historial o copiado.
+    const token = leerTokenRestablecimiento();
+    if (!token) return false;
+    // El fragmento no se envía al servidor y se retira de la barra de direcciones.
     history.replaceState(null, '', `${window.location.pathname}#restablecer`);
-    mostrarLogin();
-    document.getElementById('login-form')?.classList.add('hidden');
-    document.getElementById('forced-password-panel')?.classList.add('hidden');
-    document.getElementById('password-reset-panel')?.classList.remove('hidden');
+    mostrarPanelRestablecimiento({
+        token,
+        mostrarCodigo: false,
+        mensaje: 'El enlace es de un solo uso. Crea una contraseña nueva antes de que expire.'
+    });
     return true;
 }
 
+function volverAlLoginDesdeRecuperacion() {
+    passwordResetToken = '';
+    history.replaceState(null, '', `${window.location.pathname}#login`);
+    document.getElementById('password-reset-panel')?.classList.add('hidden');
+    document.getElementById('forced-password-panel')?.classList.add('hidden');
+    document.getElementById('login-form')?.classList.remove('hidden');
+    const codeInput = document.getElementById('reset-code');
+    if (codeInput) codeInput.value = '';
+    const resetPassword = document.getElementById('reset-password');
+    const resetConfirm = document.getElementById('reset-password-confirm');
+    if (resetPassword) resetPassword.value = '';
+    if (resetConfirm) resetConfirm.value = '';
+}
+
 async function restablecerPasswordDesdeEnlace() {
-    const token = passwordResetToken;
+    const typedCode = document.getElementById('reset-code')?.value.trim() || '';
+    const token = typedCode || passwordResetToken;
     const password = document.getElementById('reset-password')?.value || '';
-    const confirm = document.getElementById('reset-password-confirm')?.value || '';
+    const confirmPassword = document.getElementById('reset-password-confirm')?.value || '';
     const msg = document.getElementById('reset-password-message');
-    if (!token) { if (msg) msg.textContent = 'El enlace no contiene un token válido.'; return; }
-    if (password !== confirm) { if (msg) msg.textContent = 'Las contraseñas no coinciden.'; return; }
+    if (!token) { if (msg) msg.textContent = 'Escribe el código o abre nuevamente el enlace de recuperación.'; return; }
+    if (!password) { if (msg) msg.textContent = 'Escribe una contraseña nueva.'; return; }
+    if (password !== confirmPassword) { if (msg) msg.textContent = 'Las contraseñas no coinciden.'; return; }
+    if (msg) msg.textContent = 'Validando recuperación...';
     try {
         const response = await fetchOriginalPrimeraInfancia(`${backendUrl}/api/auth/restablecer`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ token, password })
         });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'No se pudo cambiar la contraseña.');
-        passwordResetToken = '';
-        history.replaceState(null, '', `${window.location.pathname}#login`);
-        document.getElementById('password-reset-panel')?.classList.add('hidden');
-        document.getElementById('login-form')?.classList.remove('hidden');
-        if (msg) msg.textContent = '';
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            const retry = Number(data.retry_after || 0);
+            throw new Error(retry
+                ? `Demasiados intentos. Espera ${retry} segundos.`
+                : (data.error || 'No se pudo cambiar la contraseña.'));
+        }
+        volverAlLoginDesdeRecuperacion();
         const loginMsg = document.getElementById('login-message');
         if (loginMsg) loginMsg.textContent = data.message || 'Contraseña actualizada. Inicia sesión.';
     } catch (error) {
@@ -462,6 +589,7 @@ async function cambiarPasswordObligatorio() {
 }
 
 window.restablecerPasswordDesdeEnlace = restablecerPasswordDesdeEnlace;
+window.volverAlLoginDesdeRecuperacion = volverAlLoginDesdeRecuperacion;
 window.cambiarPasswordObligatorio = cambiarPasswordObligatorio;
 
 async function cerrarSesion() {
@@ -1389,6 +1517,115 @@ function unidadesSeleccionadasDesdeDOM() {
         .filter(Boolean);
     return Array.from(new Set([...Array.from(estadoSeleccionCuentame.seleccionadas || []), ...marcadas]));
 }
+
+function _badgeDiagnosticoFormato(nombre, listo, version) {
+    const clases = listo
+        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+        : 'border-rose-500/30 bg-rose-500/10 text-rose-200';
+    const estado = listo ? 'Listo' : 'Pendiente';
+    const versionTexto = version ? ` · V${escaparHtml(version)}` : '';
+    return `<span class="inline-flex items-center rounded-full border px-2.5 py-1 text-xs ${clases}">${escaparHtml(nombre)}: ${estado}${versionTexto}</span>`;
+}
+
+function _renderDiagnosticoFormatoUnidad(data) {
+    const unidad = data?.unidad || {};
+    const plantillas = data?.plantillas || {};
+    const preparado = data?.preparado || {};
+    const razones = Array.isArray(data?.razones) ? data.razones : [];
+    const participantes = Number(data?.participantes?.total || 0);
+    const minuta = data?.rppMinuta || {};
+    const storage = data?.storage || {};
+    const volumenOk = Boolean(storage.databaseInsideDataDir && storage.persistentVolumeDeclared);
+    const razonesHtml = razones.length
+        ? `<ul class="mt-3 space-y-1 text-xs text-amber-200">${razones.map((razon) => `<li>• ${escaparHtml(razon)}</li>`).join('')}</ul>`
+        : '<p class="mt-3 text-xs text-emerald-300">No se detectaron bloqueos previos para esta UDS y periodo.</p>';
+
+    return `
+        <article class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+            <div class="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                    <h4 class="font-semibold text-slate-100">${escaparHtml(unidad.normalizada || unidad.solicitada || 'UDS sin nombre')}</h4>
+                    <p class="mt-1 text-xs text-slate-400">${participantes} participante(s) encontrado(s) · Catálogo UDS: ${unidad.conocida ? 'coincide' : 'sin coincidencia'}</p>
+                </div>
+                <span class="inline-flex w-fit rounded-full border px-2.5 py-1 text-xs ${volumenOk ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200' : 'border-amber-500/30 bg-amber-500/10 text-amber-200'}">
+                    Volumen /data: ${volumenOk ? 'configurado' : 'por comprobar'}
+                </span>
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2">
+                ${_badgeDiagnosticoFormato('RPP', preparado.rpp, plantillas.rpp?.version)}
+                ${_badgeDiagnosticoFormato('Bienestarina', preparado.bienestarina, plantillas.bienestarina?.version)}
+                ${_badgeDiagnosticoFormato('RAM', preparado.ram, plantillas.ram?.version)}
+            </div>
+            <p class="mt-3 text-xs text-slate-400">Minuta RPP: ${minuta.disponible ? `${escaparHtml(minuta.codigo || 'configurada')} · ${Number(minuta.grupos || 0)} grupo(s) · ${Number(minuta.productos || 0)} producto(s)` : 'no disponible'}.</p>
+            ${razonesHtml}
+        </article>`;
+}
+
+async function diagnosticarFormatosSeleccionados() {
+    const destino = document.getElementById('formatos-preflight-result');
+    if (!destino) return;
+
+    const seleccionadas = unidadesSeleccionadasDesdeDOM();
+    const filtroUnidad = String(document.getElementById('filtro-unidad')?.value || '').trim();
+    const unidadesDetectadas = Array.isArray(estadoSeleccionCuentame.unidades)
+        ? estadoSeleccionCuentame.unidades.map((item) => String(item?.nombre || '').trim()).filter(Boolean)
+        : [];
+    const unidades = Array.from(new Set(
+        seleccionadas.length ? seleccionadas : (filtroUnidad ? [filtroUnidad] : unidadesDetectadas.slice(0, 1))
+    )).slice(0, 12);
+
+    destino.classList.remove('hidden');
+    if (!unidades.length) {
+        destino.innerHTML = '<p class="text-sm text-amber-200">Primero analiza una base o selecciona una UDS para ejecutar el diagnóstico previo.</p>';
+        return;
+    }
+
+    const token = authToken();
+    if (!token) {
+        destino.innerHTML = '<p class="text-sm text-rose-200">La sesión no está activa. Inicia sesión nuevamente.</p>';
+        return;
+    }
+
+    const periodo = periodoFormatosSeleccionado();
+    destino.innerHTML = `<div class="flex items-center gap-2 text-sm text-cyan-200"><span class="h-4 w-4 animate-spin rounded-full border-2 border-cyan-300 border-t-transparent"></span> Revisando ${unidades.length} UDS para ${String(periodo.mes).padStart(2, '0')}/${periodo.anio}...</div>`;
+
+    try {
+        const resultados = [];
+        for (const unidad of unidades) {
+            const query = new URLSearchParams({
+                unidad,
+                mes: String(periodo.mes),
+                anio: String(periodo.anio),
+            });
+            const respuesta = await fetch(`${backendUrl}/api/formatos/diagnostico?${query.toString()}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Auth-Token': token,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            resultados.push(await manejarRespuestaJson(respuesta));
+        }
+
+        const truncado = seleccionadas.length > unidades.length
+            ? `<p class="mt-3 text-xs text-amber-200">Se mostraron las primeras ${unidades.length} UDS seleccionadas para evitar una consulta demasiado pesada.</p>`
+            : '';
+        destino.innerHTML = `
+            <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h3 class="text-sm font-semibold text-cyan-100">Diagnóstico previo de formatos</h3>
+                    <p class="text-xs text-slate-400">No muestra nombres ni documentos; solo disponibilidad, conteos y causas de bloqueo.</p>
+                </div>
+                <span class="text-xs text-slate-500">Periodo ${String(periodo.mes).padStart(2, '0')}/${periodo.anio}</span>
+            </div>
+            <div class="mt-4 grid gap-3">${resultados.map(_renderDiagnosticoFormatoUnidad).join('')}</div>
+            ${truncado}`;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    } catch (error) {
+        destino.innerHTML = `<p class="text-sm text-rose-200">No fue posible completar el diagnóstico: ${escaparHtml(error?.message || error)}</p>`;
+    }
+}
+window.diagnosticarFormatosSeleccionados = diagnosticarFormatosSeleccionados;
 
 function toggleUnidadSeleccionada(input) {
     const unidad = String(input?.value || input?.dataset?.unidad || '').trim();
@@ -2705,14 +2942,51 @@ function generarRelacionMes() {
 }
 
 
+const adminState = {
+    fundaciones: [],
+    usuarios: [],
+    roles: [],
+    editandoFundacionId: null,
+    editandoUsuarioId: null,
+};
+
+function adminEsSuperadmin() {
+    return String((usuarioActual || authUser() || {}).rol || '').toUpperCase() === 'SUPERADMIN';
+}
+
+function adminValor(id, value) {
+    const element = document.getElementById(id);
+    if (!element) return;
+    if (element.type === 'checkbox') element.checked = Boolean(value);
+    else element.value = value == null ? '' : String(value);
+}
+
+function adminObtener(id) {
+    const element = document.getElementById(id);
+    if (!element) return '';
+    return element.type === 'checkbox' ? element.checked : element.value;
+}
+
+function adminResumenDependencias(data) {
+    const dependencies = data?.dependencias || {};
+    const details = Array.isArray(dependencies.detalle) ? dependencies.detalle.slice(0, 6) : [];
+    const detailText = details.map(item => `${item.tabla}: ${item.registros}`).join('\n');
+    return `Registros relacionados detectados: ${Number(dependencies.total || 0)}${detailText ? `\n\nPrincipales:\n${detailText}` : ''}`;
+}
+
 async function cargarAdministracion() {
     try {
-        const [fundResp, userResp] = await Promise.all([
+        const [foundationResponse, userResponse] = await Promise.all([
             fetch(`${backendUrl}/api/fundaciones`).then(manejarRespuestaJson),
             fetch(`${backendUrl}/api/usuarios`).then(manejarRespuestaJson)
         ]);
-        renderFundaciones(fundResp.fundaciones || []);
-        renderUsuarios(userResp.usuarios || [], fundResp.fundaciones || [], userResp.roles || []);
+        adminState.fundaciones = foundationResponse.fundaciones || [];
+        adminState.usuarios = userResponse.usuarios || [];
+        adminState.roles = userResponse.roles || [];
+        const foundationPanel = document.getElementById('fundacion-form-panel');
+        foundationPanel?.classList.toggle('hidden', !adminEsSuperadmin());
+        renderFundaciones(adminState.fundaciones);
+        renderUsuarios(adminState.usuarios, adminState.fundaciones, adminState.roles);
     } catch (error) {
         mostrarMensaje('admin-message', error.message || 'No se pudo cargar administración.', 'error');
     }
@@ -2722,98 +2996,357 @@ function renderFundaciones(fundaciones) {
     const tbody = document.getElementById('fundaciones-list');
     const select = document.getElementById('usuario-fundacion');
     if (select) {
-        select.innerHTML = fundaciones.map(f => `<option value="${f.id}">${escaparHtml(f.nombre)}</option>`).join('');
+        const active = fundaciones.filter(item => String(item.estado || '').toUpperCase() === 'ACTIVA');
+        const options = active.length ? active : fundaciones;
+        select.innerHTML = options.map(item => `<option value="${item.id}">${escaparHtml(item.nombre)}</option>`).join('');
+        select.disabled = !adminEsSuperadmin();
     }
     if (!tbody) return;
-    tbody.innerHTML = fundaciones.length ? fundaciones.map(f => `
-        <tr class="border-b border-slate-800">
-            <td class="px-3 py-2 font-medium text-slate-200">${escaparHtml(f.nombre)}</td>
-            <td class="px-3 py-2">${escaparHtml(f.nit || '')}</td>
-            <td class="px-3 py-2">${escaparHtml(f.plan || '')}</td>
-            <td class="px-3 py-2">${escaparHtml(f.estado || '')}</td>
-            <td class="px-3 py-2">${escaparHtml(f.fecha_vencimiento || '')}</td>
-            <td class="px-3 py-2 space-x-2">
-                <button onclick="cambiarEstadoFundacion(${f.id}, 'ACTIVA')" class="text-emerald-300 text-xs">Activar</button>
-                <button onclick="cambiarEstadoFundacion(${f.id}, 'SUSPENDIDA')" class="text-rose-300 text-xs">Suspender</button>
-            </td>
-        </tr>`).join('') : '<tr><td colspan="6" class="px-3 py-6 text-center text-slate-500">Sin fundaciones.</td></tr>';
+    tbody.innerHTML = fundaciones.length ? fundaciones.map(foundation => {
+        const state = String(foundation.estado || 'ACTIVA').toUpperCase();
+        const deleted = state === 'ELIMINADA';
+        const currentTenant = Number((usuarioActual || authUser() || {}).fundacion_id || 0) === Number(foundation.id);
+        const actions = adminEsSuperadmin() ? [
+            !deleted ? `<button onclick="editarFundacion(${foundation.id})" class="text-cyan-300 text-xs hover:underline">Editar</button>` : '',
+            state === 'ACTIVA'
+                ? `<button ${currentTenant ? 'disabled title="No puedes suspender tu fundación actual" class="text-slate-600 text-xs cursor-not-allowed"' : `onclick="cambiarEstadoFundacion(${foundation.id}, 'SUSPENDIDA')" class="text-amber-300 text-xs hover:underline"`}>Suspender</button>`
+                : `<button onclick="cambiarEstadoFundacion(${foundation.id}, 'ACTIVA')" class="text-emerald-300 text-xs hover:underline">${deleted ? 'Restaurar' : 'Activar'}</button>`,
+            !deleted && !currentTenant
+                ? `<button onclick="eliminarFundacion(${foundation.id})" class="text-rose-300 text-xs hover:underline">Eliminar</button>`
+                : '',
+        ].filter(Boolean).join(' ') : '<span class="text-slate-600">Solo lectura</span>';
+        return `
+            <tr class="border-b border-slate-800 ${deleted ? 'opacity-60' : ''}">
+                <td class="px-3 py-2 font-medium text-slate-200">${escaparHtml(foundation.nombre)}</td>
+                <td class="px-3 py-2">${escaparHtml(foundation.nit || '')}</td>
+                <td class="px-3 py-2">${escaparHtml(foundation.plan || '')}</td>
+                <td class="px-3 py-2">${escaparHtml(state)}</td>
+                <td class="px-3 py-2">${escaparHtml(foundation.fecha_vencimiento || '')}</td>
+                <td class="px-3 py-2 space-x-2 whitespace-nowrap">${actions}</td>
+            </tr>`;
+    }).join('') : '<tr><td colspan="6" class="px-3 py-6 text-center text-slate-500">Sin fundaciones.</td></tr>';
 }
 
-function renderUsuarios(usuarios, fundaciones, roles) {
+function renderUsuarios(users, foundations, roles) {
     const tbody = document.getElementById('usuarios-list');
-    const rolSelect = document.getElementById('usuario-rol');
-    if (rolSelect) rolSelect.innerHTML = roles.map(r => `<option value="${r}">${r}</option>`).join('');
+    const roleSelect = document.getElementById('usuario-rol');
+    if (roleSelect) {
+        const allowedRoles = adminEsSuperadmin() ? roles : roles.filter(role => role !== 'SUPERADMIN');
+        roleSelect.innerHTML = allowedRoles.map(role => `<option value="${role}">${role}</option>`).join('');
+    }
     if (!tbody) return;
-    tbody.innerHTML = usuarios.length ? usuarios.map(u => `
-        <tr class="border-b border-slate-800">
-            <td class="px-3 py-2 font-medium text-slate-200">${escaparHtml(u.username)}</td>
-            <td class="px-3 py-2">${escaparHtml(u.email)}</td>
-            <td class="px-3 py-2">${escaparHtml(u.rol)}</td>
-            <td class="px-3 py-2">${escaparHtml(u.fundacion_nombre || '')}</td>
-            <td class="px-3 py-2">${escaparHtml(u.estado || (u.activo ? 'ACTIVO' : 'INACTIVO'))}</td>
-            <td class="px-3 py-2">
-                <button onclick="desactivarUsuario(${u.id})" class="text-rose-300 text-xs">Desactivar</button>
-            </td>
-        </tr>`).join('') : '<tr><td colspan="6" class="px-3 py-6 text-center text-slate-500">Sin usuarios.</td></tr>';
+    const currentUserId = Number((usuarioActual || authUser() || {}).id || 0);
+    tbody.innerHTML = users.length ? users.map(user => {
+        const state = String(user.estado || (user.activo ? 'ACTIVO' : 'INACTIVO')).toUpperCase();
+        const active = Number(user.activo || 0) === 1 && state === 'ACTIVO';
+        const deleted = state === 'ELIMINADO';
+        const self = Number(user.id) === currentUserId;
+        const actions = [
+            `<button onclick="editarUsuario(${user.id})" class="text-cyan-300 text-xs hover:underline">Editar</button>`,
+            !self && !deleted
+                ? (active
+                    ? `<button onclick="cambiarEstadoUsuario(${user.id}, false)" class="text-amber-300 text-xs hover:underline">Desactivar</button>`
+                    : `<button onclick="cambiarEstadoUsuario(${user.id}, true)" class="text-emerald-300 text-xs hover:underline">Activar</button>`)
+                : (deleted ? `<button onclick="cambiarEstadoUsuario(${user.id}, true)" class="text-emerald-300 text-xs hover:underline">Restaurar</button>` : ''),
+            !self && !deleted
+                ? `<button onclick="restablecerPasswordUsuario(${user.id})" class="text-violet-300 text-xs hover:underline">Restablecer clave</button>`
+                : '',
+            !self && !deleted
+                ? `<button onclick="eliminarUsuario(${user.id})" class="text-rose-300 text-xs hover:underline">Eliminar</button>`
+                : '',
+        ].filter(Boolean).join(' ');
+        return `
+            <tr class="border-b border-slate-800 ${deleted ? 'opacity-60' : ''}">
+                <td class="px-3 py-2 font-medium text-slate-200">${escaparHtml(user.username)}</td>
+                <td class="px-3 py-2">${escaparHtml(user.email)}</td>
+                <td class="px-3 py-2">${escaparHtml(user.rol)}</td>
+                <td class="px-3 py-2">${escaparHtml(user.fundacion_nombre || '')}</td>
+                <td class="px-3 py-2">${escaparHtml(state)}${user.debe_cambiar_password ? ' · CAMBIO PENDIENTE' : ''}</td>
+                <td class="px-3 py-2 space-x-2 whitespace-nowrap">${actions}</td>
+            </tr>`;
+    }).join('') : '<tr><td colspan="6" class="px-3 py-6 text-center text-slate-500">Sin usuarios.</td></tr>';
 }
 
-async function crearFundacion() {
+function limpiarFormularioFundacion() {
+    adminState.editandoFundacionId = null;
+    ['fundacion-nombre', 'fundacion-nit', 'fundacion-representante', 'fundacion-email', 'fundacion-telefono',
+     'fundacion-vencimiento', 'fundacion-direccion', 'fundacion-municipio', 'fundacion-departamento',
+     'fundacion-observaciones'].forEach(id => adminValor(id, ''));
+    adminValor('fundacion-plan', 'PRUEBA');
+    const title = document.getElementById('fundacion-form-title');
+    const button = document.getElementById('fundacion-save-button');
+    if (title) title.textContent = 'Crear fundación';
+    if (button) button.textContent = 'Guardar fundación';
+    document.getElementById('fundacion-cancel-button')?.classList.add('hidden');
+}
+
+function cancelarEdicionFundacion() {
+    limpiarFormularioFundacion();
+}
+
+function editarFundacion(id) {
+    const foundation = adminState.fundaciones.find(item => Number(item.id) === Number(id));
+    if (!foundation) return;
+    adminState.editandoFundacionId = Number(id);
+    adminValor('fundacion-nombre', foundation.nombre);
+    adminValor('fundacion-nit', foundation.nit);
+    adminValor('fundacion-representante', foundation.representante);
+    adminValor('fundacion-email', foundation.email);
+    adminValor('fundacion-telefono', foundation.telefono);
+    adminValor('fundacion-plan', foundation.plan || 'PRUEBA');
+    adminValor('fundacion-vencimiento', foundation.fecha_vencimiento);
+    adminValor('fundacion-direccion', foundation.direccion);
+    adminValor('fundacion-municipio', foundation.municipio);
+    adminValor('fundacion-departamento', foundation.departamento);
+    adminValor('fundacion-observaciones', foundation.observaciones);
+    const title = document.getElementById('fundacion-form-title');
+    const button = document.getElementById('fundacion-save-button');
+    if (title) title.textContent = `Editar fundación: ${foundation.nombre}`;
+    if (button) button.textContent = 'Guardar cambios';
+    document.getElementById('fundacion-cancel-button')?.classList.remove('hidden');
+    document.getElementById('fundacion-form-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function guardarFundacion() {
     const data = {
-        nombre: document.getElementById('fundacion-nombre')?.value.trim(),
-        nit: document.getElementById('fundacion-nit')?.value.trim(),
-        representante: document.getElementById('fundacion-representante')?.value.trim(),
-        email: document.getElementById('fundacion-email')?.value.trim(),
-        telefono: document.getElementById('fundacion-telefono')?.value.trim(),
-        plan: document.getElementById('fundacion-plan')?.value,
-        fecha_vencimiento: document.getElementById('fundacion-vencimiento')?.value,
+        nombre: String(adminObtener('fundacion-nombre') || '').trim(),
+        nit: String(adminObtener('fundacion-nit') || '').trim(),
+        representante: String(adminObtener('fundacion-representante') || '').trim(),
+        email: String(adminObtener('fundacion-email') || '').trim(),
+        telefono: String(adminObtener('fundacion-telefono') || '').trim(),
+        plan: adminObtener('fundacion-plan'),
+        fecha_vencimiento: adminObtener('fundacion-vencimiento') || null,
+        direccion: String(adminObtener('fundacion-direccion') || '').trim(),
+        municipio: String(adminObtener('fundacion-municipio') || '').trim(),
+        departamento: String(adminObtener('fundacion-departamento') || '').trim(),
+        observaciones: String(adminObtener('fundacion-observaciones') || '').trim(),
         estado: 'ACTIVA'
     };
+    if (!data.nombre) {
+        mostrarMensaje('admin-message', 'Escribe el nombre de la fundación.', 'error');
+        return;
+    }
+    const editingId = adminState.editandoFundacionId;
+    if (editingId) {
+        const current = adminState.fundaciones.find(item => Number(item.id) === Number(editingId));
+        data.estado = current?.estado || 'ACTIVA';
+        data.fecha_inicio = current?.fecha_inicio || null;
+    }
     try {
-        const resp = await fetch(`${backendUrl}/api/fundaciones`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-        const json = await manejarRespuestaJson(resp);
-        mostrarMensaje('admin-message', json.message || 'Fundación creada.', 'success');
-        cargarAdministracion();
+        const response = await fetch(editingId ? `${backendUrl}/api/fundaciones/${editingId}` : `${backendUrl}/api/fundaciones`, {
+            method: editingId ? 'PUT' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const json = await manejarRespuestaJson(response);
+        mostrarMensaje('admin-message', json.message || 'Fundación guardada.', 'success');
+        limpiarFormularioFundacion();
+        await cargarAdministracion();
     } catch (error) {
-        mostrarMensaje('admin-message', error.message || 'No se pudo crear fundación.', 'error');
+        mostrarMensaje('admin-message', error.message || 'No se pudo guardar la fundación.', 'error');
     }
 }
 
-async function cambiarEstadoFundacion(id, estado) {
+async function crearFundacion() { return guardarFundacion(); }
+
+async function cambiarEstadoFundacion(id, state) {
+    const action = state === 'ACTIVA' ? 'activar' : 'suspender';
+    if (!confirm(`¿Confirmas ${action} esta fundación?`)) return;
     try {
-        const resp = await fetch(`${backendUrl}/api/fundaciones/${id}?estado=${encodeURIComponent(estado)}`, { method: 'DELETE' });
-        const json = await manejarRespuestaJson(resp);
+        const response = await fetch(`${backendUrl}/api/fundaciones/${id}?estado=${encodeURIComponent(state)}`, { method: 'DELETE' });
+        const json = await manejarRespuestaJson(response);
         mostrarMensaje('admin-message', json.message || 'Estado actualizado.', 'success');
-        cargarAdministracion();
-    } catch (error) { mostrarMensaje('admin-message', error.message || 'No se pudo cambiar estado.', 'error'); }
-}
-
-async function crearUsuario() {
-    const data = {
-        username: document.getElementById('usuario-username')?.value.trim(),
-        email: document.getElementById('usuario-email')?.value.trim(),
-        password: document.getElementById('usuario-password')?.value,
-        rol: document.getElementById('usuario-rol')?.value,
-        fundacion_id: Number(document.getElementById('usuario-fundacion')?.value || 0),
-        nombre_completo: document.getElementById('usuario-nombre')?.value.trim(),
-        telefono: document.getElementById('usuario-telefono')?.value.trim()
-    };
-    try {
-        const resp = await fetch(`${backendUrl}/api/usuarios`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-        const json = await manejarRespuestaJson(resp);
-        mostrarMensaje('admin-message', json.message || 'Usuario creado.', 'success');
-        cargarAdministracion();
+        await cargarAdministracion();
     } catch (error) {
-        mostrarMensaje('admin-message', error.message || 'No se pudo crear usuario.', 'error');
+        mostrarMensaje('admin-message', error.message || 'No se pudo cambiar el estado.', 'error');
     }
 }
 
-async function desactivarUsuario(id) {
+async function eliminarFundacion(id) {
     try {
-        const resp = await fetch(`${backendUrl}/api/usuarios/${id}`, { method: 'DELETE' });
-        const json = await manejarRespuestaJson(resp);
-        mostrarMensaje('admin-message', json.message || 'Usuario desactivado.', 'success');
-        cargarAdministracion();
-    } catch (error) { mostrarMensaje('admin-message', error.message || 'No se pudo desactivar usuario.', 'error'); }
+        const dependencyData = await fetch(`${backendUrl}/api/fundaciones/${id}/dependencias`).then(manejarRespuestaJson);
+        const foundation = dependencyData.fundacion || {};
+        const confirmation = `${adminResumenDependencias(dependencyData)}\n\nLa eliminación será lógica: conservará la información para auditoría, cerrará sesiones y bloqueará la fundación.\n\n¿Eliminar ${foundation.nombre || 'esta fundación'}?`;
+        if (!confirm(confirmation)) return;
+        const response = await fetch(`${backendUrl}/api/fundaciones/${id}?accion=eliminar`, { method: 'DELETE' });
+        const json = await manejarRespuestaJson(response);
+        mostrarMensaje('admin-message', json.message || 'Fundación eliminada.', 'success');
+        await cargarAdministracion();
+    } catch (error) {
+        mostrarMensaje('admin-message', error.message || 'No se pudo eliminar la fundación.', 'error');
+    }
+}
+
+function limpiarFormularioUsuario() {
+    adminState.editandoUsuarioId = null;
+    ['usuario-nombre', 'usuario-telefono', 'usuario-username', 'usuario-email', 'usuario-password'].forEach(id => adminValor(id, ''));
+    adminValor('usuario-forzar-cambio', false);
+    const title = document.getElementById('usuario-form-title');
+    const button = document.getElementById('usuario-save-button');
+    if (title) title.textContent = 'Crear usuario';
+    if (button) button.textContent = 'Guardar usuario';
+    document.getElementById('usuario-cancel-button')?.classList.add('hidden');
+}
+
+function cancelarEdicionUsuario() {
+    limpiarFormularioUsuario();
+}
+
+function editarUsuario(id) {
+    const user = adminState.usuarios.find(item => Number(item.id) === Number(id));
+    if (!user) return;
+    adminState.editandoUsuarioId = Number(id);
+    adminValor('usuario-fundacion', user.fundacion_id);
+    adminValor('usuario-rol', user.rol);
+    adminValor('usuario-nombre', user.nombre_completo);
+    adminValor('usuario-telefono', user.telefono);
+    adminValor('usuario-username', user.username);
+    adminValor('usuario-email', user.email);
+    adminValor('usuario-password', '');
+    adminValor('usuario-forzar-cambio', Boolean(user.debe_cambiar_password));
+    const title = document.getElementById('usuario-form-title');
+    const button = document.getElementById('usuario-save-button');
+    if (title) title.textContent = `Editar usuario: ${user.username}`;
+    if (button) button.textContent = 'Guardar cambios';
+    document.getElementById('usuario-cancel-button')?.classList.remove('hidden');
+    document.getElementById('usuario-form-title')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function guardarUsuario() {
+    const editingId = adminState.editandoUsuarioId;
+    const current = adminState.usuarios.find(item => Number(item.id) === Number(editingId));
+    const password = String(adminObtener('usuario-password') || '');
+    const data = {
+        username: String(adminObtener('usuario-username') || '').trim(),
+        email: String(adminObtener('usuario-email') || '').trim(),
+        rol: adminObtener('usuario-rol'),
+        fundacion_id: Number(adminObtener('usuario-fundacion') || 0),
+        nombre_completo: String(adminObtener('usuario-nombre') || '').trim(),
+        telefono: String(adminObtener('usuario-telefono') || '').trim(),
+        debe_cambiar_password: Boolean(adminObtener('usuario-forzar-cambio')),
+    };
+    if (!editingId || password) data.password = password;
+    if (editingId) {
+        data.activo = Number(current?.activo || 0);
+        data.estado = current?.estado || (data.activo ? 'ACTIVO' : 'INACTIVO');
+    }
+    if (!data.username || !data.email || (!editingId && !password)) {
+        mostrarMensaje('admin-message', 'Usuario, correo y contraseña inicial son obligatorios.', 'error');
+        return;
+    }
+    try {
+        const response = await fetch(editingId ? `${backendUrl}/api/usuarios/${editingId}` : `${backendUrl}/api/usuarios`, {
+            method: editingId ? 'PUT' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const json = await manejarRespuestaJson(response);
+        mostrarMensaje('admin-message', json.message || 'Usuario guardado.', 'success');
+        limpiarFormularioUsuario();
+        await cargarAdministracion();
+    } catch (error) {
+        mostrarMensaje('admin-message', error.message || 'No se pudo guardar el usuario.', 'error');
+    }
+}
+
+async function crearUsuario() { return guardarUsuario(); }
+
+async function cambiarEstadoUsuario(id, activate) {
+    const action = activate ? 'activar' : 'desactivar';
+    if (!confirm(`¿Confirmas ${action} este usuario?`)) return;
+    try {
+        let response;
+        if (activate) {
+            const user = adminState.usuarios.find(item => Number(item.id) === Number(id));
+            response = await fetch(`${backendUrl}/api/usuarios/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: user.username,
+                    email: user.email,
+                    rol: user.rol,
+                    fundacion_id: user.fundacion_id,
+                    nombre_completo: user.nombre_completo,
+                    telefono: user.telefono,
+                    activo: 1,
+                    estado: 'ACTIVO'
+                })
+            });
+        } else {
+            response = await fetch(`${backendUrl}/api/usuarios/${id}?accion=desactivar&estado=INACTIVO`, { method: 'DELETE' });
+        }
+        const json = await manejarRespuestaJson(response);
+        mostrarMensaje('admin-message', json.message || 'Estado de usuario actualizado.', 'success');
+        await cargarAdministracion();
+    } catch (error) {
+        mostrarMensaje('admin-message', error.message || 'No se pudo cambiar el estado del usuario.', 'error');
+    }
+}
+
+async function desactivarUsuario(id) { return cambiarEstadoUsuario(id, false); }
+
+async function eliminarUsuario(id) {
+    try {
+        const dependencyData = await fetch(`${backendUrl}/api/usuarios/${id}/dependencias`).then(manejarRespuestaJson);
+        const user = dependencyData.usuario || {};
+        const confirmation = `${adminResumenDependencias(dependencyData)}\n\nLa eliminación será lógica: conservará la trazabilidad y cerrará todas las sesiones.\n\n¿Eliminar al usuario ${user.username || ''}?`;
+        if (!confirm(confirmation)) return;
+        const response = await fetch(`${backendUrl}/api/usuarios/${id}?accion=eliminar`, { method: 'DELETE' });
+        const json = await manejarRespuestaJson(response);
+        mostrarMensaje('admin-message', json.message || 'Usuario eliminado.', 'success');
+        await cargarAdministracion();
+    } catch (error) {
+        mostrarMensaje('admin-message', error.message || 'No se pudo eliminar el usuario.', 'error');
+    }
+}
+
+async function restablecerPasswordUsuario(id) {
+    const user = adminState.usuarios.find(item => Number(item.id) === Number(id));
+    if (!user) return;
+    const reactivate = !(Number(user.activo || 0) === 1 && String(user.estado || '').toUpperCase() === 'ACTIVO');
+    const message = reactivate
+        ? `Se generará una contraseña temporal, se reactivará ${user.username} y deberá cambiarla al ingresar. ¿Continuar?`
+        : `Se generará una contraseña temporal para ${user.username}, se cerrarán sus sesiones y deberá cambiarla al ingresar. ¿Continuar?`;
+    if (!confirm(message)) return;
+    try {
+        const response = await fetch(`${backendUrl}/api/usuarios/${id}/restablecer-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reactivar: reactivate })
+        });
+        const json = await manejarRespuestaJson(response);
+        if (json.temporary_password) mostrarCredencialTemporal(json.temporary_password);
+        mostrarMensaje('admin-message', json.message || 'Contraseña restablecida.', 'success');
+        await cargarAdministracion();
+    } catch (error) {
+        mostrarMensaje('admin-message', error.message || 'No se pudo restablecer la contraseña.', 'error');
+    }
+}
+
+function mostrarCredencialTemporal(password) {
+    const panel = document.getElementById('admin-temp-password-panel');
+    const input = document.getElementById('admin-temp-password');
+    if (input) input.value = password || '';
+    panel?.classList.remove('hidden');
+    panel?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function cerrarCredencialTemporal() {
+    const input = document.getElementById('admin-temp-password');
+    if (input) input.value = '';
+    document.getElementById('admin-temp-password-panel')?.classList.add('hidden');
+}
+
+function copiarCredencialTemporal() {
+    const input = document.getElementById('admin-temp-password');
+    if (!input?.value) return;
+    navigator.clipboard?.writeText(input.value).then(() => {
+        mostrarMensaje('admin-message', 'Contraseña temporal copiada. Entrégala por un canal seguro.', 'success');
+    }).catch(() => {
+        input.select();
+        document.execCommand('copy');
+        mostrarMensaje('admin-message', 'Contraseña temporal copiada.', 'success');
+    });
 }
 
 window.addEventListener('DOMContentLoaded', initApp);

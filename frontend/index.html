@@ -67,15 +67,21 @@
                 <label class="flex items-center gap-2 text-sm text-slate-400"><input id="login-recordar" type="checkbox" class="rounded border-slate-700 bg-slate-950" /> Recordar sesión en este equipo</label>
                 <button type="submit" class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 px-4 py-3 font-semibold text-white transition">Ingresar</button>
                 <button type="button" onclick="recuperarPassword()" class="w-full rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 transition">Recuperar contraseña</button>
-                <p id="login-message" class="min-h-5 text-sm text-amber-300"></p>
+                <p id="login-message" class="min-h-5 text-sm text-amber-300" role="status" aria-live="polite"></p>
             </form>
             <div id="password-reset-panel" class="hidden mt-5 space-y-3 rounded-2xl border border-cyan-500/20 bg-slate-950 p-4">
                 <h2 class="font-semibold text-cyan-200">Crear una nueva contraseña</h2>
-                <p class="text-xs text-slate-400">El enlace es de un solo uso. La contraseña debe tener al menos 12 caracteres, mayúscula, minúscula, número y símbolo.</p>
+                <p id="reset-mode-message" class="text-xs text-slate-400">El enlace o código es de un solo uso. La contraseña debe tener al menos 12 caracteres, mayúscula, minúscula, número y símbolo.</p>
+                <div id="reset-code-container" class="hidden space-y-2">
+                    <label for="reset-code" class="block text-xs font-medium text-slate-300">Código temporal</label>
+                    <input id="reset-code" autocomplete="one-time-code" class="w-full rounded-xl border border-cyan-700 bg-slate-900 px-4 py-3 font-mono tracking-wider" placeholder="Código de recuperación" />
+                    <div id="local-recovery-code-box" class="hidden rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200"></div>
+                </div>
                 <input id="reset-password" type="password" autocomplete="new-password" class="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3" placeholder="Nueva contraseña" />
                 <input id="reset-password-confirm" type="password" autocomplete="new-password" class="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3" placeholder="Confirmar contraseña" />
                 <button type="button" onclick="restablecerPasswordDesdeEnlace()" class="w-full rounded-xl bg-cyan-700 hover:bg-cyan-600 px-4 py-3 font-semibold text-white">Guardar contraseña</button>
-                <p id="reset-password-message" class="min-h-5 text-sm text-amber-300"></p>
+                <button type="button" onclick="volverAlLoginDesdeRecuperacion()" class="w-full rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">Volver al ingreso</button>
+                <p id="reset-password-message" class="min-h-5 text-sm text-amber-300" role="status" aria-live="polite"></p>
             </div>
             <div id="forced-password-panel" class="hidden mt-5 space-y-3 rounded-2xl border border-amber-500/20 bg-slate-950 p-4">
                 <h2 class="font-semibold text-amber-200">Cambio de contraseña obligatorio</h2>
@@ -695,11 +701,15 @@
                             </div>
                         </div>
                         <p class="mt-2 text-xs text-slate-500">Los formatos oficiales se conservan intactos: solo se actualizan datos dentro de celdas existentes.</p>
-                        <div class="mt-4 flex justify-end">
+                        <div class="mt-4 flex flex-wrap justify-end gap-2">
+                            <button type="button" onclick="diagnosticarFormatosSeleccionados()" class="border border-cyan-500/40 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-100 font-medium px-5 py-2.5 rounded-xl text-sm flex items-center gap-2 transition">
+                                <i data-lucide="stethoscope" class="w-4 h-4"></i> Diagnóstico previo de formatos
+                            </button>
                             <button onclick="subirYProcesar()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-6 py-2.5 rounded-xl text-sm flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition">
                                 <i data-lucide="search-check" class="w-4 h-4"></i> Analizar base y detectar unidades
                             </button>
                         </div>
+                        <div id="formatos-preflight-result" class="mt-4 hidden rounded-2xl border border-cyan-500/20 bg-slate-950/70 p-4" aria-live="polite"></div>
                     </div>
 
                     <div class="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden">
@@ -905,7 +915,7 @@
                                 <p class="text-sm text-slate-400">Asocia columnas detectadas con campos dinámicos y valida riesgos antes de generar en masivo.</p>
                             </div>
                             <div class="flex flex-wrap gap-2">
-                                <input id="mp-unidad-prueba" class="mp-input w-56" placeholder="Unidad para prueba, ej. UNIDAD DEMO 01" />
+                                <input id="mp-unidad-prueba" class="mp-input w-56" placeholder="Unidad para prueba, ej. BAJO PACURITA" />
                                 <input id="mp-limite-prueba" type="number" min="1" max="50" value="20" class="mp-input w-24" title="Límite de usuarios" />
                                 <button onclick="mpProbarUnidad()" class="rounded-xl bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-sm font-medium text-white">Probar con una unidad</button>
                             </div>
@@ -1232,32 +1242,52 @@
                     </div>
 
                     <div class="grid gap-6 lg:grid-cols-2">
-                        <div class="bg-slate-950 border border-slate-800 p-6 rounded-2xl">
-                            <h3 class="font-semibold text-slate-100 mb-4">Crear fundación</h3>
+                        <div id="fundacion-form-panel" class="bg-slate-950 border border-slate-800 p-6 rounded-2xl">
+                            <h3 id="fundacion-form-title" class="font-semibold text-slate-100 mb-4">Crear fundación</h3>
                             <div class="grid gap-3 md:grid-cols-2">
                                 <input id="fundacion-nombre" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200" placeholder="Nombre fundación" />
                                 <input id="fundacion-nit" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200" placeholder="NIT" />
                                 <input id="fundacion-representante" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200" placeholder="Representante" />
-                                <input id="fundacion-email" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200" placeholder="Correo" />
+                                <input id="fundacion-email" type="email" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200" placeholder="Correo" />
                                 <input id="fundacion-telefono" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200" placeholder="Teléfono" />
-                                <select id="fundacion-plan" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200"><option>PRUEBA</option><option>MENSUAL</option><option>ANUAL</option><option>INTERNO</option></select>
+                                <select id="fundacion-plan" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200"><option>PRUEBA</option><option>MENSUAL</option><option>ANUAL</option><option>INTERNO</option><option>PREMIUM</option></select>
                                 <input id="fundacion-vencimiento" type="date" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200" />
+                                <input id="fundacion-direccion" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200" placeholder="Dirección" />
+                                <input id="fundacion-municipio" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200" placeholder="Municipio" />
+                                <input id="fundacion-departamento" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200" placeholder="Departamento" />
+                                <textarea id="fundacion-observaciones" class="md:col-span-2 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200" rows="2" placeholder="Observaciones"></textarea>
                             </div>
-                            <button onclick="crearFundacion()" class="mt-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-sm font-medium text-white">Guardar fundación</button>
+                            <div class="mt-4 flex flex-wrap gap-2">
+                                <button id="fundacion-save-button" onclick="guardarFundacion()" class="rounded-xl bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-sm font-medium text-white">Guardar fundación</button>
+                                <button id="fundacion-cancel-button" onclick="cancelarEdicionFundacion()" class="hidden rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">Cancelar edición</button>
+                            </div>
                         </div>
 
                         <div class="bg-slate-950 border border-slate-800 p-6 rounded-2xl">
-                            <h3 class="font-semibold text-slate-100 mb-4">Crear usuario</h3>
+                            <h3 id="usuario-form-title" class="font-semibold text-slate-100 mb-4">Crear usuario</h3>
                             <div class="grid gap-3 md:grid-cols-2">
                                 <select id="usuario-fundacion" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200"></select>
                                 <select id="usuario-rol" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200"></select>
                                 <input id="usuario-nombre" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200" placeholder="Nombre completo" />
                                 <input id="usuario-telefono" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200" placeholder="Teléfono" />
-                                <input id="usuario-username" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200" placeholder="Usuario" />
-                                <input id="usuario-email" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200" placeholder="Correo" />
-                                <input id="usuario-password" type="password" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200" placeholder="Contraseña" />
+                                <input id="usuario-username" autocomplete="off" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200" placeholder="Usuario" />
+                                <input id="usuario-email" type="email" autocomplete="off" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200" placeholder="Correo" />
+                                <input id="usuario-password" type="password" autocomplete="new-password" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200" placeholder="Contraseña inicial" />
+                                <label class="flex items-center gap-2 rounded-xl border border-slate-800 px-3 py-2 text-xs text-slate-400"><input id="usuario-forzar-cambio" type="checkbox" class="rounded border-slate-700 bg-slate-950" /> Exigir cambio al ingresar</label>
                             </div>
-                            <button onclick="crearUsuario()" class="mt-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2 text-sm font-medium text-white">Guardar usuario</button>
+                            <p id="usuario-password-help" class="mt-2 text-xs text-slate-500">Al editar, deja la contraseña vacía para conservar la actual.</p>
+                            <div class="mt-4 flex flex-wrap gap-2">
+                                <button id="usuario-save-button" onclick="guardarUsuario()" class="rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2 text-sm font-medium text-white">Guardar usuario</button>
+                                <button id="usuario-cancel-button" onclick="cancelarEdicionUsuario()" class="hidden rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">Cancelar edición</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="admin-temp-password-panel" class="hidden rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+                        <div class="font-semibold">Contraseña temporal — se muestra una sola vez</div>
+                        <div class="mt-2 flex flex-col gap-2 sm:flex-row">
+                            <input id="admin-temp-password" readonly class="flex-1 rounded-xl border border-amber-500/30 bg-slate-950 px-4 py-3 font-mono text-amber-100" />
+                            <button onclick="copiarCredencialTemporal()" class="rounded-xl border border-amber-500/40 px-4 py-2 hover:bg-amber-500/10">Copiar</button>
+                            <button onclick="cerrarCredencialTemporal()" class="rounded-xl border border-slate-700 px-4 py-2 hover:bg-slate-800">Cerrar</button>
                         </div>
                     </div>
 
@@ -1362,46 +1392,51 @@
                     <div class="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-5">
                         <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
                             <div>
-                                <h2 class="text-xl font-semibold flex items-center gap-2"><i data-lucide="wifi" class="text-cyan-300"></i> Configuración de Acceso</h2>
-                                <p class="mt-2 text-sm text-slate-300 max-w-3xl">Comparte la plataforma en el mismo computador, en la misma red WiFi o prepara el despliegue en servidor central sin afectar los módulos existentes.</p>
+                                <h2 class="text-xl font-semibold flex items-center gap-2"><i data-lucide="globe-2" class="text-cyan-300"></i> Acceso público y diagnóstico</h2>
+                                <p class="mt-2 text-sm text-slate-300 max-w-3xl">Consulta el dominio público de Railway, comprueba el backend y revisa recomendaciones de acceso sin exponer direcciones locales en producción.</p>
                             </div>
                             <div class="flex flex-wrap gap-2">
                                 <button onclick="accesoCargarConfiguracion()" class="rounded-xl bg-cyan-600 hover:bg-cyan-500 px-4 py-2 text-sm font-medium text-white">Actualizar estado</button>
                                 <button onclick="accesoProbarBackend()" class="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800">Probar backend</button>
+                                <button onclick="accesoProbarAlmacenamiento()" class="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-200 hover:bg-emerald-500/20">Comprobar /data</button>
                             </div>
                         </div>
                     </div>
 
                     <div id="acceso-message" class="hidden rounded-xl px-4 py-3 text-sm"></div>
 
-                    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4" id="acceso-cards">
+                    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4" id="acceso-cards">
                         <div class="acceso-card"><p>Modo actual</p><strong id="acceso-modo">-</strong></div>
-                        <div class="acceso-card"><p>IP local</p><strong id="acceso-ip">-</strong></div>
+                        <div class="acceso-card"><p>Red local</p><strong id="acceso-ip">-</strong></div>
                         <div class="acceso-card"><p>Backend</p><strong id="acceso-backend-estado">-</strong></div>
-                        <div class="acceso-card"><p>Login</p><strong id="acceso-login-estado">-</strong></div>
+                        <div class="acceso-card"><p>Sesión</p><strong id="acceso-login-estado">-</strong></div>
+                        <div class="acceso-card"><p>Volumen /data</p><strong id="acceso-storage-estado">Sin comprobar</strong></div>
                     </div>
 
                     <div class="grid gap-6 xl:grid-cols-2">
                         <div class="bg-slate-950 border border-slate-800 p-6 rounded-2xl">
-                            <h3 class="font-semibold text-slate-100 mb-4">Enlaces de acceso</h3>
+                            <h3 class="font-semibold text-slate-100 mb-4">Enlace público de la plataforma</h3>
                             <div class="space-y-3 text-sm">
-                                <label class="block text-slate-400">Frontend local</label>
-                                <div class="acceso-copy-row"><input id="acceso-url-local" readonly class="acceso-input" /><button onclick="accesoCopiar('acceso-url-local')">Copiar</button></div>
-                                <label class="block text-slate-400">Frontend para compartir en WiFi</label>
-                                <div class="acceso-copy-row"><input id="acceso-url-red" readonly class="acceso-input" /><button onclick="accesoCopiar('acceso-url-red')">Copiar</button></div>
-                                <label class="block text-slate-400">Enlace público túnel online</label>
-                                <div class="acceso-copy-row"><input id="acceso-url-tunel-publico" readonly class="acceso-input" placeholder="Ejecuta INICIAR_PLATAFORMA_TUNEL_ONLINE.bat para generar el enlace HTTPS" /><button onclick="accesoCopiar('acceso-url-tunel-publico')">Copiar</button></div>
-                                <p class="text-xs text-amber-300">Para otro computador usa este enlace HTTPS. No uses http://127.0.0.1:5000 fuera del computador principal.</p>
-                                <label class="block text-slate-400">Backend local</label>
-                                <div class="acceso-copy-row"><input id="acceso-backend-local" readonly class="acceso-input" /><button onclick="accesoCopiar('acceso-backend-local')">Copiar</button></div>
-                                <label class="block text-slate-400">Backend red local</label>
-                                <div class="acceso-copy-row"><input id="acceso-backend-red" readonly class="acceso-input" /><button onclick="accesoCopiar('acceso-backend-red')">Copiar</button></div>
+                                <label class="block text-slate-400">Dominio HTTPS para compartir</label>
+                                <div class="acceso-copy-row"><input id="acceso-url-tunel-publico" readonly class="acceso-input" placeholder="Genera el dominio público desde Railway > Settings > Networking" /><button onclick="accesoCopiar('acceso-url-tunel-publico')">Copiar</button></div>
+                                <p id="acceso-public-note" class="text-xs text-emerald-300">Este mismo dominio sirve el frontend y la API. Compártelo únicamente con usuarios autorizados.</p>
+
+                                <div id="acceso-local-diagnostics" class="space-y-3 pt-3 border-t border-slate-800">
+                                    <label class="block text-slate-400">Frontend local</label>
+                                    <div class="acceso-copy-row"><input id="acceso-url-local" readonly class="acceso-input" /><button onclick="accesoCopiar('acceso-url-local')">Copiar</button></div>
+                                    <label class="block text-slate-400">Frontend para WiFi local</label>
+                                    <div class="acceso-copy-row"><input id="acceso-url-red" readonly class="acceso-input" /><button onclick="accesoCopiar('acceso-url-red')">Copiar</button></div>
+                                    <label class="block text-slate-400">Backend local</label>
+                                    <div class="acceso-copy-row"><input id="acceso-backend-local" readonly class="acceso-input" /><button onclick="accesoCopiar('acceso-backend-local')">Copiar</button></div>
+                                    <label class="block text-slate-400">Backend red local</label>
+                                    <div class="acceso-copy-row"><input id="acceso-backend-red" readonly class="acceso-input" /><button onclick="accesoCopiar('acceso-backend-red')">Copiar</button></div>
+                                </div>
                             </div>
                         </div>
 
-                        <div class="bg-slate-950 border border-slate-800 p-6 rounded-2xl">
+                        <div id="acceso-backend-override-panel" class="bg-slate-950 border border-slate-800 p-6 rounded-2xl">
                             <h3 class="font-semibold text-slate-100 mb-4">Backend usado por este navegador</h3>
-                            <p class="text-sm text-slate-400 mb-3">Puedes cambiar temporalmente la URL del backend para pruebas remotas. Déjalo vacío para usar detección automática.</p>
+                            <p class="text-sm text-slate-400 mb-3">Solo para desarrollo local. En Railway se utiliza automáticamente el mismo dominio público.</p>
                             <input id="acceso-backend-override" class="acceso-input" placeholder="http://192.168.1.35:5000" />
                             <div class="mt-4 flex flex-wrap gap-2">
                                 <button onclick="accesoGuardarBackendOverride()" class="rounded-xl bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-sm font-medium text-white">Guardar URL</button>
@@ -1409,7 +1444,6 @@
                             </div>
                             <div class="mt-4 rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-xs text-slate-400">
                                 <p><strong class="text-slate-300">Actual:</strong> <span id="acceso-backend-actual">-</span></p>
-                                <p class="mt-2">No compartas el usuario admin. Crea un usuario por compañero desde Administración y asígnale rol y fundación.</p>
                             </div>
                         </div>
                     </div>
@@ -3170,9 +3204,9 @@
     <script src="./js/print-master-config.js?v=2.3.0-alpha.13"></script>
     <script src="./js/print-manager.js?v=2.3.0-alpha.13"></script>
     <script src="./js/modules/menu-lateral-institucional.js?v=2.3.0-alpha.51-entregables-sn"></script>
-    <script src="./js/app.js?v=2.3.2-ram-v3-descarga-periodo"></script>
+    <script src="./js/app.js?v=2.4.1-admin-recovery"></script>
     <script src="./js/modules/calendario-inteligente.js?v=2.3.0-alpha.24"></script>
-    <script src="./js/modules/acceso-compartido.js?v=2.3.0-alpha.21"></script>
+    <script src="./js/modules/acceso-compartido.js?v=2.4.1-tunnel-fix"></script>
     <script src="./js/modules/cruce-bases.js?v=2.1.14"></script>
     <script src="./js/modules/planeacion-pedagogica.js?v=2.1.7"></script>
     <script src="./js/modules/gestion-pedagogica.js?v=2.1.3"></script>

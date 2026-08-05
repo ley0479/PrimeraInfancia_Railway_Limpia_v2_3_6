@@ -1,0 +1,24 @@
+{
+  "version": "2.4.2-tunel-login-logging-corregido",
+  "fecha": "2026-08-04",
+  "contiene_base_operativa": false,
+  "contiene_archivos_env_privados": false,
+  "contiene_credenciales_utilizables": false,
+  "contiene_logs_de_ejecucion": false,
+  "contiene_datos_personales_reales": false,
+  "logging": {
+    "ruta_operativa": "data/logs",
+    "registra_cuerpo_login": false,
+    "registra_cookies": false,
+    "registra_authorization": false,
+    "redacta_password_token_secret": true,
+    "usa_trace_id": true,
+    "fallback": "data/logs_fallback y stderr"
+  },
+  "tunnel": {
+    "comprueba_project_instance_id": true,
+    "comprueba_public_tunnel_mode": true,
+    "tiene_password_independiente": false,
+    "uso_autorizado": "pruebas controladas con datos ficticios"
+  }
+}

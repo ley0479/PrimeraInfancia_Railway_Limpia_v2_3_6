@@ -1,97 +1,124 @@
-# PrimeraInfancia 2.3.6 — versión limpia y segura para Railway
+# PrimeraInfancia 2.4.2 — multi-fundación, login por túnel y logging verificable
 
-Esta entrega fue construida desde una **copia aislada** del proyecto. No contiene la base SQLite original, beneficiarios, usuarios, cargas, resultados, respaldos, logs, cuentas de cobro diligenciadas ni archivos `.env` del paquete auditado.
+Esta es la **versión candidata de trabajo** del proyecto PrimeraInfancia para habilitar varias fundaciones con aislamiento lógico y físico. Parte de la edición 2.3.7 Railway limpia operativa y conserva los scripts locales y de túnel de la línea SAAS Fase 1. La entrega está preparada para pruebas controladas con dos fundaciones y datos ficticios; todavía no está autorizada para información personal real.
 
-> Esta versión es para una instalación nueva de prueba. Use exclusivamente información ficticia hasta terminar la validación funcional y de privacidad en el dominio público.
+La entrega no contiene bases de datos operativas, beneficiarios, usuarios históricos, cargas, resultados, respaldos, logs, archivos `.env`, contraseñas ni documentos diligenciados del proyecto privado.
 
-## 1. Qué incluye
+> Use datos ficticios hasta comprobar roles, persistencia, respaldo, restauración y funcionamiento de cada formato en el dominio público.
 
-- `Dockerfile`: imagen Python 3.12 con Gunicorn y dependencias de Excel, PDF, DOCX y OCR.
-- `start_hosting.sh`: inicializa el volumen y arranca un único worker Gunicorn.
-- `backend/init_hosting.py`: verifica las semillas por SHA-256, crea el esquema, comprueba SQLite y crea el SUPERADMIN inicial.
-- `backend/seed_data/templates_originales/`: plantillas sanitizadas; conservan estructura y formato, sin registros operativos reales.
-- `railway.json`: comando de arranque, healthcheck y reinicio por fallo.
-- `.env.example`: inventario de variables sin secretos reales.
-- `tools/validate_release.py`: validación local del contenido del paquete.
-- `VALIDACION_Y_CAMBIOS.md`: alcance de las correcciones y pruebas realizadas.
+## 1. Cambios acumulados y ajustes hasta la versión 2.4.2
 
-## 2. Controles de seguridad aplicados
+- Catálogo central de **32 UDS**, con códigos internos y alias de escritura.
+- Migración idempotente de valores `UNIDAD DEMO 01..32` hacia las UDS operativas.
+- Semilla sanitizada de la minuta RPP de mayo de 2026: **4 grupos, 49 productos y 17 equivalencias**.
+- Plantilla RAM V2 histórica sanitizada para periodos hasta julio de 2026.
+- Plantilla RAM V3 para agosto de 2026 en adelante.
+- Selección automática de RAM según mes y año.
+- Sincronización de plantillas administradas por hash, con respaldo y sin sobrescribir personalizaciones del usuario.
+- Acceso Compartido orientado primero al dominio público de Railway.
+- Diagnóstico del volumen `/data`.
+- Diagnóstico previo de RPP, Bienestarina y RAM sin mostrar datos personales.
+- Interfaz para ejecutar el diagnóstico previo por UDS antes de procesar la base.
+- Seguridad, autorización por roles, límites de intentos y secretos de la versión limpia preservados.
+- Creación administrada de varias fundaciones por `SUPERADMIN`.
+- Esquema multi-fundación v3 con migración idempotente y claves únicas compuestas por `fundacion_id`.
+- Cortafuegos SQL para SQLite y SQLAlchemy Core con validación de parámetros explícitos.
+- Carpetas independientes bajo `/data/tenants/<fundacion_id>/`.
+- Inicialización independiente de suscripción, corporación, UDS, reglas y minuta RPP para cada nueva fundación.
+- Invalida sesiones cuando una fundación o un usuario se suspende.
+- Gestión de usuarios con edición, activación, desactivación, eliminación lógica y diagnóstico de dependencias.
+- Gestión de fundaciones con edición, suspensión, restauración y eliminación lógica segura.
+- Restablecimiento administrativo con contraseña temporal de un solo uso visual y cambio obligatorio.
+- Recuperación pública por correo con token hash, expiración, uso único y respuesta genérica.
+- Código local alternativo únicamente en desarrollo, desde loopback y sin túnel activo.
+- Quick Tunnel Cloudflare corregido y verificado mediante `/api/health`; no se usa como hosting estable.
+- Huella `project_instance_id` para impedir que el túnel publique otra copia que ocupe el puerto 5000.
+- Logging global rotativo y reportes atómicos no vacíos bajo `data/logs`, con ocultamiento de secretos.
+- Login con identificador de solicitud, contexto por etapas y respuesta 503 cuando SQLite está temporalmente ocupado.
+- Diagnóstico Windows para comparar instancia local/pública y localizar el log correcto.
 
-- No existe una credencial administrativa predeterminada utilizable dentro del código.
-- Las credenciales iniciales se reciben mediante variables privadas y nunca se sobrescriben en reinicios posteriores.
-- El primer ingreso obliga a cambiar la contraseña; todas las sesiones de esa cuenta se invalidan al cambiarla.
-- Recuperación de contraseña con mensaje genérico, token de un solo uso, caducidad e invalidación de sesiones.
-- El token de recuperación nuevo viaja en el fragmento de la URL, que el navegador no envía al servidor; el frontend lo retira de la barra de direcciones al abrir el enlace.
-- Tokens de sesión únicamente en encabezados; la compatibilidad con tokens en query/form queda desactivada.
-- Límite persistente de intentos para inicio de sesión y recuperación.
-- Autorización por roles con política **denegar por defecto** para toda ruta `/api/`.
-- Respuestas API con `Cache-Control: no-store`, encabezados de seguridad y HSTS bajo HTTPS.
-- La capa de autenticación falla de forma cerrada: producción no arranca si no puede registrarla.
-- El frontend usa el mismo origen público y no redirige accidentalmente a `127.0.0.1` en Railway.
+## 2. Estructura relevante
 
-## 3. Alcance multiempresa
-
-Esta entrega se configura expresamente con:
-
-```env
-SINGLE_TENANT_MODE=true
-ALLOW_EXPERIMENTAL_MULTI_TENANT=false
+```text
+backend/
+├── config/uds_catalog.json
+├── seed_data/
+│   ├── config/rpp_minuta_base_2026_05.json
+│   └── templates_originales/
+│       ├── seed_manifest.json
+│       └── oficiales/
+│           ├── plantilla_rpp_oficial.xlsx
+│           ├── plantilla_bienestarina_oficial.xlsx
+│           ├── plantilla_ram_oficial_v2_historica.xlsx
+│           ├── plantilla_ram_oficial_v3.xlsx
+│           └── templates_manifest.json
+├── services/
+│   ├── uds_catalog.py
+│   ├── seed_sync.py
+│   ├── rpp_minutas_service.py
+│   └── ram_historical_service.py
+└── init_hosting.py
 ```
 
-Eso limita la instalación a **una sola fundación**. Aunque existe estructura histórica multiempresa, todavía no se certificó el aislamiento de todas las consultas heredadas. No cambie esas dos variables para una prueba con datos personales.
+Los archivos de `backend/seed_data/` son semillas sanitizadas. En Railway se sincronizan hacia el volumen persistente en el primer arranque y cuando cambia una semilla administrada.
 
-## 4. Publicar mediante repositorio privado
+## 3. Requisitos obligatorios en Railway
 
-1. Descomprima el ZIP.
-2. Cree un repositorio **privado** en GitHub.
-3. Suba el contenido de la carpeta `PrimeraInfancia_Railway_Limpia_v2_3_6`; no suba el ZIP original auditado.
-4. En Railway seleccione `New Project` y después el repositorio de GitHub.
-5. En `Settings → Networking`, seleccione `Generate Domain`.
-6. Añada un volumen al servicio y configure el punto de montaje exacto `/data`.
-7. Abra `Variables` y agregue los valores de la sección 6.
-8. Confirme que `PUBLIC_APP_URL`, `FRONTEND_ORIGIN` y `PASSWORD_RESET_PUBLIC_URL` referencian `RAILWAY_PUBLIC_DOMAIN`.
-9. Despliegue de nuevo y revise los logs de inicialización.
+La aplicación utiliza SQLite y genera archivos. Por eso necesita:
 
-Railway detecta el `Dockerfile` de la raíz. El volumen existe solamente en tiempo de ejecución, por eso la inicialización se ejecuta desde `start_hosting.sh` y no durante la compilación de la imagen.
+1. Un único servicio conectado al repositorio privado de GitHub.
+2. Un volumen persistente montado exactamente en:
 
-## 5. Publicar sin GitHub mediante Railway CLI
-
-Desde la carpeta descomprimida:
-
-```bash
-npm install -g @railway/cli
-railway login
-railway init
-railway up
+```text
+/data
 ```
 
-Después añada el volumen `/data`, las variables y el dominio desde el panel. Para este proyecto se recomienda GitHub privado porque facilita conservar historial y desplegar correcciones controladas.
+3. Una sola réplica mientras se utilice SQLite.
+4. Un solo worker Gunicorn; `start_hosting.sh` ya lo configura.
+5. Un dominio público HTTPS generado en Railway.
+6. Variables privadas configuradas desde el panel, nunca dentro del repositorio.
 
-## 6. Variables obligatorias del primer despliegue
+## 4. Variables recomendadas
+
+Use `.env.example` únicamente como inventario. En Railway configure, como mínimo:
 
 ```env
 APP_ENV=production
+APP_VERSION=2.4.2-tunel-login-logging-corregido
 DATA_DIR=/data
-SINGLE_TENANT_MODE=true
-ALLOW_EXPERIMENTAL_MULTI_TENANT=false
+PROJECT_INSTANCE_ID=
+SYNC_MANAGED_TEMPLATES=true
+
+SINGLE_TENANT_MODE=false
+ALLOW_EXPERIMENTAL_MULTI_TENANT=true
+MULTI_TENANT_STRICT=true
+TENANT_STORAGE_ISOLATION=true
+MULTI_TENANT_SCHEMA_VERSION=3
 
 SECRET_KEY=<secreto aleatorio de 64+ caracteres>
-JWT_SECRET_KEY=<otro secreto aleatorio de 64+ caracteres>
+JWT_SECRET_KEY=<otro secreto diferente de 64+ caracteres>
 
-INITIAL_ADMIN_USERNAME=<usuario no predecible>
-INITIAL_ADMIN_EMAIL=<correo real del administrador>
-INITIAL_ADMIN_PASSWORD=<12+ caracteres, mayúscula, minúscula, número y símbolo>
+INITIAL_ADMIN_USERNAME=<usuario inicial>
+INITIAL_ADMIN_EMAIL=<correo administrativo válido>
+INITIAL_ADMIN_PASSWORD=<contraseña inicial fuerte>
 INITIAL_ADMIN_NAME=<nombre administrativo>
 INITIAL_ADMIN_FORCE_PASSWORD_CHANGE=true
-INITIAL_FOUNDATION_NAME=Entorno de pruebas
+INITIAL_FOUNDATION_NAME=Fundación piloto inicial
 
+RAILWAY_PUBLIC_DOMAIN=<dominio generado por Railway>
 PUBLIC_APP_URL=https://${{ RAILWAY_PUBLIC_DOMAIN }}
 FRONTEND_ORIGIN=https://${{ RAILWAY_PUBLIC_DOMAIN }}
 PASSWORD_RESET_PUBLIC_URL=https://${{ RAILWAY_PUBLIC_DOMAIN }}
 TRUSTED_PROXY_COUNT=1
+FORCE_HTTPS=true
 
 ALLOW_LEGACY_QUERY_TOKENS=false
 ALLOW_PASSWORD_RESET_TOKEN_RESPONSE=false
+ALLOW_LOCAL_RECOVERY_CODE=false
+LOCAL_RECOVERY_CODE_LENGTH=10
+RESET_MAX_ATTEMPTS=8
+RESET_WINDOW_SECONDS=900
+RESET_LOCK_SECONDS=900
 ENABLE_LEGACY_TENANT_BACKFILL=false
 ```
 
@@ -101,64 +128,238 @@ Genere cada secreto por separado:
 python -c "import secrets; print(secrets.token_urlsafe(64))"
 ```
 
-Selle en Railway `SECRET_KEY`, `JWT_SECRET_KEY`, `INITIAL_ADMIN_PASSWORD` y `RESEND_API_KEY` cuando esta última exista. Nunca las coloque en GitHub, capturas, mensajes o archivos del proyecto.
+No copie secretos en GitHub, capturas, chats ni archivos del proyecto.
 
-## 7. Primer ingreso y retiro de la contraseña de arranque
+## 5. Primer despliegue
 
-1. Inicie sesión con el usuario configurado en `INITIAL_ADMIN_USERNAME`.
-2. La plataforma exigirá cambiar la contraseña inicial antes de abrir módulos.
-3. Inicie sesión otra vez con la contraseña nueva.
-4. Confirme que el volumen `/data` contiene `database.sqlite3` y `.primera_infancia_initialized.json`.
-5. En Railway elimine `INITIAL_ADMIN_USERNAME`, `INITIAL_ADMIN_EMAIL` e `INITIAL_ADMIN_PASSWORD` y vuelva a desplegar.
+1. Cree o abra el repositorio privado conectado a Railway.
+2. Reemplace su copia local por esta versión o integre sus cambios mediante Git.
+3. Confirme que el volumen exista y esté montado en `/data`.
+4. Configure las variables anteriores.
+5. Haga `commit` y `push` a la rama conectada.
+6. Railway construirá y desplegará automáticamente.
+7. Revise los logs de inicialización.
+8. Abra `/api/health`; debe responder `status: ok`.
+9. Abra el dominio raíz e inicie sesión con el administrador inicial.
+10. Cambie la contraseña cuando la plataforma lo solicite.
 
-Con la base y el marcador persistentes, el servicio seguirá arrancando con el SUPERADMIN existente. Si el volumen se pierde o se monta incorrectamente, la aplicación fallará en lugar de crear una cuenta silenciosa.
+El inicializador:
 
-## 8. Recuperación de contraseña
+- verifica SHA-256 de las semillas;
+- crea las carpetas persistentes;
+- inicializa y migra el esquema SQLite;
+- migra nombres `UNIDAD DEMO` hacia el catálogo central;
+- registra las 32 UDS que no existan;
+- carga la minuta RPP solamente si no hay una minuta previa;
+- sincroniza plantillas administradas sin sobrescribir una plantilla personalizada;
+- crea el SUPERADMIN solamente en una instalación vacía.
 
-En producción la API nunca devuelve el token al navegador. Para enviar el enlace configure una cuenta de correo transaccional por HTTPS:
+## 6. Confirmar el volumen `/data`
 
-```env
-RESEND_API_KEY=<clave privada>
-PASSWORD_RESET_FROM_EMAIL=Plataforma <no-reply@dominio-verificado.com>
-PASSWORD_RESET_PUBLIC_URL=https://${{ RAILWAY_PUBLIC_DOMAIN }}
+La ruta autenticada:
+
+```text
+GET /api/acceso/storage-health
 ```
 
-Sin proveedor configurado, la respuesta continúa siendo genérica y el token generado se invalida. Un SUPERADMIN puede establecer una contraseña temporal fuerte desde Administración.
+comprueba que:
 
-## 9. Persistencia, capacidad y concurrencia
+- la base esté dentro de `DATA_DIR`;
+- las carpetas requeridas sean escribibles;
+- existan los marcadores de inicialización y sincronización;
+- Railway haya declarado la ruta del volumen cuando esté disponible.
 
-SQLite, cargas, salidas, respaldos, plantillas y logs se escriben bajo `/data`. Mantenga:
+La misma comprobación está disponible en **Acceso Compartido → Comprobar /data**.
 
-- una sola réplica de Railway;
-- un solo worker Gunicorn;
-- el volumen montado en `/data`;
-- copias de seguridad fuera del repositorio.
+La comprobación automática no puede demostrar por sí sola que el almacenamiento sobreviva a un redeploy. Haga esta prueba controlada:
 
-Los planes Trial y Free tienen límites reducidos de memoria y volumen. Procesamientos grandes con pandas, OpenPyXL, Matplotlib, OCR o generación de PDF pueden superar los recursos del plan gratuito. Mida con datos ficticios antes de utilizar la plataforma en operación.
+1. Cree un registro completamente ficticio.
+2. Anote un identificador no personal.
+3. Ejecute un redeploy.
+4. Confirme que el registro permanezca.
+5. Elimine el registro ficticio.
 
-## 10. Comprobaciones después del despliegue
+No cargue información real antes de superar esta prueba.
 
-1. Abra `/api/health`; debe responder HTTP 200 con `status: ok` sin conteos personales.
-2. Abra el dominio raíz y confirme CSS, JavaScript, iconos e imágenes.
-3. En herramientas del navegador verifique que ninguna petición pública apunte a `127.0.0.1`.
-4. Pruebe el cambio obligatorio de contraseña.
-5. Haga cinco intentos fallidos controlados y confirme el bloqueo temporal.
-6. Pruebe roles con usuarios ficticios y confirme que cada menú/API deniega lo no autorizado.
-7. Cargue un archivo pequeño ficticio, genere un formato y descárguelo.
-8. Reinicie el servicio y compruebe que usuario, plantillas y archivo de prueba persisten.
-9. Pruebe crear y validar un respaldo; descárguelo a un lugar privado.
-10. Revise logs: no deben mostrar contraseñas ni tokens de sesión.
+## 7. Catálogo central de UDS
 
-## 11. Validación local del paquete
+El archivo:
 
-Sin instalar Flask puede ejecutar las comprobaciones estructurales:
+```text
+backend/config/uds_catalog.json
+```
+
+contiene nombres operativos, códigos internos y alias. No contiene beneficiarios, documentos, teléfonos, direcciones, funcionarios ni credenciales.
+
+Todos los módulos deben usar `backend/services/uds_catalog.py`. No vuelva a crear listas de UDS dentro de archivos Python o JavaScript.
+
+Para agregar o corregir una UDS:
+
+1. Edite solo `uds_catalog.json`.
+2. Mantenga único el `codigo_interno`.
+3. Añada variantes al arreglo `alias`.
+4. Ejecute las pruebas.
+5. Haga commit y push.
+
+La migración es idempotente: puede ejecutarse en cada arranque sin duplicar unidades ni alterar campos personales.
+
+## 8. RPP
+
+La semilla de configuración se encuentra en:
+
+```text
+backend/seed_data/config/rpp_minuta_base_2026_05.json
+```
+
+Incluye únicamente configuración de grupos, productos y cantidades. No incluye participantes ni datos institucionales.
+
+El esquema también instala 17 equivalencias de nombres de producto para reconocer variantes como pasta/pastas, plátano/platano, lácteo/leche y otros encabezados de la plantilla.
+
+Comportamiento:
+
+- se crea solo cuando la base no tiene ninguna minuta RPP;
+- no reemplaza una minuta cargada posteriormente por un usuario;
+- la generación exige plantilla, UDS reconocida, participantes y una minuta del mismo mes y año;
+- no reutiliza silenciosamente una minuta de otro periodo;
+- el diagnóstico previo informa por qué no está listo el RPP.
+
+Cuando exista una nueva minuta oficial, cárguela desde el módulo administrativo y verifique su periodo. No reemplace la base SQLite desde GitHub.
+
+## 9. RAM histórico y RAM V3
+
+La selección se hace por periodo:
+
+| Periodo | Plantilla |
+|---|---|
+| Hasta julio de 2026 | RAM V2 histórica sanitizada |
+| Desde agosto de 2026 | RAM V3 |
+
+Los rangos se declaran en:
+
+```text
+backend/seed_data/templates_originales/oficiales/templates_manifest.json
+```
+
+No modifique artificialmente la vigencia de RAM V3 para procesar meses anteriores. Añada una versión nueva con su rango correcto cuando cambie el formato oficial.
+
+## 10. Sincronización segura de plantillas
+
+`backend/services/seed_sync.py` mantiene un estado en:
+
+```text
+/data/.primera_infancia_seed_state.json
+```
+
+Reglas:
+
+- copia semillas nuevas;
+- actualiza una semilla administrada cuando cambió en GitHub y el archivo desplegado seguía intacto;
+- crea una copia anterior bajo `/data/backups/seed_sync_*`;
+- preserva un archivo modificado por el usuario;
+- registra hashes de origen y desplegados;
+- puede ejecutarse repetidamente.
+
+Si se necesita forzar una revisión, primero descargue y conserve la plantilla del volumen. No borre `/data` para actualizar una sola plantilla.
+
+## 11. Diagnóstico previo de formatos
+
+En la sección de procesamiento aparece el botón:
+
+```text
+Diagnóstico previo de formatos
+```
+
+Después de detectar o seleccionar una UDS, informa:
+
+- coincidencia con el catálogo central;
+- número de participantes, sin nombres ni documentos;
+- plantilla y versión aplicable de RPP, Bienestarina y RAM;
+- estado de la minuta RPP;
+- causas que impedirían la generación;
+- situación básica del volumen `/data`.
+
+La API correspondiente es:
+
+```text
+GET /api/formatos/diagnostico?unidad=<UDS>&mes=<1-12>&anio=<AAAA>
+```
+
+Está protegida por autenticación y devuelve solamente conteos y configuración técnica.
+
+## 12. Acceso Compartido
+
+En producción, el módulo utiliza este orden:
+
+1. `PUBLIC_APP_URL`
+2. `FRONTEND_ORIGIN`
+3. `RAILWAY_PUBLIC_DOMAIN`
+4. origen HTTPS de la petición
+
+El panel muestra el dominio público de Railway y oculta instrucciones de localhost, puerto 5000 y red WiFi. Los campos históricos de túnel se conservan únicamente para compatibilidad con el frontend anterior.
+
+## 13. Flujo para actualizar la plataforma
+
+Trabaje siempre sobre una sola copia local conectada al repositorio oficial:
+
+1. Abra GitHub Desktop.
+2. Seleccione el repositorio de PrimeraInfancia.
+3. Use `Fetch origin` y luego `Pull origin` antes de editar.
+4. Cree una rama para el módulo, por ejemplo:
+
+```text
+mejora/rpp-diagnostico
+```
+
+5. Realice y pruebe un cambio pequeño.
+6. Ejecute:
 
 ```bash
 python tools/validate_release.py
 ```
 
-La prueba integral de Flask/Gunicorn debe hacerse durante el primer despliegue porque requiere instalar todas las dependencias de producción y ejecutar el contenedor real.
+7. Revise la lista de cambios.
+8. Haga commit con un mensaje concreto.
+9. Publique la rama o haga push a la rama acordada.
+10. Revise el despliegue de Railway y los logs.
+11. Pruebe el módulo desde el dominio público.
+12. Conserve el último commit estable para poder revertir.
 
-## 12. Regla de seguridad para los ensayos
+Nunca edite archivos dentro de Railway ni copie una versión completa encima de `/data`.
 
-No use datos reales de niños, niñas, acudientes, salud, nutrición, empleados o contratos hasta completar pruebas de acceso, permisos, persistencia, respaldo, restauración y manejo de incidentes. Este ZIP está limpio; la privacidad futura dependerá también de los archivos que se carguen después del despliegue.
+## 14. Pruebas incluidas
+
+```bash
+python tools/validate_release.py
+PYTHONPATH=backend python backend/tests/test_operational_release_v2_3_7.py
+PYTHONPATH=backend python backend/tests/test_ram_download_period_wiring.py
+PYTHONPATH=backend python backend/tests/test_ram_v3_integration.py
+PYTHONPATH=backend python backend/tests/test_multitenant_phase3.py
+PYTHONPATH=backend python backend/tests/test_multitenant_release_v2_4_0.py
+```
+
+Las pruebas cubren estructura, sintaxis, manifiestos, seguridad, catálogo UDS, migración, minuta RPP, RAM V2/V3, sincronización de semillas y conexión de los diagnósticos.
+
+## 15. Piloto multi-fundación
+
+Esta entrega incorpora aislamiento lógico y físico con configuración explícita:
+
+```env
+SINGLE_TENANT_MODE=false
+ALLOW_EXPERIMENTAL_MULTI_TENANT=true
+MULTI_TENANT_STRICT=true
+TENANT_STORAGE_ISOLATION=true
+MULTI_TENANT_SCHEMA_VERSION=3
+```
+
+El modo multi-fundación no depende del plan de Railway. La aplicación exige las cinco variables anteriores y falla cerrada cuando falta alguna protección. Cada fundación debe contar con usuarios propios, datos filtrados por `fundacion_id` y carpetas separadas bajo `/data/tenants/<id>/`.
+
+Antes de datos reales, ejecute la prueba de aceptación con dos fundaciones descrita en `GUIA_PRUEBAS_MULTIFUNDACION_RAILWAY_v2_4_0.md`. Esta entrega es un piloto técnico, no una certificación definitiva de privacidad.
+
+## 16. Límites y operación responsable
+
+- El contenedor completo debe validarse en Railway con Flask, Gunicorn, OCR, PDF y las dependencias de producción.
+- SQLite requiere una sola réplica y un solo worker.
+- Procesamientos grandes pueden exceder memoria o tiempo del plan de ensayo.
+- El frontend heredado todavía utiliza Tailwind Play CDN; para una operación final debe compilarse CSS estático.
+- La entrega está sanitizada, pero la privacidad futura depende de los archivos y datos que los usuarios carguen.
+- Antes de información real, pruebe roles, bloqueo, respaldos, restauración, persistencia, descarga y manejo de incidentes.

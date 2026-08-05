@@ -1,130 +1,237 @@
-# Validación y cambios — PrimeraInfancia 2.3.6 Railway
+# Validación y cambios — PrimeraInfancia 2.4.2
 
-**Fecha de cierre:** 1 de agosto de 2026  
-**Alcance:** instalación nueva y controlada en Railway, usando exclusivamente datos ficticios.  
-**Estado:** lista para el primer despliegue técnico; no contiene la base ni los archivos operativos del paquete auditado.
+**Fecha:** 4 de agosto de 2026  
+**Base:** PrimeraInfancia 2.4.0 multi-fundación piloto seguro  
+**Alcance:** túnel Cloudflare, gestión segura de usuarios/fundaciones, login de usuarios nuevos y recuperación de contraseña.
 
-## 1. Garantía de conservación del original
 
-La transformación se realizó sobre una copia aislada. El archivo fuente no fue modificado y conserva este SHA-256:
+## Cambios de 2.4.2 — login por túnel y logs
+
+- `/api/health` informa una huella de copia `project_instance_id`.
+- El inicio local exige que puerto, huella y modo correspondan a la carpeta actual.
+- El túnel reinicia una copia antigua o en modo local antes de publicar.
+- La validación pública compara la misma huella y `PUBLIC_TUNNEL_MODE=true`.
+- Los errores globales se escriben atómicamente en `data/logs`; si ese destino falla, se intenta `data/logs_fallback` y se imprime el traceback en la consola.
+- Los reportes incluyen un `trace_id`, versión, etapa segura del login y metadatos sanitizados, sin cuerpo JSON, cookies, contraseñas ni tokens.
+- El frontend muestra el código del error y la referencia relativa del archivo real.
+- El login diferencia una base SQLite ocupada y responde `503 LOGIN_DATABASE_BUSY` en lugar de un 500 genérico.
+- `PRAGMA journal_mode=WAL` se configura una sola vez por proceso para evitar bloqueos exclusivos en cada petición.
+- Se añadieron `DIAGNOSTICAR_LOGIN_TUNEL.bat` y `ABRIR_LOGS_ERRORES.bat`.
+
+**Alcance del diagnóstico:** no se recibió un traceback vigente del fallo observado; los archivos revisados estaban vacíos o correspondían a otra carpeta. Por eso no se atribuye el incidente a una única excepción no demostrada. Se corrigieron los defectos reproducibles de selección de proceso, ubicación de logs, trazabilidad del login y concurrencia SQLite.
+
+---
+
+## Cambios de 2.4.1
+
+- El arranque local y el túnel comprueban `/api/health`, no una ruta autenticada.
+- El túnel analiza todos los canales de log de `cloudflared`, valida la URL pública y guarda su PID.
+- Si el backend estaba en modo local, el túnel lo reinicia con controles adecuados para exposición temporal.
+- Gestión de usuarios: crear, editar, activar, desactivar, eliminar lógicamente, restaurar y restablecer contraseña.
+- Gestión de fundaciones: editar, suspender, activar, eliminar lógicamente y restaurar con revisión de dependencias.
+- Usuarios nuevos: normalización, detección de duplicados sin distinguir mayúsculas, validación del hash y limpieza de bloqueos anteriores.
+- Recuperación: enlace por correo de un solo uso, código exclusivamente local sin túnel y restablecimiento administrativo.
+- Aislamiento por fundación aplicado a listados, edición, eliminación y restablecimiento.
+- Protección del último `SUPERADMIN`, de la sesión propia y de la última fundación activa.
+- El inicio local ya no contiene una contraseña administrativa ni claves de sesión fijas: genera secretos aleatorios persistentes y, para una base nueva, una contraseña inicial aleatoria de un solo arranque guardada temporalmente fuera de Git.
+- El script no afirma que la credencial de arranque siga siendo válida cuando detecta una base existente y obliga a cambiar la contraseña de una instalación nueva.
+
+## Estado de certificación
+
+La entrega pasa validación estática y pruebas SQLite con dos fundaciones ficticias. El script PowerShell debe probarse en Windows con acceso real a Cloudflare. Railway y el túnel deben utilizarse con datos ficticios hasta superar la matriz de aceptación.
+
+---
+
+## Historial heredado de 2.4.0
+
+
+**Fecha:** 3 de agosto de 2026  
+**Base oficial:** versión 2.3.7 Railway limpia operativa  
+**Fuente local complementaria:** versión 2.3.6 SAAS Fase 1 con scripts local/túnel  
+**Estado:** piloto multi-fundación preparado para pruebas con dos tenants y datos ficticios; no autorizado todavía para información personal real.
+
+## 1. Criterio de construcción
+
+La versión 2.3.7 limpia operativa se mantuvo como base funcional. La entrega local SAAS Fase 1 se utilizó para conservar los scripts de inicio local y túnel. No se copió la base SQLite, usuarios, beneficiarios, cargas, resultados, respaldos, logs, archivos `.env`, contraseñas ni documentos diligenciados.
+
+Proveniencia verificada:
 
 ```text
-59ac1ca55fc74359c01102588bd1a8442828c03b36bc3bd79ec6dd329bd3f78b
+Base funcional 2.3.7: ee9ca7046ac41e610c12397737152b27533bf2075ae6162e9f6fc16dd7b2eb54
+Fuente local/túnel aportada: 328800974685d4c0a16ad7914f236fa7e9f5a43c881c718f1d8f59c7e8ac9a44
 ```
 
-## 2. Limpieza de información
+Se reincorporaron solamente:
 
-Se excluyeron del paquete de entrega:
+- nombres, códigos internos y alias de UDS;
+- estructura no personal de la minuta RPP;
+- una plantilla RAM histórica sanitizada;
+- vigencias y reglas necesarias para seleccionar formatos.
 
-- bases SQLite y archivos auxiliares WAL/SHM;
-- usuarios, beneficiarios, alertas y movimientos operativos;
-- cargas, salidas generadas, respaldos, logs y estados de trabajos;
-- cuentas de cobro diligenciadas;
-- archivos `.env`, credenciales y configuraciones locales;
-- automatizaciones de túnel y copias históricas que no pertenecen al despliegue Railway;
-- plantillas históricas con información ya diligenciada.
+## 2. Activos restaurados
 
-Las plantillas requeridas por la plataforma se reconstruyeron como semillas sanitizadas. Sus hashes están en `backend/seed_data/templates_originales/seed_manifest.json` y se verifican antes de copiarlas al volumen.
+### 2.1 Catálogo UDS
 
-### Comparación de privacidad
+- 32 UDS canónicas.
+- Códigos internos `UDS-01` a `UDS-32`.
+- Alias ortográficos y equivalencias de unidades de demostración.
+- Servicio central de normalización.
+- Migración SQLite idempotente.
+- Siembra de unidades faltantes sin tocar datos personales.
 
-La comprobación estricta reunió 3.238 candidatos sensibles únicos del origen y los buscó como coincidencias exactas dentro de texto, código y XML interno de documentos Office de la entrega.
+### 2.2 RPP
+
+- Semilla de mayo de 2026.
+- 4 grupos.
+- 49 productos.
+- 17 equivalencias de productos.
+- Creación solo cuando no existe una minuta previa.
+- Protección contra sobrescritura de minutas operativas.
+- Selección estricta por mes y año para impedir reutilizar una minuta de otro periodo.
+
+### 2.3 RAM
+
+- RAM V2 histórica sanitizada hasta el 31 de julio de 2026.
+- RAM V3 desde el 1 de agosto de 2026.
+- Selección automática por periodo.
+- Generación paginada de la versión histórica.
+- Preservación de estilos, combinaciones, áreas de impresión y estructura de la plantilla.
+
+## 3. Correcciones Railway
+
+- Resolución de URL pública mediante `PUBLIC_APP_URL`, `FRONTEND_ORIGIN` y `RAILWAY_PUBLIC_DOMAIN`.
+- Acceso Compartido muestra el dominio Railway como enlace principal.
+- En producción no presenta localhost, puerto 5000 ni enlaces WiFi.
+- Diagnóstico autenticado de almacenamiento bajo `/data`.
+- Sincronización de semillas hacia el volumen por SHA-256.
+- Respaldo automático antes de actualizar una semilla administrada.
+- Preservación de plantillas personalizadas en el volumen.
+- Marcadores de inicialización y sincronización bajo `/data`.
+
+## 4. Diagnóstico funcional añadido
+
+Se añadió:
 
 ```text
-Coincidencias exactas de datos sensibles: 0
-Coincidencias exactas de secretos del origen: 0
+GET /api/formatos/diagnostico
 ```
 
-Esta prueba reduce el riesgo de arrastrar información del archivo fuente; no sustituye las obligaciones de privacidad sobre datos que se carguen después del despliegue.
+El endpoint y su botón de interfaz permiten comprobar por UDS y periodo:
 
-## 3. Correcciones funcionales para hosting
+- coincidencia de la UDS;
+- conteo de participantes sin datos identificables;
+- disponibilidad y versión de RPP, Bienestarina y RAM;
+- minuta RPP y su periodo;
+- motivos que impiden generar;
+- ubicación básica de la base y volumen.
 
-- Flask sirve correctamente `/`, `/css`, `/js` y `/assets` desde `frontend/`.
-- El frontend resuelve la API mediante el mismo origen público; los fallbacks a `localhost` quedan limitados al modo local explícito.
-- Se añadió `backend/init_hosting.py` para crear carpetas, verificar semillas, inicializar esquema, comprobar SQLite y crear el administrador inicial.
-- Toda información persistente se deriva de `DATA_DIR=/data` o del volumen informado por Railway.
-- Gunicorn escucha en `0.0.0.0:$PORT`, usa un worker con hilos y no recicla el proceso por conteo de peticiones mientras haya trabajos en memoria.
-- Se añadieron `Dockerfile`, `start_hosting.sh`, `railway.json`, `.gitignore`, `.dockerignore` y `.env.example`.
-- El contenedor prepara el volumen como root y ejecuta Flask/Gunicorn con un usuario sin privilegios.
-- El healthcheck público `/api/health` devuelve estado técnico sin conteos personales.
+También se añadió:
 
-## 4. Correcciones de seguridad
+```text
+GET /api/acceso/storage-health
+```
 
-- No existe una credencial administrativa predeterminada utilizable.
-- El primer SUPERADMIN se crea únicamente desde variables privadas, sin promover cuentas existentes ni restablecer contraseñas en reinicios.
-- El primer ingreso exige cambio de contraseña y revoca sesiones anteriores.
-- La recuperación devuelve un mensaje genérico; el token es de un solo uso, expira y no se devuelve en el JSON.
-- El enlace de recuperación coloca el token en el fragmento del navegador y el frontend lo retira de la barra al cargar.
-- Los tokens de sesión dejaron de construirse en direcciones de descarga o consulta; se envían en `Authorization`.
-- Los archivos se descargan mediante `fetch` autenticado y `Blob`.
-- Inicio de sesión y recuperación tienen límites persistentes de intentos.
-- Las rutas `/api/` aplican autorización por roles con denegación por defecto.
-- Producción falla de forma cerrada si la capa de seguridad no se registra.
-- CORS no admite comodín en producción.
-- HTTPS es obligatorio para accesos externos; el healthcheck interno queda exento para evitar bucles.
-- CSP en producción restringe conexiones a `self`; localhost solo se permite en desarrollo.
-- Se añadieron HSTS bajo HTTPS, `no-store` para API, anti-framing, `nosniff`, política de referencias y permisos.
-- El paquete queda bloqueado en modo de una sola fundación mientras no se certifique el aislamiento multiempresa histórico.
-- La dependencia Lucide del navegador quedó fijada a una versión concreta, evitando `@latest`.
+para comprobar rutas y permisos de escritura. La persistencia real continúa exigiendo una prueba mediante redeploy.
 
-## 5. Resultado de validaciones automatizadas
+## 5. Seguridad preservada
 
-El validador incluido se ejecuta con:
+- No existe contraseña administrativa utilizable dentro del repositorio.
+- Los secretos se reciben por variables privadas.
+- El administrador inicial solo se crea en una instalación vacía.
+- Las variables de arranque no promueven ni restablecen cuentas existentes.
+- El primer ingreso obliga a cambiar la contraseña.
+- Recuperación con mensaje genérico y token no expuesto en producción.
+- Tokens de sesión en encabezados, no en direcciones.
+- Límites persistentes de intentos.
+- Autorización por roles con denegación por defecto.
+- HTTPS, HSTS, CSP, `no-store`, anti-framing y `nosniff` conservados.
+- Multifundación habilitada de forma explícita con guard SQL fail-closed, esquema v3 y almacenamiento por tenant.
+
+## 6. Archivos nuevos principales
+
+```text
+backend/config/uds_catalog.json
+backend/seed_data/config/rpp_minuta_base_2026_05.json
+backend/seed_data/templates_originales/oficiales/plantilla_ram_oficial_v2_historica.xlsx
+backend/services/uds_catalog.py
+backend/services/seed_sync.py
+backend/services/ram_historical_service.py
+backend/tests/test_operational_release_v2_3_7.py
+```
+
+La lista completa se entrega en el informe externo de archivos modificados.
+
+## 7. Pruebas automatizadas ejecutadas
+
+Se ejecutaron satisfactoriamente:
 
 ```bash
-python tools/validate_release.py
+python -m compileall -q backend
+node --check frontend/js/modules/acceso-compartido.js
+PYTHONPATH=backend python backend/tests/test_operational_release_v2_3_7.py
+PYTHONPATH=backend python backend/tests/test_ram_download_period_wiring.py
+PYTHONPATH=backend python backend/tests/test_ram_v3_integration.py
 ```
 
-Resultado final de esta entrega:
+Cobertura funcional comprobada:
 
-| Control | Resultado |
-|---|---:|
-| Archivos obligatorios | PASS |
-| Ausencia de enlaces simbólicos | PASS |
-| Ausencia de bytecode y cachés | PASS |
-| Ausencia de DB, `.env`, logs y respaldos operativos | PASS |
-| Directorios runtime vacíos | PASS |
-| Sintaxis Python, 137 archivos | PASS |
-| JSON válido, 6 archivos antes del manifiesto final | PASS |
-| Sintaxis Bash, 2 scripts | PASS |
-| Sintaxis JavaScript, 32 archivos | PASS |
-| Hashes de 8 semillas | PASS |
-| Integridad Office y ausencia de relaciones externas | PASS |
-| Cobertura de autorización, 312 rutas y 54 familias | PASS |
-| Configuración productiva y bootstrap | PASS |
-| Invariantes de privacidad y seguridad | PASS |
-| Configuración Railway/Docker | PASS |
+- 32 UDS y alias críticos;
+- migración desde unidades demo;
+- siembra idempotente de UDS;
+- semilla RPP idempotente;
+- 4 grupos y 49 productos RPP;
+- 17 equivalencias RPP activas;
+- RAM V2 para julio de 2026;
+- RAM V3 para agosto de 2026;
+- generación sintética de ambos formatos;
+- paginación RAM V3 con 21 participantes ficticios;
+- preservación de plantilla maestra;
+- sincronización, respaldo y preservación de una plantilla personalizada;
+- presencia de URL Railway, diagnóstico `/data` y preflight de formatos.
 
-**Total: 15 PASS, 0 FAIL, 0 SKIP.**
+El resultado reproducible final de `tools/validate_release.py` queda consignado en el JSON externo de validación y en el informe de auditoría.
 
-## 6. Pruebas que sí se ejecutaron
+## 8. Privacidad
 
-- compilación sintáctica de todos los módulos Python sin generar bytecode;
-- validación de todos los JavaScript con Node;
-- validación Bash y JSON;
-- creación repetible de una base SQLite temporal;
-- creación idempotente del SUPERADMIN y rechazo de promoción indebida;
-- verificación de integridad SQLite;
-- verificación de manifiestos y SHA-256 de semillas;
-- apertura estructural de XLSX y DOCX, incluida revisión de relaciones externas;
-- extracción AST de rutas y cobertura por familia de autorización;
-- comparación exacta contra candidatos sensibles del origen;
-- validación del contenido y estructura del archivo ZIP final.
+La plantilla RAM V2 fue sanitizada antes de incorporarla. Se eliminaron:
 
-## 7. Límite de la validación local
+- datos institucionales de origen;
+- NIT y contrato;
+- agente educativo;
+- UDS, dirección y teléfono;
+- nombres, documentos y asistencia de participantes.
 
-Este entorno no dispone de Flask, Werkzeug, Gunicorn ni Docker y tampoco puede resolver el índice público de paquetes. Por eso no se afirmó una prueba de arranque integral del contenedor. El primer build en Railway instalará las dependencias y será la prueba de integración real de Flask/Gunicorn, OCR, PDF y sistema operativo.
+El catálogo UDS se considera información operativa, no personal. No se reincorporaron nombres de niños, acudientes, funcionarios, documentos, teléfonos ni credenciales.
 
-El frontend heredado aún usa Tailwind Play CDN. Es adecuado para el ensayo controlado solicitado, pero Tailwind recomienda compilar CSS estático para una operación final. No deben cargarse datos reales hasta completar ese cambio, la prueba funcional por roles, persistencia, respaldo, restauración y revisión de logs.
+## 9. Elementos intencionalmente no restaurados
 
-## 8. Criterio de entrega
+- Base SQLite privada.
+- Usuarios y contraseñas históricas.
+- Beneficiarios.
+- Cargas y resultados anteriores.
+- Respaldos y logs.
+- Cuentas de cobro diligenciadas.
+- Plantillas con información personal o institucional ya escrita.
+- Automatizaciones de túnel como mecanismo principal.
+- Datos o archivos personales de otras fundaciones.
 
-La carpeta queda preparada para:
+## 10. Validaciones todavía obligatorias en Railway y multifundación
 
-1. subirse a un repositorio privado o mediante Railway CLI;
-2. montarse con un único volumen `/data`;
-3. recibir secretos y administrador inicial exclusivamente como variables;
-4. iniciar una base vacía con plantillas sanitizadas;
-5. probar la plataforma con registros completamente ficticios.
+1. Confirmar volumen montado en `/data`.
+2. Ejecutar prueba de persistencia mediante redeploy.
+3. Probar inicio de sesión y cambio de contraseña.
+4. Probar RPP, Bienestarina y RAM con una UDS y datos ficticios.
+5. Probar un periodo anterior y uno posterior a agosto de 2026.
+6. Verificar descargas autenticadas.
+7. Probar permisos con cada rol.
+8. Revisar logs sin secretos ni datos personales.
+9. Probar respaldo y restauración.
+10. Medir memoria y tiempo con cargas representativas ficticias.
+11. Crear dos fundaciones y comprobar aislamiento total de usuarios, datos, archivos, plantillas, trabajos y descargas.
+12. Suspender una fundación y verificar la invalidación inmediata de sus sesiones.
 
-No se autoriza todavía el uso de información real de niños, acudientes, salud, nutrición, personal o contratos.
+## 11. Límite de certificación
+
+La validación local comprueba código, manifiestos, hojas Office y comportamiento de servicios con datos sintéticos. No reemplaza la prueba integral del contenedor en Railway ni una auditoría legal de tratamiento de datos.
+
+Hasta completar la lista anterior, la versión debe usarse solamente para ensayos controlados con información ficticia.

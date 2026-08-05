@@ -22,3 +22,7 @@ backend/templates_originales/*
 venv
 VALIDATION_RUNTIME
 *.zip
+.runtime_windows/
+logs_tunel/
+tools/cloudflared/
+ENLACE_PUBLICO_TUNEL.txt

@@ -1,0 +1,60 @@
+{
+  "version": "2.4.1-operativa-tunel-admin-recuperacion",
+  "fecha": "2026-08-04",
+  "status": "PASS",
+  "archivos_revisados": 271,
+  "archivos_texto_revisados": 246,
+  "checks": [
+    {
+      "name": "Sin bases de datos operativas en el ZIP",
+      "status": "PASS",
+      "detail": []
+    },
+    {
+      "name": "Sin archivos .env privados",
+      "status": "PASS",
+      "detail": []
+    },
+    {
+      "name": "Directorios runtime sin contenido operativo",
+      "status": "PASS",
+      "detail": []
+    },
+    {
+      "name": "Sin credenciales locales fijas utilizables",
+      "status": "PASS",
+      "detail": []
+    },
+    {
+      "name": "Sin claves API probables incrustadas",
+      "status": "PASS",
+      "detail": []
+    },
+    {
+      "name": "Sin tokens de sesión construidos en URL",
+      "status": "PASS",
+      "detail": []
+    },
+    {
+      "name": "Sin credencial histórica expuesta fuera de rechazo/pruebas",
+      "status": "PASS",
+      "detail": []
+    },
+    {
+      "name": "Plantillas Office declaradas sanitizadas",
+      "status": "PASS",
+      "detail": {
+        "sanitizada": true,
+        "contiene_datos_reales": false
+      }
+    }
+  ],
+  "notas_de_revision": [
+    "Las cadenas de credenciales históricas presentes únicamente en validadores o pruebas negativas se excluyen como falsos positivos controlados."
+  ],
+  "conclusion": "No se detectaron bases operativas, secretos utilizables, credenciales fijas ni datos runtime en el paquete.",
+  "limitaciones": [
+    "La revisión automatizada no sustituye una evaluación jurídica de privacidad ni una inspección humana de cada contenido institucional.",
+    "Las pruebas deben continuar únicamente con datos ficticios hasta completar aceptación en Windows, Cloudflare Tunnel y Railway."
+  ]
+}

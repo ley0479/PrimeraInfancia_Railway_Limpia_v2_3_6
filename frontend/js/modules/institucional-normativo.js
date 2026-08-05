@@ -4,6 +4,7 @@
     let configLoaded = false;
     let manualLoaded = false;
     let configuracionActual = null;
+    const protectedAssetObjectUrls = new Map();
 
     function token() {
         try {
@@ -105,6 +106,32 @@
         return `${resolved}${separator}v=${encodeURIComponent(version || Date.now())}`;
     }
 
+    function isProtectedInstitutionalAsset(url) {
+        try {
+            const parsed = new URL(url, window.location.origin);
+            return parsed.pathname.startsWith('/api/institucional-archivos/');
+        } catch (_) {
+            return String(url || '').includes('/api/institucional-archivos/');
+        }
+    }
+
+    async function loadProtectedAsset(url) {
+        if (!isProtectedInstitutionalAsset(url)) return url;
+        if (protectedAssetObjectUrls.has(url)) return protectedAssetObjectUrls.get(url);
+        const response = await fetch(url, { headers: authHeaders() });
+        if (!response.ok) {
+            let message = `No se pudo cargar el recurso institucional (${response.status}).`;
+            try {
+                const data = await response.json();
+                message = data.error || message;
+            } catch (_) {}
+            throw new Error(message);
+        }
+        const objectUrl = URL.createObjectURL(await response.blob());
+        protectedAssetObjectUrls.set(url, objectUrl);
+        return objectUrl;
+    }
+
     function setImage(id, fallbackId, url, version) {
         const img = qs(id);
         const fallback = qs(fallbackId);
@@ -120,7 +147,10 @@
             img.classList.remove('hidden');
             if (fallback) fallback.classList.add('hidden');
         };
-        img.src = versionedAssetUrl(url, version);
+        const versioned = versionedAssetUrl(url, version);
+        loadProtectedAsset(versioned)
+            .then((resolved) => { img.src = resolved; })
+            .catch(showFallback);
     }
 
     function setFavicon(url, version) {
@@ -132,7 +162,10 @@
             link.rel = 'icon';
             document.head.appendChild(link);
         }
-        link.href = versionedAssetUrl(url, version);
+        const versioned = versionedAssetUrl(url, version);
+        loadProtectedAsset(versioned)
+            .then((resolved) => { link.href = resolved; })
+            .catch(() => {});
     }
 
     function aplicarIdentidadInstitucional(config) {

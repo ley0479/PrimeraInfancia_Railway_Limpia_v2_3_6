@@ -43,3 +43,9 @@ venv/
 Thumbs.db
 .vscode/
 .idea/
+
+# Ejecución local/túnel (generados en cada equipo)
+.runtime_windows/
+logs_tunel/
+tools/cloudflared/
+ENLACE_PUBLICO_TUNEL.txt
