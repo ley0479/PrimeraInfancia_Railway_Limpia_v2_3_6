@@ -20,6 +20,7 @@ RUN apt-get update \
        fonts-dejavu-core \
        fonts-liberation \
        poppler-utils \
+       postgresql-client \
        tesseract-ocr \
        tesseract-ocr-spa \
     && rm -rf /var/lib/apt/lists/* \

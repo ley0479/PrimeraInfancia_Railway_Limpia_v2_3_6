@@ -5,8 +5,9 @@ import html
 import json
 import re
 import secrets
-import sqlite3
+from modules.dbapi_compat import sqlite3
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -39,13 +40,13 @@ PASSWORD_CHANGE_ALLOWED_PATHS = {
 }
 
 ROLE_MENU_PERMISSIONS = {
-    'SUPERADMIN': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'manual-operativo', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento'],
-    'GERENTE': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'manual-operativo', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento'],
-    'COORDINADOR': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'manual-operativo', 'ajustes', 'calidad-datos', 'base-maestra', 'paquete-mensual', 'reportes-gerenciales', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'formatos', 'relacion-mes', 'cumplimiento'],
-    'DOCENTE': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'manual-operativo', 'ajustes', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'formatos'],
-    'NUTRICIONISTA': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'manual-operativo', 'ajustes', 'calidad-datos', 'base-maestra', 'salud-nutricion', 'nutricion'],
-    'PSICOSOCIAL': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'manual-operativo', 'ajustes', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador'],
-    'AUXILIAR_ADMINISTRATIVO': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'manual-operativo', 'ajustes', 'calidad-datos', 'base-maestra', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'formatos', 'talento', 'cumplimiento'],
+    'SUPERADMIN': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'manual-operativo', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes'],
+    'GERENTE': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'manual-operativo', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes'],
+    'COORDINADOR': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'manual-operativo', 'ajustes', 'calidad-datos', 'base-maestra', 'paquete-mensual', 'reportes-gerenciales', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'formatos', 'relacion-mes', 'cumplimiento', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes'],
+    'DOCENTE': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'manual-operativo', 'ajustes', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'formatos', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad'],
+    'NUTRICIONISTA': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'manual-operativo', 'ajustes', 'calidad-datos', 'base-maestra', 'salud-nutricion', 'nutricion', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad'],
+    'PSICOSOCIAL': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'manual-operativo', 'ajustes', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes'],
+    'AUXILIAR_ADMINISTRATIVO': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'manual-operativo', 'ajustes', 'calidad-datos', 'base-maestra', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'formatos', 'talento', 'cumplimiento', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad'],
 }
 
 ALL_ROLES = frozenset(ROLES_SISTEMA)
@@ -54,6 +55,7 @@ ADMIN_OPERATIONS = frozenset({'SUPERADMIN', 'GERENTE', 'COORDINADOR', 'AUXILIAR_
 DATA_OPERATIONS = frozenset({'SUPERADMIN', 'GERENTE', 'COORDINADOR', 'AUXILIAR_ADMINISTRATIVO', 'NUTRICIONISTA'})
 PEDAGOGICAL = frozenset({'SUPERADMIN', 'GERENTE', 'COORDINADOR', 'DOCENTE', 'PSICOSOCIAL', 'AUXILIAR_ADMINISTRATIVO'})
 NUTRITION = frozenset({'SUPERADMIN', 'GERENTE', 'NUTRICIONISTA'})
+FAMILY_SOCIAL = frozenset({'SUPERADMIN', 'GERENTE', 'COORDINADOR', 'PSICOSOCIAL'})
 
 # Toda familia de rutas /api debe aparecer explícitamente. Lo no declarado se deniega.
 PATH_ROLE_RULES = sorted([
@@ -96,6 +98,10 @@ PATH_ROLE_RULES = sorted([
     ('/api/ajustes-ui', ALL_ROLES),
     ('/api/theme-manager', ALL_ROLES),
     ('/api/manual-operativo', ALL_ROLES),
+    ('/api/gestion-integral-uca', ALL_ROLES),
+    ('/api/motor-gestion-proyecto', ALL_ROLES),
+    ('/api/supervision-calidad', ALL_ROLES),
+    ('/api/familias-redes', FAMILY_SOCIAL),
     ('/api/asistente-icbf', ALL_ROLES),
     ('/api/corporaciones', ALL_ROLES),
     ('/api/beneficiarios', ALL_ROLES),
@@ -137,23 +143,39 @@ def _database_cache_key(database_path: str) -> str:
         return raw
 
 
-def connect(database_path: str) -> sqlite3.Connection:
-    """Abre SQLite con espera y WAL sin bloquear cada petición.
+def connect(
+    database_path: str,
+    *,
+    timeout_seconds: float | None = None,
+    busy_timeout_ms: int | None = None,
+    isolation_level: str | None = 'DEFERRED',
+) -> sqlite3.Connection:
+    """Abre SQLite con configuración consistente y sin renegociar WAL.
 
-    Ejecutar ``PRAGMA journal_mode=WAL`` en *todas* las conexiones puede pedir
-    un bloqueo exclusivo. Bajo un túnel, donde healthchecks y login pueden
-    coincidir, ese patrón producía errores intermitentes ``database is locked``.
-    El modo WAL ahora se configura una sola vez por proceso y, si la base está
-    temporalmente ocupada, la conexión continúa con el modo ya existente.
+    ``timeout_seconds`` y ``busy_timeout_ms`` permiten que operaciones sensibles,
+    como el login, utilicen un presupuesto corto sin cambiar el comportamiento de
+    los módulos operativos. El modo WAL se inicializa una sola vez por base y por
+    proceso; solicitarlo en cada conexión exige un bloqueo exclusivo y fue una de
+    las fuentes de intermitencia observadas bajo concurrencia.
     """
-    timeout = 30
-    if has_request_context():
-        timeout = max(5, int(current_app.config.get('SQLITE_TIMEOUT_SECONDS', 30)))
-    conn = sqlite3.connect(database_path, timeout=timeout)
+    if timeout_seconds is None:
+        timeout_seconds = 30.0
+        if has_request_context():
+            timeout_seconds = float(max(5, int(current_app.config.get('SQLITE_TIMEOUT_SECONDS', 30))))
+    timeout_seconds = max(0.05, float(timeout_seconds))
+    if busy_timeout_ms is None:
+        busy_timeout_ms = max(50, int(timeout_seconds * 1000))
+    busy_timeout_ms = max(0, int(busy_timeout_ms))
+
+    conn = sqlite3.connect(
+        database_path,
+        timeout=timeout_seconds,
+        isolation_level=isolation_level,
+    )
     try:
         conn.row_factory = sqlite3.Row
         conn.execute('PRAGMA foreign_keys = ON')
-        conn.execute(f'PRAGMA busy_timeout = {timeout * 1000}')
+        conn.execute(f'PRAGMA busy_timeout = {busy_timeout_ms}')
 
         cache_key = _database_cache_key(database_path)
         if cache_key not in _WAL_INITIALIZED_DATABASES:
@@ -163,16 +185,149 @@ def connect(database_path: str) -> sqlite3.Connection:
                         conn.execute('PRAGMA journal_mode = WAL').fetchone()
                         _WAL_INITIALIZED_DATABASES.add(cache_key)
                     except sqlite3.OperationalError as exc:
-                        message = str(exc).lower()
-                        if 'locked' not in message and 'busy' not in message:
+                        if not is_sqlite_busy_error(exc):
                             raise
-                        # Otro request puede estar terminando una escritura. El
-                        # busy_timeout seguirá protegiendo las operaciones reales.
+                        # Otra conexión puede estar terminando una escritura. La
+                        # operación real aplicará su política de espera/reintento.
         conn.execute('PRAGMA synchronous = NORMAL')
         return conn
     except Exception:
         conn.close()
         raise
+
+
+def is_sqlite_busy_error(exc: BaseException) -> bool:
+    """Reconoce las variantes de SQLITE_BUSY/SQLITE_LOCKED sin ocultar otros fallos."""
+    message = str(exc or '').lower()
+    return any(marker in message for marker in (
+        'database is locked',
+        'database table is locked',
+        'database schema is locked',
+        'database is busy',
+        'sqlite_busy',
+        'sqlite_locked',
+    ))
+
+
+def _config_int(name: str, default: int, minimum: int, maximum: int) -> int:
+    value = default
+    if has_request_context():
+        try:
+            value = int(current_app.config.get(name, default))
+        except (TypeError, ValueError):
+            value = default
+    return max(minimum, min(maximum, value))
+
+
+def _login_retry_policy() -> dict[str, int]:
+    """Política acotada: reintenta internamente sin dejar el navegador colgado."""
+    return {
+        'attempts': _config_int('LOGIN_DB_RETRY_ATTEMPTS', 4, 1, 8),
+        'busy_timeout_ms': _config_int('LOGIN_DB_BUSY_TIMEOUT_MS', 150, 25, 500),
+        'retry_base_ms': _config_int('LOGIN_DB_RETRY_BASE_MS', 50, 10, 250),
+        'budget_ms': _config_int('LOGIN_DB_RETRY_BUDGET_MS', 1200, 200, 1800),
+    }
+
+
+def _retry_delay_seconds(base_ms: int, retry_index: int, remaining_seconds: float) -> float:
+    delay = (base_ms * (2 ** max(0, retry_index))) / 1000.0
+    return max(0.0, min(delay, max(0.0, remaining_seconds)))
+
+
+def _run_login_read(database_path: str, operation):
+    policy = _login_retry_policy()
+    started = time.monotonic()
+    deadline = started + (policy['budget_ms'] / 1000.0)
+    last_error: sqlite3.OperationalError | None = None
+    for attempt in range(policy['attempts']):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        per_attempt_ms = min(policy['busy_timeout_ms'], max(25, int(remaining * 1000)))
+        conn = None
+        try:
+            conn = connect(
+                database_path,
+                timeout_seconds=per_attempt_ms / 1000.0,
+                busy_timeout_ms=per_attempt_ms,
+                isolation_level=None,
+            )
+            value = operation(conn)
+            return value, {
+                'db_retries': attempt,
+                'db_elapsed_ms': int((time.monotonic() - started) * 1000),
+            }
+        except sqlite3.OperationalError as exc:
+            if not is_sqlite_busy_error(exc):
+                raise
+            last_error = exc
+            if attempt + 1 >= policy['attempts']:
+                break
+            remaining = deadline - time.monotonic()
+            delay = _retry_delay_seconds(policy['retry_base_ms'], attempt, remaining)
+            if delay > 0:
+                time.sleep(delay)
+        finally:
+            if conn is not None:
+                conn.close()
+    if last_error is not None:
+        raise last_error
+    raise sqlite3.OperationalError('database is busy')
+
+
+def _run_login_write(database_path: str, operation):
+    policy = _login_retry_policy()
+    started = time.monotonic()
+    deadline = started + (policy['budget_ms'] / 1000.0)
+    last_error: sqlite3.OperationalError | None = None
+    for attempt in range(policy['attempts']):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        per_attempt_ms = min(policy['busy_timeout_ms'], max(25, int(remaining * 1000)))
+        conn = None
+        try:
+            conn = connect(
+                database_path,
+                timeout_seconds=per_attempt_ms / 1000.0,
+                busy_timeout_ms=per_attempt_ms,
+                isolation_level=None,
+            )
+            conn.execute('BEGIN IMMEDIATE')
+            value = operation(conn)
+            conn.execute('COMMIT')
+            return value, {
+                'db_retries': attempt,
+                'db_elapsed_ms': int((time.monotonic() - started) * 1000),
+            }
+        except sqlite3.OperationalError as exc:
+            if conn is not None and conn.in_transaction:
+                try:
+                    conn.execute('ROLLBACK')
+                except Exception:
+                    pass
+            if not is_sqlite_busy_error(exc):
+                raise
+            last_error = exc
+            if attempt + 1 >= policy['attempts']:
+                break
+            remaining = deadline - time.monotonic()
+            delay = _retry_delay_seconds(policy['retry_base_ms'], attempt, remaining)
+            if delay > 0:
+                time.sleep(delay)
+        except Exception:
+            if conn is not None and conn.in_transaction:
+                try:
+                    conn.execute('ROLLBACK')
+                except Exception:
+                    pass
+            raise
+        finally:
+            if conn is not None:
+                conn.close()
+    if last_error is not None:
+        raise last_error
+    raise sqlite3.OperationalError('database is busy')
 
 
 def table_exists(cursor: sqlite3.Cursor, table: str) -> bool:
@@ -519,10 +674,243 @@ def role_allowed_for_path(path: str, rol: str) -> bool:
     return False
 
 
-def _rate_key(scope: str, identifier: str) -> str:
-    ip = request.remote_addr if has_request_context() else 'unknown'
+def _rate_key_for(scope: str, identifier: str, ip: str | None = None) -> str:
+    if ip is None:
+        ip = request.remote_addr if has_request_context() else 'unknown'
     normalized = (identifier or '').strip().lower()
-    return hash_token(f'{scope}|{ip}|{normalized}')
+    return hash_token(f'{scope}|{ip or "unknown"}|{normalized}')
+
+
+def _rate_key(scope: str, identifier: str) -> str:
+    return _rate_key_for(scope, identifier)
+
+
+def _retry_after_from_row(row: sqlite3.Row | Mapping[str, Any] | None) -> int:
+    if not row:
+        return 0
+    value = row.get('bloqueado_hasta') if isinstance(row, Mapping) else row['bloqueado_hasta']
+    if not value:
+        return 0
+    try:
+        until = datetime.fromisoformat(str(value))
+    except Exception:
+        return 0
+    if until <= datetime.now():
+        return 0
+    return max(1, int((until - datetime.now()).total_seconds()))
+
+
+def load_login_state(database_path: str, identifier: str) -> tuple[int, sqlite3.Row | None, dict[str, int]]:
+    """Lee bloqueo y cuenta en una sola conexión breve y reintentable."""
+    key = _rate_key('login', identifier)
+
+    def operation(conn: sqlite3.Connection):
+        rate_row = conn.execute(
+            "SELECT bloqueado_hasta FROM auth_intentos WHERE clave_hash=?",
+            (key,),
+        ).fetchone()
+        # La búsqueda exacta aprovecha los índices UNIQUE ya existentes de
+        # username/email. Solo si no hay coincidencia se usa la compatibilidad
+        # histórica sin distinción de mayúsculas, evitando un escaneo completo
+        # en el caso normal sin cambiar el esquema de la base.
+        user_row = conn.execute(
+            """
+            SELECT u.*, f.estado AS fundacion_estado, f.nombre AS fundacion_nombre
+            FROM usuarios_app u
+            LEFT JOIN fundaciones f ON f.id = u.fundacion_id
+            WHERE u.username=? OR u.email=?
+            LIMIT 1
+            """,
+            (identifier, identifier),
+        ).fetchone()
+        if not user_row:
+            user_row = conn.execute(
+                """
+                SELECT u.*, f.estado AS fundacion_estado, f.nombre AS fundacion_nombre
+                FROM usuarios_app u
+                LEFT JOIN fundaciones f ON f.id = u.fundacion_id
+                WHERE lower(u.username)=lower(?) OR lower(u.email)=lower(?)
+                LIMIT 1
+                """,
+                (identifier, identifier),
+            ).fetchone()
+        return _retry_after_from_row(rate_row), user_row
+
+    (retry_after, user_row), meta = _run_login_read(database_path, operation)
+    return retry_after, user_row, meta
+
+
+def record_login_failure_atomic(
+    database_path: str,
+    identifier: str,
+    *,
+    maximum: int,
+    window_seconds: int,
+    lock_seconds: int,
+    request_id: str,
+    ip: str | None,
+    user_agent: str | None,
+) -> tuple[int, dict[str, int]]:
+    """Registra intento y auditoría en una sola transacción.
+
+    Si SQLite no permite escribir dentro del presupuesto, no se inventa un
+    bloqueo: se propaga SQLITE_BUSY para que el cliente reintente sin penalizar
+    la credencial.
+    """
+    key = _rate_key_for('login', identifier, ip)
+    now = datetime.now()
+    now_text = now.isoformat(timespec='seconds')
+    identifier_digest = hash_token((identifier or '').strip().lower())
+
+    def operation(conn: sqlite3.Connection) -> int:
+        row = conn.execute(
+            "SELECT intentos, ventana_inicio FROM auth_intentos WHERE clave_hash=?",
+            (key,),
+        ).fetchone()
+        attempts = 1
+        window_start = now
+        if row:
+            try:
+                previous_start = datetime.fromisoformat(str(row['ventana_inicio']))
+            except Exception:
+                previous_start = now - timedelta(seconds=window_seconds + 1)
+            if (now - previous_start).total_seconds() <= window_seconds:
+                attempts = int(row['intentos'] or 0) + 1
+                window_start = previous_start
+        blocked_until = now + timedelta(seconds=lock_seconds) if attempts >= maximum else None
+        conn.execute(
+            """
+            INSERT INTO auth_intentos
+            (clave_hash, alcance, intentos, ventana_inicio, bloqueado_hasta, fecha_actualizacion)
+            VALUES (?, 'login', ?, ?, ?, ?)
+            ON CONFLICT(clave_hash) DO UPDATE SET
+                alcance=excluded.alcance,
+                intentos=excluded.intentos,
+                ventana_inicio=excluded.ventana_inicio,
+                bloqueado_hasta=excluded.bloqueado_hasta,
+                fecha_actualizacion=excluded.fecha_actualizacion
+            """,
+            (
+                key,
+                attempts,
+                window_start.isoformat(timespec='seconds'),
+                blocked_until.isoformat(timespec='seconds') if blocked_until else None,
+                now_text,
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO auditoria_seguridad
+            (usuario_id, username, fundacion_id, accion, tabla_afectada, registro_id,
+             datos_anteriores, datos_nuevos, ip, user_agent, fecha)
+            VALUES (NULL, NULL, NULL, 'LOGIN_FALLIDO', NULL, NULL, NULL, ?, ?, ?, ?)
+            """,
+            (
+                json.dumps({
+                    'identificador_hash': identifier_digest,
+                    'request_id': request_id,
+                    'intentos': attempts,
+                }, ensure_ascii=False),
+                ip,
+                (user_agent or '')[:500] or None,
+                now_text,
+            ),
+        )
+        return lock_seconds if blocked_until else 0
+
+    blocked, meta = _run_login_write(database_path, operation)
+    return int(blocked), meta
+
+
+def create_login_session_atomic(
+    database_path: str,
+    usuario: sqlite3.Row | Mapping[str, Any],
+    *,
+    identifiers: list[str] | tuple[str, ...],
+    request_id: str,
+    ip: str | None,
+    user_agent: str | None,
+) -> tuple[str, dict[str, Any], dict[str, int]]:
+    """Crea una sesión sin invalidar otras sesiones activas del mismo usuario.
+
+    La limpieza del rate limit, el INSERT de sesión, la fecha de última conexión
+    y la auditoría exitosa comparten una única transacción corta. Esto elimina
+    las múltiples ventanas de bloqueo que tenía el flujo anterior.
+    """
+    user = dict(usuario)
+    token = secrets.token_urlsafe(48)
+    minutes = max(15, int(current_app.config.get('SESSION_LIFETIME_MINUTES', 720)))
+    now = datetime.now()
+    now_text = now.isoformat(timespec='seconds')
+    expiration = now + timedelta(minutes=minutes)
+    expiration_text = expiration.isoformat(timespec='seconds')
+
+    rate_keys = []
+    for identifier in identifiers:
+        normalized = str(identifier or '').strip()
+        if normalized:
+            key = _rate_key_for('login', normalized, ip)
+            if key not in rate_keys:
+                rate_keys.append(key)
+
+    def operation(conn: sqlite3.Connection):
+        if rate_keys:
+            placeholders = ','.join('?' for _ in rate_keys)
+            conn.execute(
+                f"DELETE FROM auth_intentos WHERE clave_hash IN ({placeholders})",
+                tuple(rate_keys),
+            )
+        # Limpieza acotada al usuario actual. Las sesiones activas se preservan
+        # para permitir acceso simultáneo desde distintos dispositivos.
+        conn.execute(
+            """
+            DELETE FROM sesiones_usuario
+            WHERE usuario_id=? AND (activa=0 OR fecha_expiracion < ?)
+            """,
+            (user['id'], now_text),
+        )
+        conn.execute(
+            """
+            INSERT INTO sesiones_usuario
+            (usuario_id, fundacion_id, token_hash, ip, user_agent, activa, fecha_creacion, fecha_expiracion)
+            VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+            """,
+            (
+                user['id'], user.get('fundacion_id'), hash_token(token), ip,
+                (user_agent or '')[:500] or None, now_text, expiration_text,
+            ),
+        )
+        conn.execute(
+            "UPDATE usuarios_app SET fecha_ultima_conexion=?, fecha_actualizacion=? WHERE id=?",
+            (now_text, now_text, user['id']),
+        )
+        conn.execute(
+            """
+            INSERT INTO auditoria_seguridad
+            (usuario_id, username, fundacion_id, accion, tabla_afectada, registro_id,
+             datos_anteriores, datos_nuevos, ip, user_agent, fecha)
+            VALUES (?, ?, ?, 'LOGIN_EXITOSO', 'usuarios_app', ?, NULL, ?, ?, ?, ?)
+            """,
+            (
+                user['id'], user.get('username'), user.get('fundacion_id'), user['id'],
+                json.dumps({'request_id': request_id}, ensure_ascii=False),
+                ip, (user_agent or '')[:500] or None, now_text,
+            ),
+        )
+        return conn.execute(
+            """
+            SELECT u.*, f.estado AS fundacion_estado, f.nombre AS fundacion_nombre
+            FROM usuarios_app u
+            LEFT JOIN fundaciones f ON f.id = u.fundacion_id
+            WHERE u.id=?
+            """,
+            (user['id'],),
+        ).fetchone()
+
+    fresh_row, meta = _run_login_write(database_path, operation)
+    payload = user_dict(fresh_row)
+    payload['expira'] = expiration_text
+    return token, payload, meta
 
 
 def rate_limit_status(database_path: str, scope: str, identifier: str) -> int:

@@ -62,8 +62,52 @@
       34
     ],
     "capacidad_por_pagina": 20,
-    "descripcion": "Plantilla oficial RAM V3 sanitizada y sin participantes.",
+    "descripcion": "RAM versionado por periodo: formato histórico V2 sanitizado hasta julio de 2026 y RAM V3 desde agosto de 2026.",
     "sanitizada": true,
-    "contiene_datos_reales": false
+    "contiene_datos_reales": false,
+    "versiones": [
+      {
+        "nombre": "Formato Registro Asistencia Mensual RAM V2 histórico sanitizado",
+        "archivo": "plantilla_ram_oficial_v2_historica.xlsx",
+        "archivo_versionado": "plantilla_ram_oficial_v2_historica.xlsx",
+        "hoja": "FORMATO RAM V2 HISTORICO",
+        "version": "2",
+        "codigo": "F27.MT1.PP",
+        "fecha_vigencia": "2000-01-01",
+        "fecha_vigencia_fin": "2026-07-31",
+        "hash_sha256": "69fabc7db8460c11a75a56eb7a382279c2673b49bdce602146fde7293444f666",
+        "area_impresion_si_falta": "A1:AK41",
+        "filas_usuarios": [
+          15,
+          34
+        ],
+        "capacidad_por_pagina": 20,
+        "descripcion": "Plantilla histórica RAM/RRAN V2 sanitizada; conserva estructura y estilos sin participantes ni datos institucionales.",
+        "sanitizada": true,
+        "contiene_datos_reales": false,
+        "hoja_instrucciones": null
+      },
+      {
+        "nombre": "Formato Asistencia Registro Mensual RAM V3",
+        "archivo": "plantilla_ram_oficial_v3.xlsx",
+        "archivo_versionado": "plantilla_ram_oficial_v3.xlsx",
+        "hoja": "FORMATO RAM",
+        "hoja_instrucciones": "INSTRUCCIONES DILIGENCIAMIENTO",
+        "version": "3",
+        "codigo": "F27.MT1.PP",
+        "fecha_vigencia": "2026-08-01",
+        "fecha_vigencia_fin": "",
+        "hash_sha256": "52ae6d192acd678d282d851bbc43d0ebd042efe4e338c3761a4f87f207b14fdf",
+        "area_impresion_si_falta": "A1:AO41",
+        "filas_usuarios": [
+          15,
+          34
+        ],
+        "capacidad_por_pagina": 20,
+        "descripcion": "Plantilla oficial RAM V3 sanitizada y sin participantes.",
+        "sanitizada": true,
+        "contiene_datos_reales": false
+      }
+    ]
   }
 }

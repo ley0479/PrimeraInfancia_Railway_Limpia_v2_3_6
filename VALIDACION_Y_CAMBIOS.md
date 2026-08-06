@@ -1,9 +1,128 @@
-# Validación y cambios — PrimeraInfancia 2.4.2
+# Validación y cambios — PrimeraInfancia 2.6.0
+
+## Salud y Nutrición Integral, PostgreSQL y scripts Windows
+
+- Sistema Integral de Salud y Nutrición por participante y UCA, sin duplicar Base Maestra.
+- Control documental de afiliación, vacunación, valoración integral, salud bucal, prenatal, tamizaje y discapacidad cuando aplique.
+- Validación profesional versionada de valoraciones y CAPTURE XLSX/PDF en borrador controlado.
+- Jornadas con actas, listados, informes, asistencia, evidencias y seguimiento.
+- Canalizaciones y rutas con cierre humano y soporte obligatorio.
+- Engine central SQLite/PostgreSQL, pool psycopg y capa de compatibilidad temporal.
+- Herramienta no destructiva de migración SQLite → PostgreSQL con respaldo, SHA-256, lotes, secuencias y conteos.
+- Respaldo/restauración PostgreSQL mediante pg_dump/pg_restore.
+- BAT pequeños CRLF que delegan en PowerShell, corrigiendo fragmentación y truncamiento del script anterior.
+- Diagnóstico de inicio Windows, puerto, Python, base, cloudflared y herramientas PostgreSQL.
+- Pruebas específicas de compatibilidad, migración, scripts, Salud Integral y regresión.
+
+# Validación y cambios — PrimeraInfancia 2.5.4
+
+
+## Cambios de 2.5.4 — Supervisión, Auditoría, Calidad y Familias/Redes
+
+- Centro de Supervisión por UCA con 14 criterios base, hallazgos, planes, acciones, seguimientos y evidencias.
+- Productos de supervisión en Excel, PDF y ZIP, siempre en borrador y con validación humana.
+- Módulo de Familias, Comunidad y Redes para el rol psicosocial, con sincronización idempotente desde Base Maestra.
+- Generación de actas PDF, listados XLSX e informes PDF a partir de datos registrados, sin inventar resultados.
+- Compromisos, alertas y redes territoriales integrados con el Motor de Gestión.
+- Expediente UCA ampliado a diez dominios.
+- Aislamiento multi-fundación y acceso por UCA en modo fail-closed.
+- Prueba automatizada específica `test_supervision_familias_redes_v2_5_4.py`.
+
+## Cambios de 2.5.3 — Biblioteca Oficial ICBF y Motor Inteligente de Gestión
+
+- Fuentes documentales autorizadas con verificación remota deshabilitada por defecto.
+- Contrato seguro de integración futura mediante catálogo JSON HTTPS y dominios permitidos.
+- Detección de versiones candidatas sin activación automática.
+- Aprobación, rechazo, historial, notificaciones y relación sugerida con módulos.
+- Motor de tareas referenciales e idempotentes sobre Ruta Operativa, calendario y entregables existentes.
+- Reglas de prioridad, dependencias, recordatorios y cierres mensuales.
+- Preparación de Excel, PDF y ZIP únicamente con información registrada; todos quedan en BORRADOR.
+- Revisión y aprobación humana obligatoria, trazabilidad y aislamiento multi-fundación.
+
+# Validación y cambios — PrimeraInfancia 2.5.2
+
+## Cambios de 2.5.2 — Expediente Operativo central por UCA
+
+- Vista única de ocho dominios sin duplicar datos operativos.
+- Motor de integración defensivo por fundación y UCA.
+- Alertas, cronograma e indicadores consolidados.
+- Índice documental referencial e idempotente.
+- Descarga restringida a archivos bajo `DATA_DIR`.
+- Paquete de supervisión ampliado con indicadores, alertas, cronograma, documentos, componentes y fuentes.
+- Prueba específica con dos fundaciones y registros ficticios.
+
+# Validación y cambios — PrimeraInfancia 2.5.1
+
+**Fecha:** 5 de agosto de 2026  
+**Base:** PrimeraInfancia 2.5.0 — Gestión Integral por UCA  
+**Alcance:** estabilización del login, concurrencia SQLite, sesiones simultáneas, facturación de solo lectura durante autenticación y recuperación del frontend ante esperas.
+
+## Cambios de 2.5.1 — autenticación y concurrencia
+
+- Se combinó la lectura de bloqueo y usuario en una conexión breve.
+- La búsqueda exacta utiliza los índices existentes de usuario/correo y conserva un fallback histórico sin distinguir mayúsculas.
+- Fallo de credenciales, auditoría y bloqueo se registran en una única transacción.
+- Creación de sesión, limpieza del bloqueo, fecha de conexión y auditoría se ejecutan en una única transacción `BEGIN IMMEDIATE`.
+- Las sesiones activas de otros dispositivos se preservan; solo se limpian sesiones inactivas o vencidas del usuario actual.
+- `SQLITE_BUSY/LOCKED` utiliza reintentos internos acotados, sin convertir la contención en intento fallido ni dejar el navegador esperando 30 segundos.
+- Facturación inicializa esquema/semillas una vez por proceso y usa un snapshot de solo lectura en login y middleware.
+- SQLAlchemy y el adaptador Core dejaron de renegociar `journal_mode=WAL` en cada conexión.
+- El frontend incorpora bloqueo de doble envío, timeout, reintento único para `LOGIN_DATABASE_BUSY` y restauración garantizada del botón.
+- Se añadieron métricas de duración y reintentos en cabeceras de respuesta y logs sanitizados.
+- Se añadió una prueba de ocho sesiones concurrentes, bloqueo transitorio, bloqueo persistente sin falso rate limit y acceso desde dos dispositivos.
+
+**Compatibilidad:** no se modificaron tablas, columnas, roles, permisos, rutas públicas ni estructura visual.
+
+---
+
+# Validación y cambios — PrimeraInfancia 2.5.0
+
+**Fecha:** 5 de agosto de 2026  
+**Base:** PrimeraInfancia 2.4.3 — Túnel Cloudflare corregido  
+**Alcance:** Expediente Operativo por UCA, Ruta Operativa, ocho planes, Biblioteca Oficial ICBF, semáforos, evidencias y paquete de supervisión.
+
+## Cambios de 2.5.0 — Gestión Integral por UCA
+
+- Se añadió un Expediente Operativo único por fundación, UCA, vigencia y contrato.
+- Se integran resúmenes y enlaces de Base Maestra, Pedagogía, Salud y Nutrición, Talento Humano, Calendario, RAM, RPP, Bienestarina y Reportes sin copiar sus datos.
+- Se añadió una Ruta Operativa de 19 actividades: preparación, implementación, cierre y emergencia.
+- Se exige evidencia antes de aprobar o cerrar actividades configuradas como documentales.
+- Revisión, aprobación, cierre y “No aplica” quedan reservados a coordinación.
+- Se sembraron los ocho planes operativos del Manual.
+- Se implementaron avance por fase, porcentaje global, vencimientos y semáforo por UCA.
+- Las fechas límite pueden sincronizarse de forma idempotente con el calendario existente.
+- Se añadió Biblioteca Oficial ICBF con versiones, vigencias, estados, SHA-256, aprobación humana y relaciones con módulos.
+- Se añadió generación de paquete ZIP de supervisión por UCA.
+- Evidencias, documentos y paquetes se almacenan bajo `/data/tenants/<fundacion_id>/`.
+- Las descargas verifican el almacenamiento autorizado y dejan auditoría.
+- Los prefijos `giu_` y `biblioteca_` fueron incorporados al aislamiento multi-fundación.
+- Se añadió una suite funcional SQLite con dos fundaciones y UCA ficticias.
+
+**Límite:** el servidor Flask completo, el navegador, PowerShell, Cloudflare y Railway deben probarse en los entornos correspondientes antes de usar datos reales.
+
+---
+
+# Validación y cambios — PrimeraInfancia 2.4.3
 
 **Fecha:** 4 de agosto de 2026  
 **Base:** PrimeraInfancia 2.4.0 multi-fundación piloto seguro  
 **Alcance:** túnel Cloudflare, gestión segura de usuarios/fundaciones, login de usuarios nuevos y recuperación de contraseña.
 
+
+## Cambios de 2.4.3 — enlace Quick Tunnel Cloudflare
+
+- Se eliminó el archivo de configuración vacío y el argumento `--config` del Quick Tunnel.
+- `cloudflared` se ejecuta con un `HOME/USERPROFILE` aislado para que un `config.yml` personal no interfiera, sin modificar los archivos del usuario.
+- Se fuerza TLS 1.2 en PowerShell y se añadió descarga alternativa mediante `curl.exe`.
+- Primer intento con protocolo `auto`; segundo intento explícito con `http2` cuando QUIC/UDP no funciona.
+- Se capturan `stdout` y `stderr` por intento y se analiza DNS, conexión al origen, QUIC y configuración.
+- El enlace no se entrega hasta comprobar `/api/health`, el frontend, la huella de la copia y `PUBLIC_TUNNEL_MODE=true`.
+- Se añadió diagnóstico del proceso `cloudflared`, puerto TCP 7844, archivos de configuración personales y logs reales en `logs_tunel`.
+- Se conserva el comando efectivo en `.runtime_windows/ULTIMO_COMANDO_CLOUDFLARED.txt` para facilitar soporte.
+
+**Causa reproducible corregida:** la versión 2.4.2 pasaba una configuración explícita al Quick Tunnel. Cloudflare documenta que los Quick Tunnels no necesitan configuración y no son compatibles cuando existe una configuración activa.
+
+---
 
 ## Cambios de 2.4.2 — login por túnel y logs
 

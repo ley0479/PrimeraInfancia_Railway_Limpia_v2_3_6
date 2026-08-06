@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import json
-import sqlite3
+from modules.dbapi_compat import sqlite3
 import io
 import re
 import zipfile

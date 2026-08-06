@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import re
 import secrets
-import sqlite3
+from modules.dbapi_compat import sqlite3
 import string
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -17,16 +18,20 @@ from .services import (
     clear_rate_limit,
     connect,
     create_session,
+    create_login_session_atomic,
     ensure_security_schema,
     extract_token,
     get_request_user_context,
     hash_token,
+    is_sqlite_busy_error,
+    load_login_state,
     invalidate_user_sessions,
     is_superadmin,
     now_iso,
     password_policy_errors,
     rate_limit_status,
     register_rate_limit_failure,
+    record_login_failure_atomic,
     require_roles,
     send_password_reset_email,
     build_password_reset_url,
@@ -131,6 +136,14 @@ def _safe_warning(message: str, *args) -> None:
         pass
 
 
+def _safe_info(message: str, *args) -> None:
+    """Registra telemetría sin incluir identificadores o credenciales."""
+    try:
+        current_app.logger.info(message, *args)
+    except Exception:
+        pass
+
+
 def _dependency_counts(conn: sqlite3.Connection, column: str, value: int, *, excluded: set[str] | None = None) -> dict:
     """Cuenta referencias sin construir nombres desde datos del usuario."""
     if column not in {'fundacion_id', 'usuario_id', 'usuario_creador_id', 'creado_por', 'actualizado_por'}:
@@ -174,11 +187,13 @@ def register_seguridad(app, database_path: str) -> None:
 
     @app.route('/api/auth/login', methods=['POST'])
     def auth_login_seguro():
+        started = time.monotonic()
         data = payload()
         username = (data.get('username') or data.get('email') or '').strip()
         password = data.get('password') or ''
         client_request_id = (request.headers.get('X-Client-Request-ID') or secrets.token_hex(8)).strip()[:100]
         identifier_hash = hash_token(username.lower())[:16] if username else ''
+        db_retries = 0
         g.error_context = {
             'component': 'auth.login',
             'stage': 'input',
@@ -194,21 +209,11 @@ def register_seguridad(app, database_path: str) -> None:
             }), 400
 
         try:
-            g.error_context['stage'] = 'rate_limit_status'
-            retry_after = rate_limit_status(database_path, 'login', username)
+            g.error_context['stage'] = 'load_login_state'
+            retry_after, usuario, read_meta = load_login_state(database_path, username)
+            db_retries += int(read_meta.get('db_retries', 0))
             if retry_after:
                 return _rate_limited_response(retry_after)
-
-            g.error_context['stage'] = 'lookup_user'
-            conn = connect(database_path)
-            try:
-                usuario = conn.execute("""
-                    SELECT u.*, f.estado AS fundacion_estado, f.nombre AS fundacion_nombre
-                    FROM usuarios_app u LEFT JOIN fundaciones f ON f.id = u.fundacion_id
-                    WHERE lower(u.username)=lower(?) OR lower(u.email)=lower(?)
-                """, (username, username)).fetchone()
-            finally:
-                conn.close()
 
             valid_password = False
             if usuario:
@@ -225,26 +230,31 @@ def register_seguridad(app, database_path: str) -> None:
                     valid_password = False
 
             if not usuario or not valid_password:
-                g.error_context['stage'] = 'register_failed_login'
-                blocked = register_rate_limit_failure(
+                g.error_context['stage'] = 'record_failed_login_atomic'
+                blocked, failure_meta = record_login_failure_atomic(
                     database_path,
-                    'login',
                     username,
                     maximum=max(1, int(app.config.get('LOGIN_MAX_ATTEMPTS', 5))),
                     window_seconds=max(60, int(app.config.get('LOGIN_WINDOW_SECONDS', 900))),
                     lock_seconds=max(60, int(app.config.get('LOGIN_LOCK_SECONDS', 900))),
+                    request_id=client_request_id,
+                    ip=request.remote_addr,
+                    user_agent=request.headers.get('User-Agent'),
                 )
-                audit(database_path, 'LOGIN_FALLIDO', despues={
-                    'identificador_hash': hash_token(username.lower()),
-                    'request_id': client_request_id,
-                })
+                db_retries += int(failure_meta.get('db_retries', 0))
                 if blocked:
                     return _rate_limited_response(blocked)
-                return jsonify({
+                duration_ms = int((time.monotonic() - started) * 1000)
+                response = jsonify({
                     'error': 'Credenciales inválidas.',
                     'code': 'INVALID_CREDENTIALS',
                     'request_id': client_request_id,
-                }), 401
+                })
+                response.status_code = 401
+                response.headers['X-Client-Request-ID'] = client_request_id
+                response.headers['X-Login-Duration-Ms'] = str(duration_ms)
+                response.headers['X-Login-DB-Retries'] = str(db_retries)
+                return response
 
             g.error_context['usuario_id'] = usuario['id']
             g.error_context['stage'] = 'validate_account_state'
@@ -258,29 +268,28 @@ def register_seguridad(app, database_path: str) -> None:
                 })
                 return jsonify({'error': 'La fundación está suspendida o vencida.', 'code': 'FOUNDATION_INACTIVE'}), 403
 
-            g.error_context['stage'] = 'clear_limits'
-            _clear_login_limits(database_path, username, usuario['username'], usuario['email'])
+            g.error_context['stage'] = 'create_session_atomic'
+            token, user_payload, session_meta = create_login_session_atomic(
+                database_path,
+                usuario,
+                identifiers=(username, usuario['username'], usuario['email']),
+                request_id=client_request_id,
+                ip=request.remote_addr,
+                user_agent=request.headers.get('User-Agent'),
+            )
+            db_retries += int(session_meta.get('db_retries', 0))
 
-            g.error_context['stage'] = 'update_last_login'
-            connection = connect(database_path)
-            try:
-                connection.execute(
-                    "UPDATE usuarios_app SET fecha_ultima_conexion=?, fecha_actualizacion=COALESCE(fecha_actualizacion, ?) WHERE id=?",
-                    (now_iso(), now_iso(), usuario['id']),
-                )
-                connection.commit()
-            finally:
-                connection.close()
-
-            g.error_context['stage'] = 'create_session'
-            token, user_payload = create_session(database_path, usuario)
+            # La sesión ya fue validada. La lectura de facturación usa un camino
+            # interno explícito, sin modificar ``flask.g`` antes de que termine
+            # la solicitud pública de autenticación.
             try:
                 from modules.facturacion_suscripcion.repository import BillingRepository
                 from modules.facturacion_suscripcion.services import BillingService
                 billing_service = BillingService(BillingRepository(database_path))
-                billing_service.init()
                 if user_payload.get('fundacion_id'):
-                    user_payload['suscripcion'] = billing_service.get_subscription(int(user_payload['fundacion_id']))
+                    subscription = billing_service.get_subscription_snapshot(int(user_payload['fundacion_id']), trusted_internal=True)
+                    if subscription:
+                        user_payload['suscripcion'] = subscription
             except Exception as billing_exc:
                 # La facturación complementa el payload, pero jamás debe impedir
                 # que una credencial válida inicie sesión.
@@ -289,28 +298,43 @@ def register_seguridad(app, database_path: str) -> None:
                     usuario['id'], client_request_id, type(billing_exc).__name__,
                 )
 
-            g.error_context['stage'] = 'audit_success'
-            audit(database_path, 'LOGIN_EXITOSO', usuario=user_payload, despues={'request_id': client_request_id})
+            duration_ms = int((time.monotonic() - started) * 1000)
+            if duration_ms >= int(app.config.get('LOGIN_SLOW_THRESHOLD_MS', 1500)):
+                _safe_warning(
+                    'Login lento usuario_id=%s request_id=%s duration_ms=%s db_retries=%s stage=%s',
+                    usuario['id'], client_request_id, duration_ms, db_retries, g.error_context.get('stage'),
+                )
+            else:
+                _safe_info(
+                    'Login exitoso usuario_id=%s request_id=%s duration_ms=%s db_retries=%s',
+                    usuario['id'], client_request_id, duration_ms, db_retries,
+                )
+
             response = jsonify({'token': token, 'usuario': user_payload, 'request_id': client_request_id})
             response.headers['X-Client-Request-ID'] = client_request_id
+            response.headers['X-Login-Duration-Ms'] = str(duration_ms)
+            response.headers['X-Login-DB-Retries'] = str(db_retries)
+            response.headers['Server-Timing'] = f'auth;dur={duration_ms}'
             return response
 
         except sqlite3.OperationalError as exc:
-            message = str(exc).lower()
-            if 'locked' in message or 'busy' in message:
+            if is_sqlite_busy_error(exc):
+                duration_ms = int((time.monotonic() - started) * 1000)
                 _safe_warning(
-                    'SQLite ocupado durante login stage=%s request_id=%s',
-                    g.error_context.get('stage'), client_request_id,
+                    'SQLite ocupado durante login stage=%s request_id=%s duration_ms=%s db_retries=%s',
+                    g.error_context.get('stage'), client_request_id, duration_ms, db_retries,
                 )
                 response = jsonify({
-                    'error': 'La base local está ocupada temporalmente. Espera dos segundos e intenta una sola vez.',
+                    'error': 'La base local estaba ocupada y agotó los reintentos internos. La plataforma reintentará una vez.',
                     'code': 'LOGIN_DATABASE_BUSY',
-                    'retry_after': 2,
+                    'retry_after': 1,
                     'request_id': client_request_id,
                 })
                 response.status_code = 503
-                response.headers['Retry-After'] = '2'
+                response.headers['Retry-After'] = '1'
                 response.headers['X-Client-Request-ID'] = client_request_id
+                response.headers['X-Login-Duration-Ms'] = str(duration_ms)
+                response.headers['X-Login-DB-Retries'] = str(db_retries)
                 return response
             raise
 
@@ -322,8 +346,9 @@ def register_seguridad(app, database_path: str) -> None:
                 from modules.facturacion_suscripcion.repository import BillingRepository
                 from modules.facturacion_suscripcion.services import BillingService
                 billing_service = BillingService(BillingRepository(database_path))
-                billing_service.init()
-                usuario['suscripcion'] = billing_service.get_subscription(int(usuario['fundacion_id']))
+                subscription = billing_service.get_subscription_snapshot(int(usuario['fundacion_id']))
+                if subscription:
+                    usuario['suscripcion'] = subscription
             except Exception:
                 pass
         return jsonify({'usuario': usuario})

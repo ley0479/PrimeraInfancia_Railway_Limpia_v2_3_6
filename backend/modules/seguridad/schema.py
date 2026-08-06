@@ -17,23 +17,23 @@ PERMISOS_BASE = {
         'talento.crear', 'reportes.ver', 'cumplimiento.ver', 'formatos.ver', 'gestion.ver',
         'salud.ver', 'documentos.ver', 'cuentas.ver', 'planeacion.ver', 'planeacion.cargar',
         'planeacion.aprobar', 'planeacion.reportes', 'reportes.gerenciales', 'panel_comercial.ver',
-        'facturacion.ver'
+        'facturacion.ver', 'gestion_uca.ver', 'gestion_uca.administrar', 'biblioteca_icbf.administrar', 'motor_proyecto.ver', 'motor_proyecto.administrar', 'motor_proyecto.aprobar'
     ],
     'COORDINADOR': [
         'dashboard.ver', 'gestion.ver', 'planeacion.cargar', 'evidencias.revisar',
         'calendario.ver', 'informes.generar', 'documentos.ver', 'planeacion.ver',
-        'planeacion.reportes', 'reportes.gerenciales', 'facturacion.ver'
+        'planeacion.reportes', 'reportes.gerenciales', 'facturacion.ver', 'gestion_uca.ver', 'gestion_uca.administrar', 'motor_proyecto.ver', 'motor_proyecto.administrar', 'motor_proyecto.aprobar'
     ],
     'DOCENTE': [
         'dashboard.ver', 'unidad.ver', 'evidencias.cargar', 'actividades.ver',
-        'formatos.descargar', 'planeacion.ver', 'planeacion.evidencias'
+        'formatos.descargar', 'planeacion.ver', 'planeacion.evidencias', 'gestion_uca.ver', 'motor_proyecto.ver'
     ],
-    'NUTRICIONISTA': ['salud.ver', 'salud.cargar', 'salud.reportes', 'dashboard.ver'],
-    'PSICOSOCIAL': ['psicosocial.ver', 'gestion.ver', 'documentos.ver', 'dashboard.ver', 'planeacion.ver'],
+    'NUTRICIONISTA': ['salud.ver', 'salud.cargar', 'salud.reportes', 'dashboard.ver', 'gestion_uca.ver', 'motor_proyecto.ver'],
+    'PSICOSOCIAL': ['psicosocial.ver', 'gestion.ver', 'documentos.ver', 'dashboard.ver', 'planeacion.ver', 'gestion_uca.ver', 'motor_proyecto.ver'],
     'AUXILIAR_ADMINISTRATIVO': [
         'dashboard.ver', 'documentos.cargar', 'cuentas.ver', 'cuentas.generar',
         'reportes.ver', 'formatos.ver', 'relacion.ver', 'facturacion.ver',
-        'planeacion.ver', 'planeacion.cargar', 'reportes.gerenciales'
+        'planeacion.ver', 'planeacion.cargar', 'reportes.gerenciales', 'gestion_uca.ver', 'biblioteca_icbf.administrar', 'motor_proyecto.ver', 'motor_proyecto.administrar'
     ],
 }
 

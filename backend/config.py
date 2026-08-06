@@ -55,6 +55,20 @@ def _sqlite_url(path: str) -> str:
     return f"sqlite:///{Path(path).as_posix()}"
 
 
+def normalize_database_url(raw: str) -> str:
+    """Normaliza URLs suministradas por Railway y herramientas locales.
+
+    Se usa psycopg 3 explícitamente para evitar diferencias entre imágenes y
+    conservar un único driver en producción.
+    """
+    value = str(raw or "").strip()
+    if value.startswith("postgres://"):
+        value = "postgresql://" + value[len("postgres://"):]
+    if value.startswith("postgresql://"):
+        value = "postgresql+psycopg://" + value[len("postgresql://"):]
+    return value
+
+
 def password_policy_errors(password: str, minimum: int = 12) -> list[str]:
     errors: list[str] = []
     if len(password or "") < minimum:
@@ -72,7 +86,11 @@ def password_policy_errors(password: str, minimum: int = 12) -> list[str]:
 
 class BaseConfig:
     APP_ENV = os.getenv("APP_ENV", os.getenv("FLASK_ENV", "development")).lower()
-    APP_VERSION = os.getenv("APP_VERSION", "2.4.2-tunel-login-logging-corregido")
+    APP_VERSION = os.getenv("APP_VERSION", "2.6.0-salud-nutricion-postgresql")
+    BIBLIOTECA_REMOTE_CHECKS_ENABLED = os.getenv("BIBLIOTECA_REMOTE_CHECKS_ENABLED", "false").lower() in {"1", "true", "si", "sí"}
+    BIBLIOTECA_ALLOWED_DOMAINS = os.getenv("BIBLIOTECA_ALLOWED_DOMAINS", "icbf.gov.co,www.icbf.gov.co")
+    MOTOR_GESTION_ENABLED = os.getenv("MOTOR_GESTION_ENABLED", "true").lower() in {"1", "true", "si", "sí"}
+    MOTOR_GESTION_MAX_EXPORT_ROWS = int(os.getenv("MOTOR_GESTION_MAX_EXPORT_ROWS", "5000"))
     BUILD_COMMIT = os.getenv("BUILD_COMMIT", os.getenv("RAILWAY_GIT_COMMIT_SHA", "unknown"))
     BUILD_DATE = os.getenv("BUILD_DATE", "unknown")
     PROJECT_INSTANCE_ID = os.getenv("PROJECT_INSTANCE_ID", "").strip()
@@ -83,9 +101,16 @@ class BaseConfig:
     SEED_TEMPLATES_FOLDER = str(BACKEND_DIR / "seed_data" / "templates_originales")
 
     DATABASE_PATH = resolve_path("DATABASE_PATH", Path(DATA_DIR) / "database.sqlite3")
-    DATABASE_URL = os.getenv("DATABASE_URL", _sqlite_url(DATABASE_PATH)).strip()
-    ENABLE_POSTGRESQL_RUNTIME = env_bool("ENABLE_POSTGRESQL_RUNTIME", False)
+    DATABASE_URL = normalize_database_url(os.getenv("DATABASE_URL", _sqlite_url(DATABASE_PATH)))
+    ENABLE_POSTGRESQL_RUNTIME = env_bool("ENABLE_POSTGRESQL_RUNTIME", True)
     SQLITE_TIMEOUT_SECONDS = env_int("SQLITE_TIMEOUT_SECONDS", 30)
+    DB_POOL_SIZE = env_int("DB_POOL_SIZE", 8)
+    DB_MAX_OVERFLOW = env_int("DB_MAX_OVERFLOW", 12)
+    DB_POOL_TIMEOUT_SECONDS = env_int("DB_POOL_TIMEOUT_SECONDS", 10)
+    DB_POOL_RECYCLE_SECONDS = env_int("DB_POOL_RECYCLE_SECONDS", 900)
+    DB_CONNECT_TIMEOUT_SECONDS = env_int("DB_CONNECT_TIMEOUT_SECONDS", 10)
+    DB_STATEMENT_TIMEOUT_MS = env_int("DB_STATEMENT_TIMEOUT_MS", 30000)
+    DB_APPLICATION_NAME = os.getenv("DB_APPLICATION_NAME", "primera-infancia").strip() or "primera-infancia"
 
     UPLOAD_FOLDER = resolve_path("UPLOAD_FOLDER", Path(DATA_DIR) / "uploads")
     TEMPLATES_FOLDER = resolve_path("TEMPLATES_FOLDER", Path(DATA_DIR) / "templates_originales")
@@ -130,6 +155,12 @@ class BaseConfig:
     LOGIN_MAX_ATTEMPTS = env_int("LOGIN_MAX_ATTEMPTS", 5)
     LOGIN_WINDOW_SECONDS = env_int("LOGIN_WINDOW_SECONDS", 900)
     LOGIN_LOCK_SECONDS = env_int("LOGIN_LOCK_SECONDS", 900)
+    # Presupuesto exclusivo del login. Los módulos operativos conservan SQLITE_TIMEOUT_SECONDS.
+    LOGIN_DB_RETRY_ATTEMPTS = env_int("LOGIN_DB_RETRY_ATTEMPTS", 4)
+    LOGIN_DB_BUSY_TIMEOUT_MS = env_int("LOGIN_DB_BUSY_TIMEOUT_MS", 150)
+    LOGIN_DB_RETRY_BASE_MS = env_int("LOGIN_DB_RETRY_BASE_MS", 50)
+    LOGIN_DB_RETRY_BUDGET_MS = env_int("LOGIN_DB_RETRY_BUDGET_MS", 1200)
+    LOGIN_SLOW_THRESHOLD_MS = env_int("LOGIN_SLOW_THRESHOLD_MS", 1500)
     RECOVERY_MAX_ATTEMPTS = env_int("RECOVERY_MAX_ATTEMPTS", 5)
     RECOVERY_WINDOW_SECONDS = env_int("RECOVERY_WINDOW_SECONDS", 3600)
     RECOVERY_LOCK_SECONDS = env_int("RECOVERY_LOCK_SECONDS", 3600)
@@ -240,15 +271,15 @@ def validate_runtime_config(config: dict[str, Any]) -> None:
     username = str(config.get("INITIAL_ADMIN_USERNAME", "")).strip()
     email = str(config.get("INITIAL_ADMIN_EMAIL", "")).strip()
     password = str(config.get("INITIAL_ADMIN_PASSWORD", ""))
-    marker = Path(str(config.get("DATA_DIR", ""))) / ".primera_infancia_initialized.json"
-    database_path = Path(str(config.get("DATABASE_PATH", "")))
-    initialized = marker.is_file() and database_path.is_file()
+    # La existencia de cuentas se valida contra la base durante init_hosting.
+    # Aquí solo se valida un conjunto INITIAL_ADMIN cuando fue suministrado,
+    # evitando exigirlo en cada reinicio de una base PostgreSQL ya inicializada.
     any_admin_value = bool(username or email or password)
-    if not initialized or any_admin_value:
+    if any_admin_value:
         if not username:
-            errors.append("INITIAL_ADMIN_USERNAME es obligatorio antes del primer inicio.")
+            errors.append("INITIAL_ADMIN_USERNAME debe acompañar las demás variables iniciales.")
         if not email or "@" not in email:
-            errors.append("INITIAL_ADMIN_EMAIL debe ser un correo válido antes del primer inicio.")
+            errors.append("INITIAL_ADMIN_EMAIL debe ser un correo válido.")
         policy_errors = password_policy_errors(password, int(config.get("MIN_PASSWORD_LENGTH", 12)))
         if policy_errors:
             errors.append("INITIAL_ADMIN_PASSWORD requiere " + ", ".join(policy_errors) + ".")
@@ -269,6 +300,12 @@ def validate_runtime_config(config: dict[str, Any]) -> None:
         errors.append("FORCE_HTTPS debe permanecer activado en esta entrega Railway.")
     if not Path(str(config.get("DATA_DIR", ""))).is_absolute():
         errors.append("DATA_DIR debe ser una ruta absoluta.")
+    database_url = str(config.get("DATABASE_URL", "")).strip()
+    if database_url.startswith("postgresql"):
+        if not database_url.startswith("postgresql+psycopg://"):
+            errors.append("DATABASE_URL de PostgreSQL debe usar el driver psycopg normalizado.")
+    elif not database_url.startswith("sqlite"):
+        errors.append("DATABASE_URL debe usar PostgreSQL o SQLite.")
     if not config.get("SINGLE_TENANT_MODE", True):
         if not config.get("ALLOW_EXPERIMENTAL_MULTI_TENANT", False):
             errors.append(

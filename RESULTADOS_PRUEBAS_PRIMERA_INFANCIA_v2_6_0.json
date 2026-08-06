@@ -1,0 +1,94 @@
+{
+  "version": "2.6.0-salud-nutricion-postgresql",
+  "generated_at": "2026-08-05",
+  "source_version": "2.5.4-supervision-familias-redes",
+  "summary": {
+    "functional_suites_executed": 17,
+    "functional_suites_passed": 17,
+    "functional_suites_failed": 0,
+    "release_validator_checks": 17,
+    "release_validator_passed": 17,
+    "release_validator_failed": 0,
+    "release_validator_skipped": 0
+  },
+  "functional_suites": [
+    "test_operational_release_v2_3_7.py",
+    "test_multitenant_phase3.py",
+    "test_multitenant_release_v2_4_0.py",
+    "test_tunnel_admin_recovery_v2_4_1.py",
+    "test_tunnel_login_logging_v2_4_2.py",
+    "test_tunnel_cloudflare_v2_4_3.py",
+    "test_gestion_integral_uca_v2_5_0.py",
+    "test_auth_concurrency_v2_5_1.py",
+    "test_expediente_uca_central_v2_5_2.py",
+    "test_biblioteca_motor_gestion_v2_5_3.py",
+    "test_supervision_familias_redes_v2_5_4.py",
+    "test_postgresql_compat_v2_6_0.py",
+    "test_windows_launchers_v2_6_0.py",
+    "test_salud_nutricion_integral_v2_6_0.py",
+    "test_migration_tool_v2_6_0.py",
+    "test_ram_download_period_wiring.py",
+    "test_ram_v3_integration.py"
+  ],
+  "release_validation": {
+    "python_files": 185,
+    "javascript_files": 36,
+    "json_files": 31,
+    "bash_scripts": 2,
+    "api_routes_reviewed": 404,
+    "authorization_families": 59,
+    "office_files_verified": 7,
+    "sanitized_template_hashes": 9,
+    "manifest_entries": 384
+  },
+  "specific_v2_6_0_scope": {
+    "postgresql_compat": [
+      "DDL y BIGSERIAL",
+      "parámetros qmark",
+      "INSERT OR IGNORE",
+      "PRAGMA y sqlite_master",
+      "GROUP_CONCAT, strftime y printf",
+      "lastrowid",
+      "SQLite explícito preservado",
+      "guardia multi-fundación"
+    ],
+    "windows_launchers": [
+      "BAT pequeños con CRLF",
+      "detección de raíz",
+      "PowerShell centralizado",
+      "salud de instancia",
+      "Quick Tunnel sin config nombrada",
+      "diagnóstico de inicio",
+      "helpers PostgreSQL"
+    ],
+    "salud_nutricion_integral": [
+      "sincronización idempotente",
+      "expediente referencial",
+      "documentos de salud",
+      "validación profesional versionada",
+      "CAPTURE XLSX/PDF en borrador controlado",
+      "jornadas, actas, listados e informes",
+      "canalizaciones, seguimientos y evidencias",
+      "aislamiento por tenant y UCA"
+    ],
+    "migration_tool": [
+      "integridad SQLite",
+      "respaldo y SHA-256",
+      "reflexión de esquema",
+      "copia por lotes",
+      "preservación de identificadores",
+      "reinicio de secuencias",
+      "comparación de conteos",
+      "URL PostgreSQL enmascarada",
+      "contrato no destructivo"
+    ]
+  },
+  "not_executed": [
+    "Servidor PostgreSQL real",
+    "PowerShell 5.1 sobre Windows",
+    "cloudflared.exe contra la red real",
+    "Docker completo",
+    "Railway con volumen y tráfico real",
+    "Navegador E2E integral"
+  ]
+}

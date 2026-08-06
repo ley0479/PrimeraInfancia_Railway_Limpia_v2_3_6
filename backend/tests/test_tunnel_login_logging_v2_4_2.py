@@ -170,19 +170,20 @@ def test_tunnel_host_login() -> None:
 
 
 def test_static_contracts() -> None:
-    env = require(".env.example", "APP_VERSION=2.4.2-tunel-login-logging-corregido", "PROJECT_INSTANCE_ID=")
+    env = require(".env.example", "APP_VERSION=2.6.0-salud-nutricion-postgresql", "PROJECT_INSTANCE_ID=")
     assert_true("AdminLocal2026*" not in env, ".env.example contiene credencial local")
 
-    local_bat = require(
-        "INICIAR_PLATAFORMA_LOCAL.bat",
-        "PRIMERA INFANCIA v2.4.2",
+    require("INICIAR_PLATAFORMA_LOCAL.bat", "iniciar_plataforma.ps1", "-Mode Local")
+    launcher = require(
+        "scripts_windows/iniciar_plataforma.ps1",
+        "PRIMERA INFANCIA 2.6.0",
         "PROJECT_INSTANCE_ID",
         "project_instance_id",
-        "EXPECTED_TUNNEL_MODE",
-        "data\\logs",
+        "ExpectedTunnel",
+        r"data\logs",
         "/api/health",
     )
-    assert_true("/api/acceso/ping" not in local_bat, "El script local usa un ping autenticado")
+    assert_true("/api/acceso/ping" not in launcher, "El script local usa un ping autenticado")
 
     tunnel = require(
         "scripts_windows/iniciar_tunel_cloudflare.ps1",

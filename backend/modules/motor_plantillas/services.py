@@ -5,7 +5,7 @@ import json
 import os
 import re
 import shutil
-import sqlite3
+from modules.dbapi_compat import sqlite3
 import unicodedata
 from datetime import datetime
 from pathlib import Path

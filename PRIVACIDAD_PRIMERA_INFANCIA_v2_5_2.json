@@ -1,0 +1,18 @@
+{
+  "version": "2.5.2-expediente-uca-central",
+  "generated_at": "2026-08-05",
+  "status": "PASS",
+  "operational_databases_in_release": 0,
+  "private_env_files_in_release": 0,
+  "runtime_logs_in_release": 0,
+  "participant_records_in_release": 0,
+  "document_strategy": "reference_index_without_file_duplication",
+  "tenant_isolation": true,
+  "uca_scope": true,
+  "download_restriction": "files_under_DATA_DIR_only",
+  "notes": [
+    "La vista central realiza consultas de solo lectura sobre módulos fuente.",
+    "El índice documental guarda referencias y metadatos, no copias del archivo.",
+    "La prueba funcional utiliza únicamente información ficticia."
+  ]
+}

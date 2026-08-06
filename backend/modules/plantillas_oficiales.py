@@ -306,7 +306,7 @@ def _load_versioned_templates_from_db(
         return []
     conn = None
     try:
-        import sqlite3
+        from modules.dbapi_compat import sqlite3
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
         rows = []

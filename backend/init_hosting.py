@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Inicializa volumen, semillas, catálogo UDS, esquema y administrador."""
+"""Inicializa almacenamiento, esquema y administrador en SQLite o PostgreSQL."""
 from __future__ import annotations
 
 import hashlib
 import json
 import os
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -54,6 +53,12 @@ def verify_seed_manifest(seed_dir: Path) -> None:
             raise RuntimeError(f'Hash inválido para plantilla {name}.')
 
 
+def _safe_database_label(url: str, path: str) -> str:
+    if str(url).startswith('postgresql'):
+        return 'postgresql://***'
+    return str(path)
+
+
 def main() -> int:
     os.environ.setdefault('APP_ENV', 'production')
     from config import get_config
@@ -61,6 +66,8 @@ def main() -> int:
 
     config_class = get_config(os.environ.get('APP_ENV'))
     data_dir = Path(config_class.DATA_DIR)
+    marker = data_dir / '.primera_infancia_initialized.json'
+    marker_preexisting = marker.is_file()
     runtime_dirs = [
         data_dir,
         Path(config_class.UPLOAD_FOLDER),
@@ -75,8 +82,6 @@ def main() -> int:
     for directory in runtime_dirs:
         directory.mkdir(parents=True, exist_ok=True)
 
-    database_path = Path(config_class.DATABASE_PATH)
-    fresh_database = not database_path.exists()
     seed_dir = Path(config_class.SEED_TEMPLATES_FOLDER)
     verify_seed_manifest(seed_dir)
     sync_report = sync_managed_seed_tree(
@@ -87,22 +92,22 @@ def main() -> int:
         allow_updates=env_bool('SYNC_MANAGED_TEMPLATES', True),
     )
 
-    # Importar después de preparar el volumen: varios módulos inspeccionan rutas
-    # de plantillas durante su registro.
+    # app configura el Engine central antes de registrar los módulos.
     import app as app_module
-    from migrations.migrate_multitenant_phase3 import migrate as migrate_multitenant_phase3
+    from database import database, get_db_connection
     from modules.seguridad.services import bootstrap_initial_admin, ensure_security_schema
     from modules.seguridad.tenant_context import ensure_tenant_directories
     from services.rpp_minutas_service import seed_minuta_sanitizada_desde_json
-    from services.uds_catalog import (
-        catalog_summary,
-        ensure_catalog_units_sqlite,
-        migrate_demo_units_sqlite,
-    )
+    from services.uds_catalog import catalog_summary, ensure_catalog_units_sqlite, migrate_demo_units_sqlite
 
     app_module.init_db()
     ensure_security_schema(config_class.DATABASE_PATH)
-    tenant_migration = migrate_multitenant_phase3(config_class.DATABASE_PATH)
+    if database.is_sqlite:
+        from migrations.migrate_multitenant_phase3 import migrate as migrate_multitenant_phase3
+        tenant_migration = migrate_multitenant_phase3(config_class.DATABASE_PATH)
+    else:
+        tenant_migration = {'engine': 'postgresql', 'status': 'schema-current'}
+
     ensure_tenant_directories(config_class.DATA_DIR, 1)
     admin_result = bootstrap_initial_admin(config_class.DATABASE_PATH, app_module.app.config)
 
@@ -115,22 +120,24 @@ def main() -> int:
         corporacion_id=1,
     )
 
-    with sqlite3.connect(config_class.DATABASE_PATH, timeout=30) as conn:
-        integrity = conn.execute('PRAGMA integrity_check').fetchone()[0]
-        user_count = conn.execute('SELECT COUNT(*) FROM usuarios_app').fetchone()[0]
-        superadmin_count = conn.execute(
-            "SELECT COUNT(*) FROM usuarios_app WHERE rol='SUPERADMIN' AND activo=1"
-        ).fetchone()[0]
-        beneficiary_count = conn.execute('SELECT COUNT(*) FROM beneficiarios').fetchone()[0]
-        unit_count = conn.execute('SELECT COUNT(*) FROM unidades').fetchone()[0]
-    if integrity != 'ok':
-        raise RuntimeError(f'Falló PRAGMA integrity_check: {integrity}')
+    db_status = database.healthcheck()
+    if not db_status.get('ok'):
+        raise RuntimeError(f"Falló healthcheck de base: {db_status.get('error')}")
+
+    with get_db_connection() as conn:
+        user_count = int(conn.execute('SELECT COUNT(*) AS total FROM usuarios_app').fetchone()[0])
+        superadmin_count = int(conn.execute(
+            "SELECT COUNT(*) AS total FROM usuarios_app WHERE rol='SUPERADMIN' AND activo=1"
+        ).fetchone()[0])
+        beneficiary_count = int(conn.execute('SELECT COUNT(*) AS total FROM beneficiarios').fetchone()[0])
+        unit_count = int(conn.execute('SELECT COUNT(*) AS total FROM unidades').fetchone()[0])
+
     if user_count < 1 or superadmin_count < 1:
         raise RuntimeError('La base inicializada no contiene un SUPERADMIN activo.')
-    if fresh_database and beneficiary_count != 0:
+    if admin_result.get('created') and beneficiary_count != 0:
         raise RuntimeError('Una base nueva no puede contener beneficiarios precargados.')
     if beneficiary_count != 0 and not env_bool('ALLOW_EXISTING_RUNTIME_DATA', False):
-        print('ADVERTENCIA: el volumen ya contenía beneficiarios; no se modificaron ni borraron.', flush=True)
+        print('ADVERTENCIA: la base ya contenía beneficiarios; no se modificaron ni borraron.', flush=True)
     if admin_result.get('configuration_mismatch'):
         print(
             'ADVERTENCIA: INITIAL_ADMIN_* no coincide con el SUPERADMIN existente; '
@@ -144,15 +151,16 @@ def main() -> int:
             flush=True,
         )
 
-    marker = data_dir / '.primera_infancia_initialized.json'
     marker.write_text(json.dumps({
         'version': app_module.app.config.get('APP_VERSION'),
-        'database': str(config_class.DATABASE_PATH),
+        'database_backend': database.dialect_name,
+        'database': _safe_database_label(config_class.DATABASE_URL, config_class.DATABASE_PATH),
         'template_sync': {
             key: value for key, value in sync_report.items()
             if key in {'copied', 'updated', 'preserved_custom', 'backups', 'state_file'}
         },
         'admin_created': bool(admin_result.get('created')),
+        'marker_preexisting': marker_preexisting,
         'users': user_count,
         'active_superadmins': superadmin_count,
         'beneficiaries': beneficiary_count,
@@ -162,7 +170,7 @@ def main() -> int:
         'uds_seed': uds_seed,
         'rpp_seed': rpp_seed,
         'tenant_migration': tenant_migration,
-        'integrity': integrity,
+        'health': db_status,
     }, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     try:
         marker.chmod(0o600)
@@ -170,7 +178,7 @@ def main() -> int:
         pass
 
     print(
-        f"Inicialización correcta: DB íntegra, {user_count} usuario(s), "
+        f"Inicialización correcta: {database.dialect_name}, {user_count} usuario(s), "
         f"{beneficiary_count} beneficiario(s), {unit_count} UDS; "
         f"plantillas nuevas={len(sync_report.get('copied') or [])}, "
         f"actualizadas={len(sync_report.get('updated') or [])}, "

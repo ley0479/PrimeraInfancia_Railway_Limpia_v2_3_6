@@ -17,6 +17,10 @@ from sqlalchemy import inspect, text
 from sqlalchemy.engine import Connection
 
 from database import database
+from modules.dbapi_compat import (
+    _convert_qmark as _dialect_convert_qmark,
+    _translate_ddl, _translate_sqlite_sql, _insert_table_name, _table_pk_name,
+)
 
 # El cortafuegos multi-fundación se comparte con sqlite3 directo. Se importa
 # de forma normal porque tenant_sql_guard no depende de SQLAlchemy.
@@ -63,54 +67,8 @@ def _to_list(params: Iterable[Any] | Mapping[str, Any] | None = None) -> list[An
 
 
 def convert_qmark_sql(sql: str, params: Iterable[Any] | Mapping[str, Any] | None = None) -> tuple[str, dict[str, Any]]:
-    """Convierte placeholders SQLite ``?`` a ``:p0``, ``:p1``.
-
-    Acepta también diccionarios para SQL que ya usa parámetros nombrados
-    ``:nombre``. Esto permite migrar funciones históricas de app.py que mezclan
-    placeholders SQLite y placeholders nombrados sin abrir conexiones sqlite3
-    directas durante la Fase 2C.6.
-    """
-    if isinstance(params, Mapping):
-        # Si el SQL ya usa parámetros nombrados, no convertir el bind. Si hay
-        # signos ? en una consulta con dict, se considera error de uso interno.
-        if '?' not in sql:
-            return sql, dict(params)
-        values = list(params.values())
-    else:
-        values = _to_list(params)
-
-    result: list[str] = []
-    bind: dict[str, Any] = {}
-    idx = 0
-    in_single = False
-    in_double = False
-    escape_next = False
-
-    for ch in sql:
-        if escape_next:
-            result.append(ch)
-            escape_next = False
-            continue
-        if ch == "\\":
-            result.append(ch)
-            escape_next = True
-            continue
-        if ch == "'" and not in_double:
-            in_single = not in_single
-            result.append(ch)
-            continue
-        if ch == '"' and not in_single:
-            in_double = not in_double
-            result.append(ch)
-            continue
-        if ch == '?' and not in_single and not in_double:
-            name = f"p{idx}"
-            result.append(f":{name}")
-            bind[name] = values[idx] if idx < len(values) else None
-            idx += 1
-        else:
-            result.append(ch)
-    return ''.join(result), bind
+    """Convierte placeholders SQLite y conserva parámetros nombrados."""
+    return _dialect_convert_qmark(sql, params)
 
 
 def split_sql_script(script: str) -> list[str]:
@@ -151,21 +109,17 @@ def split_sql_script(script: str) -> list[str]:
 
 
 def normalize_ddl_for_engine(sql: str) -> str:
-    """Normaliza DDL histórico para el dialecto activo.
+    """Normaliza DDL histórico para el dialecto activo."""
+    if database.engine is not None and database.engine.dialect.name == 'postgresql':
+        return _translate_ddl(sql)
+    return sql
 
-    En SQLite se conserva prácticamente igual. En PostgreSQL se traduce una
-    parte mínima para staging; las migraciones Alembic completas siguen siendo
-    la fuente de verdad productiva.
-    """
-    engine = database.engine
-    dialect = engine.dialect.name if engine is not None else 'sqlite'
-    out = sql
-    if dialect == 'postgresql':
-        out = out.replace('INTEGER PRIMARY KEY AUTOINCREMENT', 'SERIAL PRIMARY KEY')
-        out = out.replace('REAL', 'DOUBLE PRECISION')
-        out = re.sub(r"DEFAULT\s+'?ACTIVA'?", "DEFAULT 'ACTIVA'", out, flags=re.I)
-        out = re.sub(r"DEFAULT\s+'?ACTIVO'?", "DEFAULT 'ACTIVO'", out, flags=re.I)
-    return out
+def normalize_sql_for_engine(sql: str) -> str:
+    if database.engine is not None and database.engine.dialect.name == 'postgresql':
+        if re.match(r"^\s*(CREATE|ALTER|DROP)\b", sql, re.I):
+            return _translate_ddl(sql)
+        return _translate_sqlite_sql(sql)
+    return sql
 
 
 def rows_to_dicts(result) -> list[dict[str, Any]]:
@@ -202,13 +156,26 @@ class CoreCursor:
         guarded_sql = _guard_core_sql(sql, params or ())
         if re.match(r"^\s*(CREATE|ALTER|DROP)\b", guarded_sql, re.I):
             _CORE_TENANT_SCHEMA_CACHE.clear()
+        guarded_sql = normalize_sql_for_engine(guarded_sql)
+        table_name = _insert_table_name(guarded_sql) if database.is_postgresql else None
+        pk_name = _table_pk_name(table_name) if table_name else None
+        add_returning = bool(table_name and pk_name and ' RETURNING ' not in guarded_sql.upper())
+        if add_returning:
+            guarded_sql = guarded_sql.rstrip().rstrip(';') + f' RETURNING "{pk_name}"'
         sql2, bind = convert_qmark_sql(guarded_sql, params)
         result = self.connection.execute(text(sql2), bind)
         rows: list[dict[str, Any]] = []
+        lastrowid = int(getattr(result, 'lastrowid', 0) or 0)
         if result.returns_rows:
             rows = rows_to_dicts(result)
+            if add_returning and rows:
+                try:
+                    lastrowid = int(rows[0][pk_name])
+                except Exception:
+                    lastrowid = 0
+                rows = []
         self.rowcount = int(result.rowcount or 0)
-        self.lastrowid = int(getattr(result, 'lastrowid', 0) or 0)
+        self.lastrowid = lastrowid
         self._last_result = CoreResult(rows, self.rowcount, self.lastrowid)
         return self._last_result
 
@@ -232,10 +199,12 @@ class CoreCursor:
         if 'fundacion_id' in sql.lower():
             for row in rows_in:
                 _guard_core_sql(sql, row)
+        guarded_sql = normalize_sql_for_engine(guarded_sql)
         if isinstance(first, Mapping) and '?' not in guarded_sql:
             sql2 = guarded_sql
             bind_rows = [dict(row) for row in rows_in]  # type: ignore[arg-type]
         else:
+            guarded_sql = normalize_sql_for_engine(guarded_sql)
             sql2, _ = convert_qmark_sql(guarded_sql, first)
             bind_rows = [convert_qmark_sql(guarded_sql, row)[1] for row in rows_in]
 
@@ -258,7 +227,7 @@ class CoreCursor:
                 'execute_script con DML no está permitido dentro de una operación multi-fundación.'
             )
         for statement in split_sql_script(script):
-            statement = normalize_ddl_for_engine(statement)
+            statement = normalize_sql_for_engine(statement)
             self.connection.execute(text(statement))
         _CORE_TENANT_SCHEMA_CACHE.clear()
         self._last_result = CoreResult([])
@@ -283,7 +252,7 @@ class CoreConnection:
             for pragma in (
                 "PRAGMA busy_timeout=30000",
                 "PRAGMA foreign_keys=ON",
-                "PRAGMA journal_mode=WAL",
+                "PRAGMA synchronous=NORMAL",
             ):
                 try:
                     self.connection.exec_driver_sql(pragma)
@@ -358,58 +327,45 @@ class CoreCompatRepository:
         with database.transaction() as conn:
             conn.execute(text(ddl))
 
-    def execute(
-        self,
-        sql: str,
-        params: Iterable[Any] | Mapping[str, Any] | None = None,
-    ) -> int:
+    def execute(self, sql: str, params: Iterable[Any] | Mapping[str, Any] | None = None) -> int:
         guarded_sql = _guard_core_sql(sql, params or ())
         if re.match(r"^\s*(CREATE|ALTER|DROP)\b", guarded_sql, re.I):
             _CORE_TENANT_SCHEMA_CACHE.clear()
+        guarded_sql = normalize_sql_for_engine(guarded_sql)
         with database.transaction() as conn:
             sql2, bind = convert_qmark_sql(guarded_sql, params)
             result = conn.execute(text(sql2), bind)
             try:
+                if result.returns_rows:
+                    row = result.first()
+                    if row is not None:
+                        return int(row[0])
                 return int(getattr(result, 'lastrowid', 0) or 0)
             except Exception:
                 return 0
 
-    def execute_update(
-        self,
-        sql: str,
-        params: Iterable[Any] | Mapping[str, Any] | None = None,
-    ) -> int:
-        guarded_sql = _guard_core_sql(sql, params or ())
+    def execute_update(self, sql: str, params: Iterable[Any] | Mapping[str, Any] | None = None) -> int:
+        guarded_sql = normalize_sql_for_engine(_guard_core_sql(sql, params or ()))
         with database.transaction() as conn:
             sql2, bind = convert_qmark_sql(guarded_sql, params)
             result = conn.execute(text(sql2), bind)
             return int(result.rowcount or 0)
 
-    def fetch_all(
-        self,
-        sql: str,
-        params: Iterable[Any] | Mapping[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
-        guarded_sql = _guard_core_sql(sql, params or ())
+    def fetch_all(self, sql: str, params: Iterable[Any] | Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+        guarded_sql = normalize_sql_for_engine(_guard_core_sql(sql, params or ()))
         with database.connection() as conn:
             sql2, bind = convert_qmark_sql(guarded_sql, params)
             result = conn.execute(text(sql2), bind)
             return rows_to_dicts(result)
 
-    def fetch_one(
-        self,
-        sql: str,
-        params: Iterable[Any] | Mapping[str, Any] | None = None,
-    ) -> dict[str, Any] | None:
+    def fetch_one(self, sql: str, params: Iterable[Any] | Mapping[str, Any] | None = None) -> dict[str, Any] | None:
         rows = self.fetch_all(sql, params)
         return rows[0] if rows else None
 
     def execute_script(self, script: str) -> None:
         context = current_tenant_context()
         if (
-            strict_tenant_mode()
-            and context.tenant_id
-            and not context.allow_global
+            strict_tenant_mode() and context.tenant_id and not context.allow_global
             and not tenant_script_is_schema_only(script)
         ):
             raise TenantIsolationError(
@@ -417,34 +373,27 @@ class CoreCompatRepository:
             )
         with database.transaction() as conn:
             for statement in split_sql_script(script):
-                normalized = normalize_ddl_for_engine(statement)
+                normalized = normalize_sql_for_engine(statement)
                 conn.execute(text(normalized))
         _CORE_TENANT_SCHEMA_CACHE.clear()
 
-    def execute_many(
-        self,
-        sql: str,
-        rows: Iterable[Iterable[Any] | Mapping[str, Any]] | None = None,
-    ) -> int:
+    def execute_many(self, sql: str, rows: Iterable[Iterable[Any] | Mapping[str, Any]] | None = None) -> int:
         rows_list = list(rows or [])
         if not rows_list:
             return 0
-
         guarded_sql = _guard_core_sql(sql, rows_list[0])
-        # Cuando fundacion_id viene explícita, cada fila debe pertenecer al
-        # tenant activo. Esto evita que una carga masiva mezcle fundaciones.
         if 'fundacion_id' in sql.lower():
             for params in rows_list:
                 _guard_core_sql(sql, params)
-
+        guarded_sql = normalize_sql_for_engine(guarded_sql)
+        first = rows_list[0]
+        if isinstance(first, Mapping) and '?' not in guarded_sql:
+            sql2 = guarded_sql
+            binds = [dict(row) for row in rows_list]  # type: ignore[arg-type]
+        else:
+            sql2, _ = convert_qmark_sql(guarded_sql, first)
+            binds = [convert_qmark_sql(guarded_sql, row)[1] for row in rows_list]
         with database.transaction() as conn:
-            total = 0
-            for params in rows_list:
-                sql2, bind = convert_qmark_sql(guarded_sql, params)
-                result = conn.execute(text(sql2), bind)
-                try:
-                    total += int(result.rowcount or 0)
-                except Exception:
-                    pass
-            return total
+            result = conn.execute(text(sql2), binds)
+            return int(result.rowcount if result.rowcount is not None and result.rowcount >= 0 else len(rows_list))
 

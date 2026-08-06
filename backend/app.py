@@ -30,7 +30,7 @@ from generador_formatos import GeneradorFormatos
 from motor_alertas import MotorAlertas
 from config import get_config, validate_runtime_config
 from extensions import init_extensions
-from database import configure_database, get_db_connection as database_connection
+from database import configure_database, get_db_connection as database_connection, database
 from modules.print_master import aplicar_configuracion_impresion_libro, infer_print_format
 from modules.plantillas_oficiales import iter_plantillas_oficiales_para_generacion
 from modules.operational_jobs import configure as configure_operational_jobs, start_job, get_job, list_jobs
@@ -90,13 +90,6 @@ def create_app(config_name=None):
     config_class = get_config(config_name)
     app.config.from_object(config_class)
     validate_runtime_config(app.config)
-
-    database_url = str(app.config.get('DATABASE_URL', ''))
-    if not database_url.startswith('sqlite') and not app.config.get('ENABLE_POSTGRESQL_RUNTIME', False):
-        raise RuntimeError(
-            'PostgreSQL está configurado, pero los módulos históricos aún no han sido migrados. '
-            'Complete la Fase 2 o establezca DATABASE_URL a SQLite para esta entrega.'
-        )
 
     if not _APP_CONFIGURED:
         proxy_count = max(0, int(app.config.get('TRUSTED_PROXY_COUNT', 0)))
@@ -311,6 +304,51 @@ try:
     register_institucional_normativo(app, DATABASE_PATH, BASE_DIR)
 except Exception as exc:
     print(f'Configuración Institucional / Motor Normativo no pudo registrarse: {exc}')
+
+# V2.5.0: Expediente Operativo por UCA, Ruta Operativa y Biblioteca Oficial ICBF.
+# Se integra de forma no destructiva: reutiliza los módulos existentes y crea
+# únicamente tablas con prefijo giu_/biblioteca_icbf_.
+try:
+    from modules.gestion_integral_uca import register_gestion_integral_uca
+    register_gestion_integral_uca(app, DATABASE_PATH, app.config['DATA_DIR'], OUTPUT_FOLDER)
+except Exception as exc:
+    if str(app.config.get('APP_ENV', '')).lower() == 'production':
+        app.logger.exception('Gestión Integral por UCA no pudo registrarse')
+    else:
+        print(f'Gestión Integral por UCA no pudo registrarse: {exc}')
+
+# V2.5.3: Motor Inteligente de Gestión del Proyecto.
+# Orquesta referencias a Ruta Operativa, calendario y entregables existentes;
+# no duplica datos misionales ni aprueba productos sin intervención humana.
+try:
+    from modules.motor_gestion_proyecto import register_motor_gestion_proyecto
+    register_motor_gestion_proyecto(app, DATABASE_PATH, app.config['DATA_DIR'], OUTPUT_FOLDER)
+except Exception as exc:
+    if str(app.config.get('APP_ENV', '')).lower() == 'production':
+        app.logger.exception('Motor Inteligente de Gestión del Proyecto no pudo registrarse')
+    else:
+        print(f'Motor Inteligente de Gestión del Proyecto no pudo registrarse: {exc}')
+
+
+# V2.5.4: Centro Inteligente de Supervisión, Auditoría y Calidad.
+try:
+    from modules.supervision_calidad import register_supervision_calidad
+    register_supervision_calidad(app, DATABASE_PATH, app.config['DATA_DIR'], OUTPUT_FOLDER)
+except Exception as exc:
+    if str(app.config.get('APP_ENV', '')).lower() == 'production':
+        app.logger.exception('Centro de Supervisión, Auditoría y Calidad no pudo registrarse')
+    else:
+        print(f'Centro de Supervisión, Auditoría y Calidad no pudo registrarse: {exc}')
+
+# V2.5.4: Gestión Integral de Familias, Comunidad y Redes de Apoyo.
+try:
+    from modules.familias_redes import register_familias_redes
+    register_familias_redes(app, DATABASE_PATH, app.config['DATA_DIR'], OUTPUT_FOLDER)
+except Exception as exc:
+    if str(app.config.get('APP_ENV', '')).lower() == 'production':
+        app.logger.exception('Gestión Integral de Familias, Comunidad y Redes no pudo registrarse')
+    else:
+        print(f'Gestión Integral de Familias, Comunidad y Redes no pudo registrarse: {exc}')
 
 
 KNOWN_UNITS = uds_canonical_units()
@@ -907,9 +945,10 @@ def init_db():
     # nunca queda con restricciones UNIQUE globales incompatibles con varias
     # fundaciones.
     from modules.seguridad.services import ensure_security_schema
-    from migrations.migrate_multitenant_phase3 import migrate as migrate_multitenant_phase3
     ensure_security_schema(DATABASE_PATH)
-    migrate_multitenant_phase3(DATABASE_PATH)
+    if database.is_sqlite:
+        from migrations.migrate_multitenant_phase3 import migrate as migrate_multitenant_phase3
+        migrate_multitenant_phase3(DATABASE_PATH)
 
 
 def es_extension_valida(filename, allowed_ext):
@@ -4163,12 +4202,14 @@ def health():
     instance_id = project_instance_id(app.config)
     log_status = logging_health(app.config)
     try:
-        conn = get_db_connection()
-        conn.execute('SELECT 1').fetchone()
-        conn.close()
+        db_status = database.healthcheck()
+        if not db_status.get('ok'):
+            raise RuntimeError(db_status.get('error') or 'database unavailable')
         return jsonify({
             'status': 'ok',
             'database': 'ok',
+            'database_backend': db_status.get('dialect'),
+            'database_latency_ms': db_status.get('latency_ms'),
             'version': app.config.get('APP_VERSION', 'unknown'),
             'environment': app.config.get('APP_ENV', 'unknown'),
             'server_mode': app.config.get('SERVER_MODE', 'LOCAL'),

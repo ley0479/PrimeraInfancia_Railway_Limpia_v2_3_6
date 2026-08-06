@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import re
-import sqlite3
+from modules.dbapi_compat import sqlite3
 import unicodedata
 from functools import lru_cache
 from datetime import datetime

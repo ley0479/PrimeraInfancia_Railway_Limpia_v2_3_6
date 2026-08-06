@@ -52,6 +52,7 @@ LEGACY_TENANT_TABLES = {
 TENANT_PREFIXES = (
     'gp_', 'sn_', 'pp_', 'master_', 'staging_', 'cb_', 'cd_', 'mp_',
     'pm_', 'rg_', 'th_', 'tm_', 'ui_', 'calendario_', 'gg_', 'pc_',
+    'giu_', 'biblioteca_',
 )
 
 # Catálogos compartidos que conservan NULL como ámbito global.

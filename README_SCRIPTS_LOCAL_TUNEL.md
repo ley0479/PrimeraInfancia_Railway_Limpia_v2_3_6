@@ -2,7 +2,7 @@
 
 ## Versión
 
-**PrimeraInfancia 2.4.2 — login por túnel, huella de instancia y logging verificable.**
+**PrimeraInfancia 2.6.0 — Salud y Nutrición Integral, PostgreSQL, scripts Windows robustos y Quick Tunnel Cloudflare.**
 
 Los scripts de esta carpeta sirven para dos escenarios distintos:
 
@@ -11,6 +11,15 @@ Los scripts de esta carpeta sirven para dos escenarios distintos:
 
 El túnel es una herramienta de demostración. Railway continúa siendo el entorno recomendado para un enlace estable.
 
+
+## Inicio de sesión estable 2.5.1
+
+- El navegador cancela una validación que exceda cinco segundos y recupera el botón de ingreso.
+- Un `SQLITE_BUSY` transitorio se reintenta internamente en el backend y una sola vez en el cliente.
+- El login conserva sesiones activas del mismo usuario en dispositivos distintos.
+- La facturación se consulta en modo lectura durante el acceso y no ejecuta DDL ni actualizaciones de mantenimiento por cada petición.
+- Las respuestas incluyen `X-Login-Duration-Ms`, `X-Login-DB-Retries` y un identificador de solicitud para diagnóstico.
+
 ## Scripts principales
 
 | Archivo | Función |
@@ -18,7 +27,8 @@ El túnel es una herramienta de demostración. Railway continúa siendo el entor
 | `INICIAR_PLATAFORMA_LOCAL.bat` | Detecta Python 3.11/3.12, prepara el entorno virtual, inicializa la base local, verifica `/api/health` y abre el frontend. |
 | `INICIAR_PLATAFORMA_TUNEL_ONLINE.bat` | Reinicia el backend en modo túnel seguro cuando es necesario, descarga/verifica `cloudflared`, genera y valida el enlace público. |
 | `DETENER_PLATAFORMA_LOCAL.bat` | Cierra el backend del puerto 5000 y únicamente el proceso de túnel asociado a este proyecto. |
-| `DIAGNOSTICAR_LOGIN_TUNEL.bat` | Compara la copia local y la pública, prueba `/api/health`, comprueba la ruta de login sin credenciales y enumera logs no vacíos. |
+| `DIAGNOSTICAR_LOGIN_TUNEL.bat` | Compara la copia local y la pública, prueba `/api/health`, comprueba la ruta de login y analiza los logs de Cloudflare. |
+| `DIAGNOSTICAR_TUNEL_CLOUDFLARE.bat` | Alias claro del diagnóstico de red, proceso, instancia, puerto 7844 y enlace público. |
 | `ABRIR_LOGS_ERRORES.bat` | Abre la carpeta operativa real `data\logs`. |
 
 
@@ -77,8 +87,11 @@ INICIAR_PLATAFORMA_TUNEL_ONLINE.bat
 - comprobación de `/api/health` y del frontend local;
 - reinicio en `PUBLIC_TUNNEL_MODE=true` cuando Flask estaba abierto solo en modo local;
 - descarga del ejecutable oficial portable para `amd64` o `arm64`;
-- uso de una configuración aislada para no modificar configuraciones Cloudflare personales;
-- captura del enlace desde salida estándar, salida de errores y archivo de log;
+- perfil `HOME/USERPROFILE` aislado para que un `config.yml` personal no interfiera;
+- ejecución del Quick Tunnel **sin `--config`**, como exige Cloudflare;
+- intento automático y segundo intento explícito con HTTP/2/TCP si QUIC/UDP está bloqueado;
+- TLS 1.2 y descarga alternativa mediante `curl.exe`;
+- captura del enlace desde salida estándar y salida de errores;
 - validación pública de `/api/health` y `/frontend/index.html`;
 - guardado del PID para cerrar exclusivamente este túnel;
 - copia del enlace al portapapeles y apertura del navegador.
@@ -139,7 +152,7 @@ data\logs
 `backend\logs` es únicamente un marcador vacío del repositorio. Para abrir la
 carpeta correcta puede ejecutar `ABRIR_LOGS_ERRORES.bat`.
 
-Para problemas propios de Cloudflare, revise `logs_tunel/`. El script muestra las últimas líneas si detecta un fallo. Las causas más habituales son:
+Para problemas propios de Cloudflare, revise `logs_tunel/`. La versión 2.5.0 conserva y amplía la corrección 2.4.3; guarda además el comando efectivo —sin secretos— en `.runtime_windows/ULTIMO_COMANDO_CLOUDFLARED.txt`. El script muestra las últimas líneas si detecta un fallo. Las causas más habituales son:
 
 - internet intermitente;
 - antivirus o firewall bloqueando `cloudflared.exe`;
@@ -184,3 +197,15 @@ El primer ingreso obliga a cambiarla. Después de hacerlo, elimine ese archivo. 
 6. Confirme que el enlace dejó de responder.
 
 No utilice información personal real durante estas pruebas.
+
+
+## Lanzadores 2.6.0
+
+Los archivos BAT de raíz son envoltorios mínimos CRLF. Toda la lógica está en PowerShell para evitar fragmentación de comandos por codificación o saltos de línea.
+
+- `INICIAR_PLATAFORMA_LOCAL.bat`: inicia SQLite o PostgreSQL según `DATABASE_URL`.
+- `INICIAR_PLATAFORMA_TUNEL_ONLINE.bat`: inicia la misma copia en modo túnel y luego Quick Tunnel.
+- `CONFIGURAR_POSTGRESQL_LOCAL.bat`: comprueba y guarda de forma local la URL.
+- `MIGRAR_SQLITE_A_POSTGRESQL.bat`: respalda SQLite, migra y valida conteos.
+- `RESPALDAR_POSTGRESQL.bat` / `RESTAURAR_POSTGRESQL.bat`: usan `pg_dump` y `pg_restore`.
+- `DETENER_PLATAFORMA_LOCAL.bat`: cierra solo procesos confirmados de esta carpeta.

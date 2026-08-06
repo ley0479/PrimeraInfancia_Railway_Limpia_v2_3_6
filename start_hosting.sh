@@ -18,11 +18,13 @@ fi
 mkdir -p "$DATA_DIR"
 python backend/init_hosting.py
 
-# SQLite y los trabajos en memoria requieren una única instancia/proceso.
+# PostgreSQL elimina la contención del archivo SQLite. Se conserva un worker por
+# omisión porque algunos jobs operativos aún son memoria local; puede aumentarse
+# GUNICORN_WORKERS después de externalizar esos jobs.
 exec gunicorn \
   --chdir backend \
   --bind "0.0.0.0:${PORT}" \
-  --workers 1 \
+  --workers "${GUNICORN_WORKERS:-1}" \
   --worker-class gthread \
   --threads "${GUNICORN_THREADS:-4}" \
   --timeout "${GUNICORN_TIMEOUT:-300}" \

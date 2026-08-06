@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+import re, sys
+from pathlib import Path
+ROOT=Path(__file__).resolve().parents[2]; BACKEND=ROOT/'backend'; sys.path.insert(0,str(BACKEND))
+from modules.dbapi_compat import _convert_qmark, _translate_ddl, _translate_sqlite_sql
+
+def require(ok,msg):
+    if not ok: raise AssertionError(msg)
+ddl=_translate_ddl('CREATE TABLE demo (id INTEGER PRIMARY KEY AUTOINCREMENT, peso REAL, archivo BLOB)')
+require('BIGSERIAL PRIMARY KEY' in ddl,'PK no se tradujo a BIGSERIAL')
+require('DOUBLE PRECISION' in ddl,'REAL no se tradujo')
+require('BYTEA' in ddl,'BLOB no se tradujo')
+sql=_translate_sqlite_sql("INSERT OR IGNORE INTO demo(nombre) VALUES(?)")
+require('ON CONFLICT DO NOTHING' in sql,'INSERT OR IGNORE no se tradujo')
+sql2,bind=_convert_qmark("SELECT * FROM demo WHERE a=? AND texto='?' AND b=?",(10,20))
+require(sql2.count(':p')==2 and bind=={'p0':10,'p1':20},'placeholders qmark incorrectos')
+require('STRING_AGG' in _translate_sqlite_sql("SELECT GROUP_CONCAT(nombre, ', ') FROM demo"),'GROUP_CONCAT no se tradujo')
+require("LPAD(CAST(id AS TEXT), 10, '0')" in _translate_sqlite_sql("SELECT printf('%010d', id) FROM demo"),'printf entero no se tradujo')
+require('TO_CHAR' in _translate_sqlite_sql("SELECT strftime('%Y', fecha) FROM demo"),'strftime no se tradujo')
+approved={'database.py','modules/dbapi_compat.py','modules/seguridad/tenant_sql_guard.py'}
+hits=[]
+for p in BACKEND.rglob('*.py'):
+    rel=p.relative_to(BACKEND).as_posix()
+    if rel.startswith(('tests/','migrations/','tools/')) or rel in approved: continue
+    text=p.read_text(encoding='utf-8',errors='ignore')
+    if re.search(r'(^|\n)\s*(?:import sqlite3|from sqlite3)',text): hits.append(rel)
+require(not hits,'Imports sqlite3 directos en runtime: '+', '.join(hits))
+req=(BACKEND/'requirements-production.txt').read_text()
+require('psycopg[binary]' in req,'Falta psycopg en requirements')
+print('PostgreSQL compatibilidad: PASS')

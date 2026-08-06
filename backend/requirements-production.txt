@@ -27,3 +27,4 @@ matplotlib>=3.7,<4.0
 gunicorn>=22,<24
 waitress>=3,<4
 CairoSVG>=2.7,<3.0
+psycopg[binary]>=3.2,<4.0

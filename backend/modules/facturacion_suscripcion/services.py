@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -45,13 +46,29 @@ def subscription_to_api(sub: dict[str, Any] | None) -> dict[str, Any]:
 
 
 class BillingService:
+    _INIT_LOCK = threading.RLock()
+    _INITIALIZED_DATABASES: set[str] = set()
+
     def __init__(self, repo: BillingRepository, upload_folder: str | None = None):
         self.repo = repo
         self.upload_folder = upload_folder
 
-    def init(self) -> None:
-        self.repo.init_schema()
-        self.refresh_all_subscription_states()
+    def init(self, *, force: bool = False) -> None:
+        """Inicializa catálogos una sola vez por base y proceso.
+
+        Antes se ejecutaban DDL, semillas y actualizaciones de suscripción en
+        cada request autenticado. Ese patrón multiplicaba escritores SQLite y
+        podía bloquear el login mientras el navegador cargaba el tablero.
+        """
+        key = str(getattr(self.repo, 'database_path', '') or 'default')
+        if not force and key in self._INITIALIZED_DATABASES:
+            return
+        with self._INIT_LOCK:
+            if not force and key in self._INITIALIZED_DATABASES:
+                return
+            self.repo.init_schema()
+            self.refresh_all_subscription_states()
+            self._INITIALIZED_DATABASES.add(key)
 
     def authorized_fundacion_id(self, fundacion_id: int | None = None) -> int:
         current = int(self.repo.current_fundacion_id() or 1)
@@ -70,14 +87,37 @@ class BillingService:
                 "SELECT * FROM suscripciones_fundacion WHERE fundacion_id=?",
                 (self.repo.current_fundacion_id(),),
             ).fetchall()
+        changed = False
+        timestamp = now_iso()
         for row in rows:
             estado = normalize_estado_suscripcion(row['fecha_vencimiento'], row['estado'], int(row['dias_gracia'] or 0))
-            cur.execute("UPDATE suscripciones_fundacion SET estado=?, fecha_actualizacion=? WHERE id=?", (estado, now_iso(), row['id']))
+            if str(row.get('estado') or '').upper() != estado:
+                cur.execute(
+                    "UPDATE suscripciones_fundacion SET estado=?, fecha_actualizacion=? WHERE id=?",
+                    (estado, timestamp, row['id']),
+                )
+                changed = True
             try:
-                cur.execute("UPDATE fundaciones SET suscripcion_estado=?, creditos_disponibles=?, fecha_actualizacion=? WHERE id=?", (estado, row['creditos_disponibles'], now_iso(), row['fundacion_id']))
+                foundation = cur.execute(
+                    "SELECT suscripcion_estado, creditos_disponibles FROM fundaciones WHERE id=?",
+                    (row['fundacion_id'],),
+                ).fetchone()
+                if (
+                    not foundation
+                    or str(foundation.get('suscripcion_estado') or '').upper() != estado
+                    or int(foundation.get('creditos_disponibles') or 0) != int(row['creditos_disponibles'] or 0)
+                ):
+                    cur.execute(
+                        "UPDATE fundaciones SET suscripcion_estado=?, creditos_disponibles=?, fecha_actualizacion=? WHERE id=?",
+                        (estado, row['creditos_disponibles'], timestamp, row['fundacion_id']),
+                    )
+                    changed = True
             except Exception:
                 pass
-        conn.commit()
+        if changed:
+            conn.commit()
+        else:
+            conn.rollback()
         conn.close()
 
     def list_planes(self) -> list[dict[str, Any]]:
@@ -173,6 +213,44 @@ class BillingService:
             params,
         )
         return [subscription_to_api(r) for r in rows]
+
+    def get_subscription_snapshot(
+        self,
+        fundacion_id: int | None = None,
+        *,
+        trusted_internal: bool = False,
+    ) -> dict[str, Any]:
+        """Consulta la suscripción sin ejecutar DDL ni escrituras de mantenimiento.
+
+        ``trusted_internal`` se reserva para el flujo interno de login, donde la
+        contraseña ya fue validada pero todavía no existe un contexto de sesión
+        autenticado en ``flask.g``. No se expone como parámetro de ninguna API.
+        """
+        if trusted_internal:
+            if fundacion_id is None:
+                return {}
+            fid = int(fundacion_id)
+        else:
+            fid = self.authorized_fundacion_id(fundacion_id)
+        row = self.repo.fetch_one(
+            """
+            SELECT s.*, f.nombre AS fundacion_nombre, f.nit AS fundacion_nit, p.nombre AS plan_nombre, p.precio_mensual,
+                   p.limite_usuarios, p.limite_coordinadores, p.limite_unidades
+            FROM suscripciones_fundacion s
+            LEFT JOIN fundaciones f ON f.id=s.fundacion_id
+            LEFT JOIN planes_suscripcion p ON p.id=s.plan_id
+            WHERE s.fundacion_id=?
+            """,
+            (fid,),
+        )
+        data = subscription_to_api(row)
+        if data:
+            data['estado'] = normalize_estado_suscripcion(
+                str(data.get('fecha_vencimiento') or ''),
+                str(data.get('estado') or 'ACTIVA'),
+                int(data.get('dias_gracia') or 0),
+            )
+        return data
 
     def get_subscription(self, fundacion_id: int | None = None) -> dict[str, Any]:
         self.refresh_all_subscription_states()
@@ -484,11 +562,10 @@ def register_billing_middleware(app, database_path: str, upload_folder: str | No
         user = getattr(g, 'current_user', None)
         if not user:
             return None
-        service.init()
         if user.get('rol') == 'SUPERADMIN':
             return None
         fid = int(user.get('fundacion_id') or 1)
-        sub = service.get_subscription(fid)
+        sub = service.get_subscription_snapshot(fid)
         if not sub:
             return _json_error('La fundación no tiene suscripción configurada.', 402)
 

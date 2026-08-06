@@ -17,7 +17,7 @@
     <link rel="stylesheet" href="./css/gestion-pedagogica.css?v=2.1.2">
     <link rel="stylesheet" href="./css/planeacion-pedagogica.css?v=2.1.7">
     <link rel="stylesheet" href="./css/gestion-coordinador.css?v=2.1.6">
-    <link rel="stylesheet" href="./css/salud-nutricion.css?v=2.1.4">
+    <link rel="stylesheet" href="./css/salud-nutricion.css?v=2.6.0-integral-postgresql">
     <link rel="stylesheet" href="./css/facturacion.css?v=2.1.8">
     <link rel="stylesheet" href="./css/acceso-compartido.css?v=2.3.0-alpha.21">
     <link rel="stylesheet" href="./css/cruce-bases.css?v=2.1.14">
@@ -37,6 +37,10 @@
     <link rel="stylesheet" href="./css/panel-comercial.css?v=2.2.8">
     <link rel="stylesheet" href="./css/gerencia-general.css?v=2.3.0-alpha.18">
     <link rel="stylesheet" href="./css/calendario-inteligente.css?v=2.3.0-alpha.15">
+    <link rel="stylesheet" href="./css/gestion-integral-uca.css?v=2.5.3">
+    <link rel="stylesheet" href="./css/motor-gestion-proyecto.css?v=2.5.3">
+    <link rel="stylesheet" href="./css/supervision-calidad.css?v=2.6.0">
+    <link rel="stylesheet" href="./css/familias-redes.css?v=2.6.0">
     <link rel="stylesheet" href="./css/accessibility-pi.css?v=2.3.0-release-a11y-ux">
     <link rel="stylesheet" href="./css/responsive-mobile.css?v=2.3.3-responsive-1">
     <script src="https://unpkg.com/lucide@1.28.0"></script>
@@ -145,6 +149,16 @@
         </div>
     </div>
 
+    <div class="pi-menu-group" data-menu-group="gestion-integral-uca">
+        <button type="button" class="pi-menu-group-toggle" data-menu-toggle="gestion-integral-uca" aria-expanded="true"><span><i data-lucide="route"></i> Gestión Integral UCA</span><i data-lucide="chevron-down" class="pi-menu-chevron"></i></button>
+        <div class="pi-menu-group-items">
+            <button id="nav-expediente-operativo-uca" data-menu-item data-menu-group="gestion-integral-uca" onclick="mostrarSeccion('expediente-operativo-uca')" class="pi-menu-item"><i data-lucide="folder-kanban"></i><span>Expediente Operativo</span><small>central</small></button>
+            <button id="nav-biblioteca-icbf" data-menu-item data-menu-group="gestion-integral-uca" onclick="mostrarSeccion('biblioteca-icbf')" class="pi-menu-item"><i data-lucide="library-big"></i><span>Biblioteca Oficial ICBF</span><small>versionada</small></button>
+            <button id="nav-motor-gestion-proyecto" data-menu-item data-menu-group="gestion-integral-uca" onclick="mostrarSeccion('motor-gestion-proyecto')" class="pi-menu-item"><i data-lucide="workflow"></i><span>Motor de Gestión</span><small>orquestador</small></button>
+            <button id="nav-supervision-calidad" data-menu-item data-menu-group="gestion-integral-uca" onclick="mostrarSeccion('supervision-calidad')" class="pi-menu-item"><i data-lucide="clipboard-check"></i><span>Supervisión y Calidad</span><small>trazable</small></button>
+        </div>
+    </div>
+
     <div class="pi-menu-group" data-menu-group="operacion-icbf">
         <button type="button" class="pi-menu-group-toggle" data-menu-toggle="operacion-icbf" aria-expanded="true"><span><i data-lucide="file-spreadsheet"></i> Operación ICBF</span><i data-lucide="chevron-down" class="pi-menu-chevron"></i></button>
         <div class="pi-menu-group-items">
@@ -171,7 +185,7 @@
     <div class="pi-menu-group" data-menu-group="familia-redes">
         <button type="button" class="pi-menu-group-toggle" data-menu-toggle="familia-redes" aria-expanded="false"><span><i data-lucide="heart-handshake"></i> Familia, Comunidad y Redes</span><i data-lucide="chevron-down" class="pi-menu-chevron"></i></button>
         <div class="pi-menu-group-items">
-            <div class="pi-menu-placeholder" data-menu-placeholder><i data-lucide="users-round"></i><span>Familia, Comunidad y Redes</span><small>pendiente</small></div>
+            <button id="nav-familias-redes" data-menu-item data-menu-group="familia-redes" onclick="mostrarSeccion('familias-redes')" class="pi-menu-item"><i data-lucide="heart-handshake"></i><span>Gestión de Familias y Redes</span><small>psicosocial</small></button>
         </div>
     </div>
 
@@ -2139,6 +2153,9 @@
                             </div>
                             <div class="flex flex-wrap gap-2">
                                 <button onclick="snMostrarVista('dashboard')" class="sn-tab active" data-sn-tab="dashboard">Dashboard</button>
+                                <button onclick="snMostrarVista('integral')" class="sn-tab" data-sn-tab="integral">Expediente Integral</button>
+                                <button onclick="snMostrarVista('jornadas')" class="sn-tab" data-sn-tab="jornadas">Jornadas</button>
+                                <button onclick="snMostrarVista('rutas')" class="sn-tab" data-sn-tab="rutas">Rutas y Seguimientos</button>
                                 <button onclick="snMostrarVista('importar')" class="sn-tab" data-sn-tab="importar">Importar</button>
                                 <button onclick="snMostrarVista('cruce')" class="sn-tab" data-sn-tab="cruce">Cruce Bases</button>
                                 <button onclick="snMostrarVista('historial')" class="sn-tab" data-sn-tab="historial">Historial</button>
@@ -2187,6 +2204,75 @@
                                 </table>
                             </div>
                         </div>
+                    </div>
+
+                    <div id="sn-view-integral" class="hidden space-y-6">
+                        <div class="sn-card sn-integral-hero">
+                            <div class="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4">
+                                <div>
+                                    <h3 class="font-semibold text-lg">Expediente Integral de Salud y Nutrición</h3>
+                                    <p class="mt-2 text-sm text-slate-400 max-w-4xl">Referencia Base Maestra sin duplicarla, controla afiliación, vacunación, valoración integral, salud bucal, tamizaje, controles prenatales, discapacidad, lactancia y canalizaciones. La clasificación automática se muestra como sugerencia y requiere validación profesional.</p>
+                                </div>
+                                <div class="flex flex-wrap gap-2">
+                                    <input id="sn-integral-unidad" class="sn-ent-input w-64" placeholder="Filtrar por UCA (opcional)">
+                                    <button onclick="snIntegralSincronizar()" class="rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2 text-sm font-semibold text-white">Sincronizar Base Maestra</button>
+                                    <button onclick="snIntegralCargar()" class="rounded-xl bg-cyan-600 hover:bg-cyan-500 px-4 py-2 text-sm font-semibold text-white">Actualizar</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+                            <div class="sn-card"><p class="text-xs text-slate-400">Expedientes</p><strong id="sn-int-kpi-exp" class="text-2xl text-cyan-300">0</strong></div>
+                            <div class="sn-card"><p class="text-xs text-slate-400">Docs pendientes</p><strong id="sn-int-kpi-docs" class="text-2xl text-amber-300">0</strong></div>
+                            <div class="sn-card"><p class="text-xs text-slate-400">Sin afiliación</p><strong id="sn-int-kpi-afiliacion" class="text-2xl text-rose-300">0</strong></div>
+                            <div class="sn-card"><p class="text-xs text-slate-400">Sin vacunas</p><strong id="sn-int-kpi-vacunas" class="text-2xl text-violet-300">0</strong></div>
+                            <div class="sn-card"><p class="text-xs text-slate-400">Sin valoración integral</p><strong id="sn-int-kpi-valoracion" class="text-2xl text-indigo-300">0</strong></div>
+                            <div class="sn-card"><p class="text-xs text-slate-400">Rutas abiertas</p><strong id="sn-int-kpi-rutas" class="text-2xl text-orange-300">0</strong></div>
+                            <div class="sn-card"><p class="text-xs text-slate-400">Actividades pendientes</p><strong id="sn-int-kpi-actividades" class="text-2xl text-emerald-300">0</strong></div>
+                        </div>
+                        <div class="sn-card">
+                            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-3">
+                                <h3 class="font-semibold">Participantes y cobertura documental</h3>
+                                <div class="flex gap-2">
+                                    <input id="sn-capture-periodo" class="sn-ent-input w-36" placeholder="AAAA-MM">
+                                    <button onclick="snIntegralGenerarCapture()" class="rounded-xl bg-teal-600 hover:bg-teal-500 px-4 py-2 text-sm font-semibold text-white">Generar CAPTURE validado</button>
+                                </div>
+                            </div>
+                            <div class="overflow-x-auto"><table class="w-full text-left text-xs text-slate-400 sn-table"><thead><tr><th>UCA</th><th>Documento</th><th>Expediente</th><th>Documentos al día</th><th>Alertas</th><th>Rutas</th><th>Acción</th></tr></thead><tbody id="sn-integral-expedientes"><tr><td colspan="7" class="text-center text-slate-500">Sincroniza la Base Maestra.</td></tr></tbody></table></div>
+                            <div id="sn-integral-detalle" class="hidden mt-5 rounded-2xl border border-slate-800 bg-slate-950/70 p-4"></div>
+                        </div>
+                    </div>
+
+                    <div id="sn-view-jornadas" class="hidden space-y-6">
+                        <div class="sn-card">
+                            <h3 class="font-semibold mb-4">Programar jornada o actividad del componente</h3>
+                            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                                <input id="sn-act-unidad" class="sn-ent-input" placeholder="UCA">
+                                <select id="sn-act-linea" class="sn-ent-input"><option value="L1_ARTICULACION_SALUD">Línea 1 · Articulación en salud</option><option value="L2_EDUCACION_SALUD_ALIMENTARIA">Línea 2 · Educación para la Salud Alimentaria</option><option value="L3_PREVENCION_ENFERMEDADES">Línea 3 · Prevención de enfermedades</option><option value="L4_ALIMENTOS_SANOS_SEGUROS">Línea 4 · Alimentos sanos y seguros</option><option value="L5_SEGUIMIENTO_NUTRICIONAL">Línea 5 · Seguimiento nutricional</option></select>
+                                <input id="sn-act-tipo" class="sn-ent-input" placeholder="Tipo de jornada" value="JORNADA">
+                                <input id="sn-act-fecha" type="date" class="sn-ent-input">
+                                <input id="sn-act-titulo" class="sn-ent-input xl:col-span-2" placeholder="Título de la actividad">
+                                <input id="sn-act-objetivo" class="sn-ent-input xl:col-span-2" placeholder="Objetivo">
+                            </div>
+                            <div class="mt-4 flex flex-wrap gap-2"><button onclick="snIntegralCrearActividad()" class="rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2 text-sm font-semibold text-white">Crear y convocar UCA</button><button onclick="snIntegralCargarActividades()" class="rounded-xl bg-cyan-600 hover:bg-cyan-500 px-4 py-2 text-sm font-semibold text-white">Actualizar jornadas</button></div>
+                        </div>
+                        <div class="sn-card overflow-x-auto"><table class="w-full text-left text-xs text-slate-400 sn-table"><thead><tr><th>Fecha</th><th>UCA</th><th>Línea</th><th>Actividad</th><th>Estado</th><th>Asistencia</th><th>Evidencias</th><th>Acciones</th></tr></thead><tbody id="sn-integral-actividades"><tr><td colspan="8" class="text-center text-slate-500">Sin jornadas registradas.</td></tr></tbody></table></div>
+                    </div>
+
+                    <div id="sn-view-rutas" class="hidden space-y-6">
+                        <div class="sn-card">
+                            <h3 class="font-semibold mb-4">Activación y seguimiento de rutas</h3>
+                            <p class="text-sm text-slate-400 mb-4">La plataforma registra y prioriza, pero no toma decisiones clínicas o jurídicas ni cierra una ruta por sí sola.</p>
+                            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                                <input id="sn-ruta-expediente" type="number" class="sn-ent-input" placeholder="ID expediente">
+                                <input id="sn-ruta-tipo" class="sn-ent-input" placeholder="Tipo de ruta (EAPB, PAI, salud bucal...)" value="EAPB">
+                                <select id="sn-ruta-prioridad" class="sn-ent-input"><option>MEDIA</option><option>ALTA</option><option>CRITICA</option><option>BAJA</option></select>
+                                <input id="sn-ruta-entidad" class="sn-ent-input" placeholder="Entidad destino">
+                                <input id="sn-ruta-fecha" type="date" class="sn-ent-input">
+                                <textarea id="sn-ruta-motivo" class="sn-ent-input xl:col-span-4" placeholder="Motivo y situación identificada"></textarea>
+                                <button onclick="snIntegralCrearRuta()" class="rounded-xl bg-orange-600 hover:bg-orange-500 px-4 py-2 text-sm font-semibold text-white">Registrar ruta</button>
+                            </div>
+                        </div>
+                        <div class="sn-card overflow-x-auto"><table class="w-full text-left text-xs text-slate-400 sn-table"><thead><tr><th>Fecha</th><th>UCA</th><th>Ruta</th><th>Prioridad</th><th>Entidad</th><th>Estado</th><th>Motivo</th></tr></thead><tbody id="sn-integral-rutas"><tr><td colspan="7" class="text-center text-slate-500">Sin canalizaciones registradas.</td></tr></tbody></table></div>
                     </div>
 
                     <div id="sn-view-importar" class="hidden space-y-6">
@@ -3156,6 +3242,163 @@
                     </div>
                 </section>
 
+                <section id="expediente-operativo-uca" class="hidden space-y-6 giu-shell">
+                    <div class="giu-card p-6">
+                        <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-5">
+                            <div>
+                                <p class="text-xs uppercase tracking-[0.22em] text-cyan-300">Sistema Integral de Gestión</p>
+                                <h2 class="mt-2 text-2xl font-semibold text-white flex items-center gap-2"><i data-lucide="folder-kanban" class="w-6 h-6 text-cyan-300"></i> Expediente Operativo por UCA</h2>
+                                <p class="mt-2 max-w-3xl text-sm text-slate-400">Vista única por UCA: consulta en vivo Base Maestra, Pedagogía, Salud y Nutrición, RAM, RPP, Bienestarina, Talento Humano, documentos, alertas, cronograma, indicadores y productos para supervisión, sin duplicar registros.</p>
+                            </div>
+                            <div class="grid gap-2 sm:grid-cols-2 xl:min-w-[440px]">
+                                <input id="giu-vigencia" class="giu-input" inputmode="numeric" placeholder="Vigencia">
+                                <input id="giu-contrato" class="giu-input" placeholder="Contrato o convenio">
+                                <button type="button" class="giu-btn giu-btn-secondary" onclick="GIU.loadDashboard()"><i data-lucide="refresh-cw"></i> Actualizar</button>
+                                <button type="button" class="giu-btn giu-btn-primary" onclick="GIU.syncUnits()"><i data-lucide="workflow"></i> Sincronizar UCA</button>
+                            </div>
+                        </div>
+                        <div id="giu-message" class="hidden mt-4"></div>
+                        <div id="giu-stats" class="mt-5 grid gap-3 grid-cols-2 lg:grid-cols-5"></div>
+                    </div>
+                    <div class="grid gap-5 xl:grid-cols-[minmax(270px,.72fr)_minmax(0,2.28fr)]">
+                        <div class="giu-card p-4 xl:max-h-[calc(100vh-210px)] xl:overflow-y-auto"><div class="flex items-center justify-between gap-3 mb-3"><h3 class="font-semibold text-slate-100">UCA y vigencias</h3><span class="text-[11px] text-slate-500">Fuente única</span></div><div id="giu-expedientes-list" class="space-y-3"><div class="giu-empty">Cargando expedientes…</div></div></div>
+                        <div id="giu-detail" class="giu-sticky-detail xl:sticky xl:top-20 self-start"><div class="giu-empty">Selecciona una UCA para consultar su expediente operativo.</div></div>
+                    </div>
+                    <div id="giu-activity-modal" class="giu-modal hidden" role="dialog" aria-modal="true" aria-labelledby="giu-act-title">
+                        <div class="giu-modal-card">
+                            <div class="flex items-start justify-between gap-3"><div><h3 id="giu-act-title" class="text-lg font-semibold text-white">Gestionar actividad</h3><p id="giu-act-description" class="mt-1 text-xs text-slate-400"></p></div><button type="button" class="giu-btn giu-btn-secondary" onclick="GIU.closeActivity()">Cerrar</button></div>
+                            <input id="giu-act-id" type="hidden">
+                            <div class="mt-5 grid gap-3 md:grid-cols-2">
+                                <label class="text-xs text-slate-400">Estado<select id="giu-act-state" class="giu-input mt-1"><option>PENDIENTE</option><option>EN_PROCESO</option><option>PENDIENTE_EVIDENCIA</option><option>PENDIENTE_REVISION</option><option>DEVUELTA</option><option>APROBADA</option><option>CERRADA</option><option>NO_APLICA</option></select></label>
+                                <label class="text-xs text-slate-400">Responsable<input id="giu-act-responsible" class="giu-input mt-1" placeholder="Nombre del responsable"></label>
+                                <label class="text-xs text-slate-400">Fecha de inicio<input id="giu-act-start" type="date" class="giu-input mt-1"></label>
+                                <label class="text-xs text-slate-400">Fecha límite<input id="giu-act-due" type="date" class="giu-input mt-1"></label>
+                                <label class="text-xs text-slate-400 md:col-span-2">Progreso (%)<input id="giu-act-progress" type="number" min="0" max="100" class="giu-input mt-1"></label>
+                                <label class="text-xs text-slate-400 md:col-span-2">Observaciones<textarea id="giu-act-observations" class="giu-input mt-1" rows="3"></textarea></label>
+                                <label class="text-xs text-slate-400 md:col-span-2">Justificación “No aplica”<textarea id="giu-act-na" class="giu-input mt-1" rows="2"></textarea></label>
+                            </div>
+                            <div id="giu-act-message" class="hidden mt-3"></div>
+                            <div class="mt-4 flex justify-end"><button type="button" class="giu-btn giu-btn-primary" onclick="GIU.saveActivity()"><i data-lucide="save"></i> Guardar actividad</button></div>
+                            <div class="mt-6 giu-panel p-4"><h4 class="font-semibold text-slate-100">Evidencias versionadas</h4><div class="mt-3 grid gap-2 md:grid-cols-[1fr_1fr_auto]"><input id="giu-evidence-file" type="file" class="giu-input"><input id="giu-evidence-note" class="giu-input" placeholder="Observación"><button type="button" class="giu-btn giu-btn-secondary" onclick="GIU.uploadEvidence()">Cargar</button></div><div id="giu-evidence-list" class="mt-3"></div></div>
+                        </div>
+                    </div>
+                </section>
+
+
+                <section id="supervision-calidad" class="hidden space-y-6 sac-shell">
+                    <div class="sac-card p-6">
+                        <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
+                            <div><p class="text-xs uppercase tracking-[.22em] text-cyan-300">Acompañamiento, control y mejora continua</p><h2 class="mt-2 text-2xl font-semibold text-white flex items-center gap-2"><i data-lucide="clipboard-check" class="w-6 h-6 text-cyan-300"></i> Centro Inteligente de Supervisión, Auditoría y Calidad</h2><p class="mt-2 max-w-4xl text-sm text-slate-400">Consolida verificaciones por UCA, hallazgos y planes de mejora sin modificar registros fuente ni cerrar procesos automáticamente.</p></div>
+                            <div class="flex flex-wrap gap-2"><input id="sac-period" type="month" class="sac-input w-auto"><button class="sac-btn secondary" onclick="SupervisionCalidad.load()"><i data-lucide="refresh-cw"></i> Actualizar</button><button class="sac-btn primary" onclick="SupervisionCalidad.prepareProducts()"><i data-lucide="package-check"></i> Preparar PDF · Excel · ZIP</button></div>
+                        </div>
+                        <div id="sac-message" class="hidden"></div>
+                        <div class="mt-4 grid gap-2 md:grid-cols-3"><input id="sac-filter-unit" class="sac-input" placeholder="Filtrar UCA"><input id="sac-filter-contract" class="sac-input" placeholder="Contrato"><input id="sac-filter-year" class="sac-input" placeholder="Vigencia"></div>
+                        <div id="sac-stats" class="mt-5 grid gap-3 grid-cols-2 lg:grid-cols-5"></div>
+                    </div>
+                    <div class="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(330px,.65fr)]">
+                        <div class="space-y-5">
+                            <div class="sac-card p-5"><h3 class="font-semibold text-white">Vista por UCA</h3><div id="sac-units" class="mt-4 space-y-2"></div></div>
+                            <div class="sac-card p-5"><h3 class="font-semibold text-white">Verificaciones y listas de chequeo</h3><div class="mt-4 grid gap-4 lg:grid-cols-2"><div id="sac-visits" class="space-y-2"></div><div id="sac-visit-detail" class="sac-card p-4"><div class="sac-empty">Selecciona una verificación para diligenciar su lista.</div></div></div></div>
+                            <div class="sac-card p-5"><h3 class="font-semibold text-white">Hallazgos</h3><div id="sac-findings" class="mt-4 space-y-3"></div></div>
+                            <div class="sac-card p-5"><h3 class="font-semibold text-white">Planes de mejora y seguimiento</h3><div id="sac-plans" class="mt-4 space-y-3"></div></div>
+                            <div class="sac-card p-5"><h3 class="font-semibold text-white">Productos de supervisión</h3><div id="sac-products" class="mt-4 space-y-3"></div></div>
+                        </div>
+                        <div id="sac-manage-actions" class="space-y-5">
+                            <form id="sac-visit-form" class="sac-card p-5 space-y-3"><h3 class="font-semibold text-white">Programar verificación</h3><input id="sac-visit-unit" class="sac-input" placeholder="UCA" required><div class="grid grid-cols-2 gap-2"><input id="sac-visit-contract" class="sac-input" placeholder="Contrato"><input id="sac-visit-year" class="sac-input" placeholder="Vigencia"></div><div class="grid grid-cols-2 gap-2"><select id="sac-visit-type" class="sac-input"><option>SEGUIMIENTO_INTERNO</option><option>AUDITORIA_INTERNA</option><option>PREPARACION_INTERVENTORIA</option><option>VISITA_CALIDAD</option><option>VERIFICACION_REMOTA</option></select><select id="sac-visit-mode" class="sac-input"><option>REMOTA</option><option>EN_SITIO</option><option>MIXTA</option></select></div><input id="sac-visit-date" type="date" class="sac-input"><input id="sac-visit-owner" class="sac-input" placeholder="Responsable"><textarea id="sac-visit-scope" class="sac-input" rows="3" placeholder="Alcance"></textarea><button class="sac-btn primary w-full" type="submit">Crear lista de verificación</button></form>
+                            <form id="sac-finding-form" class="sac-card p-5 space-y-3"><h3 class="font-semibold text-white">Hallazgo manual</h3><input id="sac-finding-unit" class="sac-input" placeholder="UCA" required><input id="sac-finding-title" class="sac-input" placeholder="Título" required><textarea id="sac-finding-description" class="sac-input" rows="3" placeholder="Descripción verificable" required></textarea><input id="sac-finding-component" class="sac-input" placeholder="Componente"><div class="grid grid-cols-2 gap-2"><select id="sac-finding-severity" class="sac-input"><option>MEDIO</option><option>ALTO</option><option>CRITICO</option><option>BAJO</option></select><input id="sac-finding-due" type="date" class="sac-input"></div><input id="sac-finding-owner" class="sac-input" placeholder="Responsable"><button class="sac-btn primary w-full" type="submit">Registrar hallazgo</button></form>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="familias-redes" class="hidden space-y-6 fcr-shell">
+                    <div class="fcr-card p-6">
+                        <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4"><div><p class="text-xs uppercase tracking-[.22em] text-teal-300">Componente Familia, Comunidad y Redes Sociales</p><h2 class="mt-2 text-2xl font-semibold text-white flex items-center gap-2"><i data-lucide="heart-handshake" class="w-6 h-6 text-teal-300"></i> Gestión Integral de Familias, Comunidad y Redes</h2><p class="mt-2 max-w-4xl text-sm text-slate-400">Herramienta central del equipo psicosocial para acompañamientos, encuentros, compromisos, alertas, redes y productos documentales con revisión humana.</p></div><div class="flex flex-wrap gap-2"><input id="fcr-filter-unit" class="fcr-input w-auto" placeholder="Filtrar UCA"><button class="fcr-btn secondary" onclick="FamiliasRedes.load()"><i data-lucide="refresh-cw"></i> Actualizar</button><button class="fcr-btn secondary" onclick="FamiliasRedes.prepareReport()"><i data-lucide="file-archive"></i> Paquete de seguimiento</button></div></div>
+                        <div id="fcr-message" class="hidden"></div><div id="fcr-edit-actions" class="mt-4"><button class="fcr-btn primary" onclick="FamiliasRedes.syncFamilies()"><i data-lucide="refresh-ccw"></i> Sincronizar referencias desde Base Maestra</button></div><div id="fcr-stats" class="mt-5 grid gap-3 grid-cols-2 lg:grid-cols-5"></div>
+                    </div>
+                    <div class="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(330px,.6fr)]">
+                        <div class="space-y-5"><div class="fcr-card p-5"><h3 class="font-semibold text-white">Expedientes familiares referenciales</h3><p class="text-xs text-slate-500">No duplica participantes: enlaza la información ya registrada en Base Maestra.</p><div id="fcr-families" class="mt-4 space-y-3"></div></div><div class="fcr-card p-5"><h3 class="font-semibold text-white">Actividades, visitas y escuelas de familias</h3><div id="fcr-activities" class="mt-4 space-y-3"></div></div><div class="fcr-card p-5"><h3 class="font-semibold text-white">Compromisos y seguimientos</h3><div id="fcr-commitments" class="mt-4 space-y-3"></div></div><div class="fcr-card p-5"><h3 class="font-semibold text-white">Alertas y activación de rutas</h3><div id="fcr-alerts" class="mt-4 space-y-3"></div></div><div class="fcr-card p-5"><h3 class="font-semibold text-white">Redes de apoyo</h3><div id="fcr-networks" class="mt-4 space-y-3"></div></div><div class="fcr-card p-5"><h3 class="font-semibold text-white">Actas, listados e informes generados</h3><div id="fcr-documents" class="mt-4 space-y-3"></div></div></div>
+                        <div class="space-y-5">
+                            <form id="fcr-activity-form" class="fcr-card p-5 space-y-3"><h3 class="font-semibold text-white">Programar actividad psicosocial</h3><select id="fcr-act-type" class="fcr-input"><option>VISITA_DOMICILIARIA</option><option>ESCUELA_DE_FAMILIAS</option><option>ENCUENTRO_GRUPAL</option><option>ENCUENTRO_COMUNITARIO</option><option>ACOMPAÑAMIENTO_FAMILIAR</option><option>JORNADA_SOCIALIZACION</option></select><input id="fcr-act-title" class="fcr-input" placeholder="Título" required><textarea id="fcr-act-objective" class="fcr-input" rows="2" placeholder="Objetivo"></textarea><input id="fcr-act-unit" class="fcr-input" placeholder="UCA"><div class="grid grid-cols-2 gap-2"><input id="fcr-act-date" type="date" class="fcr-input"><input id="fcr-act-due" type="date" class="fcr-input"></div><input id="fcr-act-place" class="fcr-input" placeholder="Lugar"><input id="fcr-act-owner" class="fcr-input" placeholder="Profesional responsable"><button class="fcr-btn primary w-full" type="submit">Programar y preparar borradores</button></form>
+                            <form id="fcr-alert-form" class="fcr-card p-5 space-y-3"><h3 class="font-semibold text-white">Registrar alerta</h3><input id="fcr-alert-type" class="fcr-input" placeholder="Tipo de alerta" required><select id="fcr-alert-level" class="fcr-input"><option>MEDIO</option><option>ALTO</option><option>CRITICO</option><option>BAJO</option></select><textarea id="fcr-alert-description" class="fcr-input" rows="3" placeholder="Descripción" required></textarea><input id="fcr-alert-unit" class="fcr-input" placeholder="UCA"><input id="fcr-alert-followup" type="date" class="fcr-input"><input id="fcr-alert-owner" class="fcr-input" placeholder="Responsable"><button class="fcr-btn primary w-full" type="submit">Registrar sin cierre automático</button></form>
+                            <form id="fcr-network-form" class="fcr-card p-5 space-y-3"><h3 class="font-semibold text-white">Red o actor territorial</h3><input id="fcr-net-name" class="fcr-input" placeholder="Entidad / red" required><input id="fcr-net-type" class="fcr-input" placeholder="Tipo de actor" required><input id="fcr-net-territory" class="fcr-input" placeholder="Territorio / municipio"><input id="fcr-net-contact" class="fcr-input" placeholder="Persona contacto"><div class="grid grid-cols-2 gap-2"><input id="fcr-net-phone" class="fcr-input" placeholder="Teléfono"><input id="fcr-net-email" type="email" class="fcr-input" placeholder="Correo"></div><button class="fcr-btn primary w-full" type="submit">Registrar red</button></form>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="motor-gestion-proyecto" class="hidden space-y-6 mgp-shell">
+                    <div class="mgp-card p-6">
+                        <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
+                            <div><p class="text-xs uppercase tracking-[.22em] text-indigo-300">Orquestación con revisión humana</p><h2 class="mt-2 text-2xl font-semibold text-white flex items-center gap-2"><i data-lucide="workflow" class="w-6 h-6 text-indigo-300"></i> Motor Inteligente de Gestión del Proyecto</h2><p class="mt-2 max-w-4xl text-sm text-slate-400">Consolida tareas, responsables, entregables, alertas y cierres desde los módulos existentes. No inventa información ni aprueba productos por sí mismo.</p></div>
+                            <div class="flex flex-wrap gap-2"><input id="mgp-period" type="month" class="mgp-input w-auto"><button class="mgp-btn secondary" onclick="MotorGestion.load()"><i data-lucide="refresh-cw"></i> Actualizar</button></div>
+                        </div>
+                        <div id="mgp-message" class="hidden mt-4"></div>
+                        <div id="mgp-admin-actions" class="mt-4 flex flex-wrap gap-2"><button class="mgp-btn primary" onclick="MotorGestion.sync()"><i data-lucide="refresh-ccw"></i> Sincronizar fuentes</button><button class="mgp-btn secondary" onclick="MotorGestion.prepareProducts()"><i data-lucide="file-output"></i> Preparar productos</button><button class="mgp-btn secondary" onclick="MotorGestion.prepareClosure()"><i data-lucide="calendar-check"></i> Preparar cierre</button></div>
+                        <div id="mgp-stats" class="mt-5 grid gap-3 grid-cols-2 lg:grid-cols-5"></div>
+                    </div>
+                    <div class="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+                        <div class="mgp-card p-5"><div class="flex items-center justify-between gap-3"><div><h3 class="font-semibold text-white">Tareas consolidadas</h3><p class="text-xs text-slate-500">Una referencia única por fuente; sincronización idempotente.</p></div></div><div id="mgp-task-list" class="mt-4"></div></div>
+                        <div class="space-y-5"><div class="mgp-card p-5"><h3 class="font-semibold text-white">Recordatorios</h3><div id="mgp-reminders" class="mt-4 space-y-2"></div></div><form id="mgp-task-form" class="mgp-card p-5 space-y-3"><h3 class="font-semibold text-white">Tarea controlada</h3><input id="mgp-task-title" class="mgp-input" placeholder="Título" required><textarea id="mgp-task-description" class="mgp-input" rows="2" placeholder="Descripción"></textarea><div class="grid grid-cols-2 gap-2"><input id="mgp-task-due" type="date" class="mgp-input"><select id="mgp-task-priority" class="mgp-input"><option>MEDIA</option><option>ALTA</option><option>CRITICA</option><option>BAJA</option></select></div><input id="mgp-task-component" class="mgp-input" placeholder="Componente"><input id="mgp-task-responsible" class="mgp-input" placeholder="Responsable"><button class="mgp-btn primary w-full" type="submit">Crear tarea</button></form></div>
+                    </div>
+                    <div class="grid gap-5 xl:grid-cols-2"><div class="mgp-card p-5"><div class="flex items-center justify-between"><h3 class="font-semibold text-white">Productos operativos</h3><span class="text-xs text-slate-500">Siempre borradores</span></div><div id="mgp-products" class="mt-4 space-y-3"></div></div><div class="mgp-card p-5"><h3 class="font-semibold text-white">Cierres mensuales</h3><div id="mgp-closures" class="mt-4 space-y-3"></div></div></div>
+                </section>
+
+                <section id="biblioteca-icbf" class="hidden space-y-6 giu-shell">
+                    <div class="giu-card p-6">
+                        <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4"><div><p class="text-xs uppercase tracking-[0.22em] text-amber-300">Control documental oficial</p><h2 class="mt-2 text-2xl font-semibold text-white flex items-center gap-2"><i data-lucide="library-big" class="w-6 h-6 text-amber-300"></i> Biblioteca Oficial ICBF</h2><p class="mt-2 max-w-3xl text-sm text-slate-400">Catálogo controlado de manuales, guías y formatos con versiones, vigencias, SHA-256, aprobación humana e integración futura autorizada.</p></div><button class="giu-btn giu-btn-secondary" onclick="GIU.loadLibrary()"><i data-lucide="refresh-cw"></i> Actualizar</button></div>
+                        <div id="bib-message" class="hidden mt-4"></div>
+                    </div>
+                    <div id="bib-admin-panel" class="giu-card p-5">
+                        <h3 class="font-semibold text-slate-100">Registrar documento oficial</h3>
+                        <form id="bib-document-form" class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                            <input id="bib-code" class="giu-input" placeholder="Código (ej. MT3.PP)" required>
+                            <input id="bib-name" class="giu-input md:col-span-2" placeholder="Nombre del documento" required>
+                            <select id="bib-type" class="giu-input"><option>DOCUMENTO_TECNICO</option><option>FORMATO_OFICIAL</option><option>GUIA</option><option>ANEXO</option></select>
+                            <input id="bib-modality" class="giu-input" placeholder="Modalidad">
+                            <input id="bib-component" class="giu-input" placeholder="Componente">
+                            <select id="bib-source-type" class="giu-input"><option>MANUAL</option><option>PORTAL_PUBLICO</option><option>REPOSITORIO_CONTROLADO</option><option>API_OFICIAL_FUTURA</option></select>
+                            <input id="bib-source-url" class="giu-input" placeholder="URL oficial autorizada">
+                            <textarea id="bib-description" class="giu-input md:col-span-2 xl:col-span-3" rows="2" placeholder="Descripción y alcance"></textarea>
+                            <button class="giu-btn giu-btn-primary" type="submit"><i data-lucide="plus"></i> Guardar documento</button>
+                        </form>
+                        <form id="bib-version-form" class="hidden mt-5 giu-panel p-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4" enctype="multipart/form-data">
+                            <input id="bib-version-document-id" type="hidden">
+                            <h3 id="bib-version-title" class="md:col-span-2 xl:col-span-4 font-semibold text-cyan-100">Nueva versión</h3>
+                            <input name="version" class="giu-input" placeholder="Versión" required>
+                            <input name="fecha_documento" type="date" class="giu-input">
+                            <input name="fecha_vigencia_desde" type="date" class="giu-input">
+                            <select name="estado" class="giu-input"><option>BORRADOR</option><option>APROBADA</option><option>VIGENTE</option><option>HISTORICA</option></select>
+                            <input name="fuente_url" class="giu-input md:col-span-2" placeholder="URL oficial de origen">
+                            <input name="file" type="file" class="giu-input md:col-span-2">
+                            <textarea name="notas_cambio" class="giu-input md:col-span-2 xl:col-span-3" rows="2" placeholder="Notas de cambio"></textarea>
+                            <button class="giu-btn giu-btn-primary" type="submit">Registrar versión</button>
+                        </form>
+                    </div>
+                    <div id="bib-list" class="grid gap-4 xl:grid-cols-2"><div class="giu-empty">Consultando biblioteca…</div></div>
+                    <div class="grid gap-5 xl:grid-cols-2">
+                        <div class="giu-card p-5"><div class="flex items-center justify-between"><div><h3 class="font-semibold text-white">Fuentes autorizadas</h3><p class="text-xs text-slate-500">Verificación remota cerrada por defecto; solo catálogos JSON autorizados.</p></div><button class="giu-btn giu-btn-secondary" onclick="GIU.loadLibraryOperations()">Actualizar</button></div><div id="bib-sources" class="mt-4 space-y-3"></div>
+                            <form id="bib-source-form" class="mt-4 grid gap-2 md:grid-cols-2">
+                                <input id="bib-source-code" class="giu-input" placeholder="Código de fuente">
+                                <input id="bib-source-name" class="giu-input" placeholder="Nombre de fuente">
+                                <select id="bib-source-mechanism" class="giu-input"><option>MANUAL</option><option>CATALOGO_JSON</option></select>
+                                <input id="bib-source-url-base" class="giu-input" placeholder="URL HTTPS autorizada">
+                                <input id="bib-source-domain" class="giu-input" placeholder="Dominio permitido (ej. icbf.gov.co)">
+                                <label class="text-xs text-slate-400 flex items-center gap-2"><input id="bib-source-authorized" type="checkbox"> Autorizada</label>
+                                <label class="text-xs text-slate-400 flex items-center gap-2"><input id="bib-source-enabled" type="checkbox"> Habilitada</label>
+                                <button type="submit" class="giu-btn giu-btn-primary">Guardar fuente</button>
+                            </form></div>
+                        <div class="giu-card p-5"><h3 class="font-semibold text-white">Candidatos detectados</h3><div id="bib-candidates" class="mt-4 space-y-3"></div>
+                            <form id="bib-candidate-form" class="mt-4 grid gap-2 md:grid-cols-2">
+                                <input id="bib-candidate-code" class="giu-input" placeholder="Código documento">
+                                <input id="bib-candidate-version" class="giu-input" placeholder="Versión detectada">
+                                <input id="bib-candidate-name" class="giu-input md:col-span-2" placeholder="Nombre del documento">
+                                <input id="bib-candidate-url" class="giu-input md:col-span-2" placeholder="URL oficial de referencia">
+                                <button type="submit" class="giu-btn giu-btn-primary md:col-span-2">Importar candidato manual</button>
+                            </form></div>
+                        <div class="giu-card p-5"><h3 class="font-semibold text-white">Notificaciones</h3><div id="bib-notifications" class="mt-4 space-y-3"></div></div>
+                        <div class="giu-card p-5"><h3 class="font-semibold text-white">Historial de cambios</h3><div id="bib-history" class="mt-4 space-y-3"></div></div>
+                    </div>
+                </section>
+
                 <section id="manual-operativo" class="hidden space-y-6">
                     <div class="pi-alpha41-card p-6">
                         <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
@@ -3204,14 +3447,14 @@
     <script src="./js/print-master-config.js?v=2.3.0-alpha.13"></script>
     <script src="./js/print-manager.js?v=2.3.0-alpha.13"></script>
     <script src="./js/modules/menu-lateral-institucional.js?v=2.3.0-alpha.51-entregables-sn"></script>
-    <script src="./js/app.js?v=2.4.1-admin-recovery"></script>
+    <script src="./js/app.js?v=2.6.0-salud-nutricion-postgresql"></script>
     <script src="./js/modules/calendario-inteligente.js?v=2.3.0-alpha.24"></script>
     <script src="./js/modules/acceso-compartido.js?v=2.4.1-tunnel-fix"></script>
     <script src="./js/modules/cruce-bases.js?v=2.1.14"></script>
     <script src="./js/modules/planeacion-pedagogica.js?v=2.1.7"></script>
     <script src="./js/modules/gestion-pedagogica.js?v=2.1.3"></script>
     <script src="./js/modules/gestion-coordinador.js?v=2.1.6"></script>
-    <script src="./js/modules/salud-nutricion.js?v=2.3.0-alpha.51-entregables-sn"></script>
+    <script src="./js/modules/salud-nutricion.js?v=2.6.0-integral-postgresql"></script>
     <script src="./js/modules/entregables-salud-nutricion.js?v=2.3.0-alpha.51-entregables-sn"></script>
     <script src="./js/modules/facturacion.js?v=2.1.8"></script>
     <script src="./js/modules/backups.js?v=2.2.1"></script>
@@ -3226,6 +3469,10 @@
     <script src="./js/modules/gerencia-general.js?v=2.3.0-alpha.18"></script>
     <script src="./js/modules/panel-comercial.js?v=2.2.8"></script>
     <script src="./js/modules/institucional-normativo.js?v=2.3.0-fix-origen-assets-2"></script>
+    <script src="./js/modules/gestion-integral-uca.js?v=2.5.3"></script>
+    <script src="./js/modules/motor-gestion-proyecto.js?v=2.5.3"></script>
+    <script src="./js/modules/supervision-calidad.js?v=2.6.0"></script>
+    <script src="./js/modules/familias-redes.js?v=2.6.0"></script>
     <script src="./js/modules/panel-principal-institucional.js?v=2.3.0-alpha.51-entregables-sn"></script>
     <script src="./js/modules/buscador-global.js?v=2.3.0-alpha.70-menu"></script>
     <script src="./js/modules/accessibility-pi.js?v=2.3.0-release-a11y-ux"></script>

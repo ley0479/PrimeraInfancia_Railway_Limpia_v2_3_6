@@ -3,7 +3,7 @@ Módulo para generación de formatos ICBF
 """
 import os
 import json
-import sqlite3
+from modules.dbapi_compat import sqlite3
 import re
 import unicodedata
 from datetime import datetime, timedelta

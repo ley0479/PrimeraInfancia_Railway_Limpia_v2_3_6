@@ -1,4 +1,41 @@
-# PrimeraInfancia 2.4.2 — multi-fundación, login por túnel y logging verificable
+# PrimeraInfancia 2.6.0 — Salud y Nutrición Integral + PostgreSQL
+
+## Base de datos de producción
+
+Use PostgreSQL en Railway mediante `DATABASE_URL`. La aplicación normaliza `postgresql://` al driver `postgresql+psycopg://`, usa pool con `pre_ping`, timeouts y rollback al devolver conexiones. El volumen `/data` continúa siendo necesario para documentos, evidencias, productos y respaldos; ya no es la base transaccional cuando PostgreSQL está activo.
+
+Ejecute la migración primero en un servicio de prueba y conserve el respaldo SQLite.
+
+
+
+
+
+## Novedad 2.5.4 — Supervisión, auditoría, calidad y gestión familiar
+
+Esta versión incorpora dos módulos integrados con el Expediente UCA y el Motor de Gestión:
+
+- **Supervisión y Calidad:** listas de verificación, hallazgos, planes, acciones, seguimientos, evidencias y productos PDF/XLSX/ZIP.
+- **Familias, Comunidad y Redes:** expedientes familiares referenciales, actividades, asistencias, compromisos, redes, alertas, evidencias y borradores documentales.
+
+Los cierres requieren revisión humana, los datos permanecen en sus módulos fuente y toda operación conserva aislamiento por fundación y alcance por UCA.
+
+## Novedad 2.5.3 — Biblioteca controlada y Motor de Gestión
+
+Esta versión amplía la Biblioteca Oficial ICBF con fuentes controladas, candidatos de actualización, aprobación manual, historial y notificaciones. La verificación remota queda deshabilitada por defecto y solo admite un catálogo JSON oficial, HTTPS y expresamente autorizado. También incorpora el Motor Inteligente de Gestión del Proyecto para consolidar tareas, responsables, entregables, recordatorios, productos operativos y cierres mensuales sin duplicar los datos de los módulos fuente. Todos los productos se generan como borradores y requieren revisión humana.
+
+
+## Novedad 2.5.2 — Expediente Operativo central
+
+La vista por UCA ahora integra en vivo Base Maestra, Pedagogía, Salud y Nutrición, RAM/RPP/Bienestarina, Talento Humano, documentos, cronograma, alertas, indicadores y preparación para supervisión. La integración usa referencias y consultas de solo lectura; no crea una segunda Base Maestra ni duplica archivos.
+
+## Novedad 2.5.1
+
+Esta versión conserva íntegramente la Gestión Integral UCA 2.5.0 y estabiliza el inicio de sesión bajo concurrencia SQLite. El login combina sus lecturas y escrituras en transacciones breves, aplica reintentos internos con presupuesto acotado, preserva sesiones activas de distintos dispositivos, evita que facturación ejecute mantenimiento durante el acceso y agrega tiempo límite/reintento controlado en el navegador. No cambia tablas, roles, permisos ni flujos funcionales.
+
+
+## Novedad 2.5.0
+
+Esta versión incorpora el Expediente Operativo por UCA, la Ruta Operativa por fases, los ocho planes integrados, la Biblioteca Oficial ICBF versionada y paquetes de supervisión con manifiesto de evidencias. Conserva las correcciones de túnel, autenticación, multifundación y Railway de las versiones anteriores.
 
 Esta es la **versión candidata de trabajo** del proyecto PrimeraInfancia para habilitar varias fundaciones con aislamiento lógico y físico. Parte de la edición 2.3.7 Railway limpia operativa y conserva los scripts locales y de túnel de la línea SAAS Fase 1. La entrega está preparada para pruebas controladas con dos fundaciones y datos ficticios; todavía no está autorizada para información personal real.
 
@@ -6,7 +43,7 @@ La entrega no contiene bases de datos operativas, beneficiarios, usuarios histó
 
 > Use datos ficticios hasta comprobar roles, persistencia, respaldo, restauración y funcionamiento de cada formato en el dominio público.
 
-## 1. Cambios acumulados y ajustes hasta la versión 2.4.2
+## 1. Cambios acumulados y ajustes hasta la versión 2.5.1
 
 - Catálogo central de **32 UDS**, con códigos internos y alias de escritura.
 - Migración idempotente de valores `UNIDAD DEMO 01..32` hacia las UDS operativas.
@@ -84,7 +121,7 @@ Use `.env.example` únicamente como inventario. En Railway configure, como míni
 
 ```env
 APP_ENV=production
-APP_VERSION=2.4.2-tunel-login-logging-corregido
+APP_VERSION=2.5.2-expediente-uca-central
 DATA_DIR=/data
 PROJECT_INSTANCE_ID=
 SYNC_MANAGED_TEMPLATES=true

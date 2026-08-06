@@ -6,7 +6,8 @@ let snEstado = {
     inicializado: false,
     dashboard: null,
     alertas: [],
-    calendario: []
+    calendario: [],
+    integral: { expedientes: [], actividades: [], rutas: [] }
 };
 
 function snMensaje(texto, tipo = 'success') {
@@ -26,7 +27,7 @@ function snInit() {
 }
 
 function snMostrarVista(vista) {
-    ['dashboard', 'importar', 'cruce', 'historial', 'alertas', 'calendario', 'entregables'].forEach((id) => {
+    ['dashboard', 'integral', 'jornadas', 'rutas', 'importar', 'cruce', 'historial', 'alertas', 'calendario', 'entregables'].forEach((id) => {
         const el = document.getElementById(`sn-view-${id}`);
         if (el) el.classList.toggle('hidden', id !== vista);
     });
@@ -36,6 +37,9 @@ function snMostrarVista(vista) {
     if (vista === 'dashboard') snCargarDashboard();
     if (vista === 'alertas') snCargarAlertas();
     if (vista === 'calendario') snCargarCalendario();
+    if (vista === 'integral') snIntegralCargar();
+    if (vista === 'jornadas') snIntegralCargarActividades();
+    if (vista === 'rutas') snIntegralCargarRutas();
     if (vista === 'entregables' && typeof snEntregablesInit === 'function') snEntregablesInit();
 }
 
@@ -321,4 +325,209 @@ function snGenerarReporte(formato = 'excel') {
 
 function snDescargarReporte(nombre) {
     window.descargarArchivoAutenticado(`${backendUrl}/api/salud-nutricion/reportes/${encodeURIComponent(nombre)}`).catch((error) => snMensaje(error.message, 'error'));
+}
+
+
+// ---------------------------------------------------------------------------
+// Sistema Integral Salud y Nutrición 2.6.0
+// ---------------------------------------------------------------------------
+function snIntegralUnidad() {
+    return document.getElementById('sn-integral-unidad')?.value?.trim() || '';
+}
+
+function snIntegralFetch(path, options = {}) {
+    return fetch(`${backendUrl}${path}`, options).then(manejarRespuestaJson);
+}
+
+function snIntegralCargar() {
+    const unidad = snIntegralUnidad();
+    const query = unidad ? `?unidad=${encodeURIComponent(unidad)}` : '';
+    snIntegralFetch(`/api/salud-nutricion/integral/dashboard${query}`)
+        .then((data) => {
+            const r = data.resumen || {};
+            const ids = {
+                'sn-int-kpi-exp': r.expedientes,
+                'sn-int-kpi-docs': r.documentos_pendientes,
+                'sn-int-kpi-afiliacion': r.sin_afiliacion,
+                'sn-int-kpi-vacunas': r.sin_vacunas,
+                'sn-int-kpi-valoracion': r.sin_valoracion_integral,
+                'sn-int-kpi-rutas': r.canalizaciones_abiertas,
+                'sn-int-kpi-actividades': r.actividades_pendientes,
+            };
+            Object.entries(ids).forEach(([id, value]) => { const el = document.getElementById(id); if (el) el.innerText = Number(value || 0); });
+            snEstado.integral.expedientes = data.expedientes || [];
+            snEstado.integral.actividades = data.actividades || [];
+            snEstado.integral.rutas = data.canalizaciones || [];
+            snIntegralRenderExpedientes();
+            snIntegralRenderRutas();
+        })
+        .catch((error) => snMensaje(error.message || 'No se pudo cargar el expediente integral.', 'error'));
+}
+
+function snIntegralRenderExpedientes() {
+    const tbody = document.getElementById('sn-integral-expedientes');
+    if (!tbody) return;
+    const rows = snEstado.integral.expedientes || [];
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-slate-500">No hay expedientes sincronizados.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = rows.map((row) => {
+        const total = Number(row.documentos_total || 0);
+        const ok = Number(row.documentos_al_dia || 0);
+        return `<tr>
+            <td>${escaparHtml(row.unidad_nombre || '')}</td>
+            <td>${escaparHtml(row.documento || '')}</td>
+            <td>#${Number(row.id || 0)} · ${escaparHtml(row.tipo_participante || '')}</td>
+            <td>${ok}/${total}</td>
+            <td>${Number(row.alertas_abiertas || 0)}</td>
+            <td>${Number(row.canalizaciones_abiertas || 0)}</td>
+            <td><button onclick="snIntegralVerExpediente(${Number(row.id)})" class="sn-ent-btn">Abrir</button></td>
+        </tr>`;
+    }).join('');
+}
+
+function snIntegralSincronizar() {
+    const unidad = snIntegralUnidad();
+    mostrarCargando('Sincronizando expedientes de salud...');
+    snIntegralFetch('/api/salud-nutricion/integral/expedientes/sincronizar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ unidad_nombre: unidad || null })
+    }).then((data) => {
+        ocultarCargando();
+        const r = data.resultado || {};
+        snMensaje(`${data.message || 'Sincronización completada'} Creados: ${r.creados || 0}; actualizados: ${r.actualizados || 0}.`, 'success');
+        snIntegralCargar();
+    }).catch((error) => { ocultarCargando(); snMensaje(error.message || 'No se pudo sincronizar.', 'error'); });
+}
+
+function snIntegralVerExpediente(id) {
+    snIntegralFetch(`/api/salud-nutricion/integral/expedientes/${encodeURIComponent(id)}`)
+        .then((data) => {
+            const box = document.getElementById('sn-integral-detalle');
+            if (!box) return;
+            const exp = data.expediente || {};
+            const docs = data.documentos || [];
+            const vals = data.valoraciones || [];
+            const routes = data.canalizaciones || [];
+            box.classList.remove('hidden');
+            box.innerHTML = `
+                <div class="flex items-start justify-between gap-3"><div><h4 class="font-semibold text-slate-100">Expediente #${Number(exp.id || 0)} · ${escaparHtml(exp.documento || '')}</h4><p class="text-xs text-slate-400">${escaparHtml(exp.unidad_nombre || '')} · ${escaparHtml(exp.tipo_participante || '')}</p></div><button onclick="document.getElementById('sn-integral-detalle').classList.add('hidden')" class="sn-ent-btn">Cerrar</button></div>
+                <h5 class="mt-4 mb-2 text-sm font-semibold text-emerald-300">Documentos y atenciones priorizadas</h5>
+                <div class="overflow-x-auto"><table class="w-full text-left text-xs sn-table text-slate-400"><thead><tr><th>Tipo</th><th>Estado</th><th>Vencimiento</th><th>Acción</th></tr></thead><tbody>${docs.map((d) => `<tr><td>${escaparHtml(d.tipo_documento || '')}</td><td><select id="sn-doc-state-${Number(d.id)}" class="sn-ent-input"><option ${d.estado==='PENDIENTE'?'selected':''}>PENDIENTE</option><option ${d.estado==='EN_TRAMITE'?'selected':''}>EN_TRAMITE</option><option ${d.estado==='VIGENTE'?'selected':''}>VIGENTE</option><option ${d.estado==='VALIDADO'?'selected':''}>VALIDADO</option><option ${d.estado==='VENCIDO'?'selected':''}>VENCIDO</option><option ${d.estado==='NO_APLICA'?'selected':''}>NO_APLICA</option><option ${d.estado==='OBSERVADO'?'selected':''}>OBSERVADO</option></select></td><td>${escaparHtml(d.fecha_vencimiento || '')}</td><td><button onclick="snIntegralActualizarDocumento(${Number(d.id)})" class="sn-ent-btn sn-ent-btn-validar">Guardar</button></td></tr>`).join('')}</tbody></table></div>
+                <h5 class="mt-5 mb-2 text-sm font-semibold text-cyan-300">Historia antropométrica</h5>
+                <div class="overflow-x-auto"><table class="w-full text-left text-xs sn-table text-slate-400"><thead><tr><th>Fecha</th><th>Peso</th><th>Talla</th><th>PB</th><th>Sugerencia automática</th><th>Validación profesional</th><th>Acción</th></tr></thead><tbody>${vals.length ? vals.map((v) => `<tr><td>${escaparHtml(v.fecha_valoracion || '')}</td><td>${escaparHtml(v.peso_kg ?? '')}</td><td>${escaparHtml(v.talla_cm ?? '')}</td><td>${escaparHtml(v.perimetro_braquial_cm ?? '')}</td><td>${snBadge(v.nivel_alerta, v.diagnostico_global || 'Pendiente')}</td><td>${escaparHtml(v.clasificacion_profesional || v.estado_validacion || 'PENDIENTE')}</td><td><button onclick="snIntegralValidarValoracion(${Number(v.id)}, '${String(v.diagnostico_global || '').replace(/'/g, "\\'")}')" class="sn-ent-btn sn-ent-btn-validar">Validar</button></td></tr>`).join('') : '<tr><td colspan="7" class="text-center text-slate-500">Sin valoraciones.</td></tr>'}</tbody></table></div>
+                <p class="mt-3 text-xs text-slate-500">Canalizaciones asociadas: ${routes.length}. Las clasificaciones automáticas no constituyen diagnóstico clínico.</p>`;
+            lucide.createIcons();
+        })
+        .catch((error) => snMensaje(error.message || 'No se pudo abrir el expediente.', 'error'));
+}
+
+function snIntegralActualizarDocumento(id) {
+    const estado = document.getElementById(`sn-doc-state-${id}`)?.value || 'PENDIENTE';
+    snIntegralFetch(`/api/salud-nutricion/integral/documentos/${encodeURIComponent(id)}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ estado, fecha_verificacion: new Date().toISOString().slice(0, 10) })
+    }).then((data) => { snMensaje(data.message || 'Documento actualizado.', 'success'); snIntegralCargar(); }).catch((error) => snMensaje(error.message, 'error'));
+}
+
+function snIntegralValidarValoracion(id, automatico) {
+    const clasificacion = window.prompt('Clasificación profesional. Puedes conservar la sugerencia automática o ajustarla con sustento:', automatico || '');
+    if (clasificacion === null) return;
+    const observacion = window.prompt('Observación profesional / sustento de la validación:', '') || '';
+    snIntegralFetch(`/api/salud-nutricion/integral/valoraciones/${encodeURIComponent(id)}/validar`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ estado_validacion: 'VALIDADA', clasificacion_profesional: clasificacion, observacion_profesional: observacion })
+    }).then((data) => { snMensaje(data.message || 'Valoración validada.', 'success'); snIntegralCargar(); }).catch((error) => snMensaje(error.message, 'error'));
+}
+
+function snIntegralGenerarCapture() {
+    const unidad = snIntegralUnidad();
+    const periodo = document.getElementById('sn-capture-periodo')?.value?.trim() || '';
+    mostrarCargando('Preparando CAPTURE con valoraciones validadas...');
+    snIntegralFetch('/api/salud-nutricion/integral/capture', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ unidad: unidad || null, periodo: periodo || null, formatos: ['XLSX', 'PDF'] })
+    }).then((data) => {
+        ocultarCargando();
+        snMensaje(`${data.message || 'CAPTURE preparado'} ${data.resultado?.advertencia || ''}`, 'success');
+        (data.resultado?.productos || []).forEach((p) => window.descargarArchivoAutenticado(`${backendUrl}/api/salud-nutricion/integral/productos/${p.id}/descargar`).catch(() => {}));
+    }).catch((error) => { ocultarCargando(); snMensaje(error.message || 'No se pudo generar CAPTURE.', 'error'); });
+}
+
+function snIntegralCrearActividad() {
+    const payload = {
+        unidad_nombre: document.getElementById('sn-act-unidad')?.value?.trim(),
+        linea_componente: document.getElementById('sn-act-linea')?.value,
+        tipo_actividad: document.getElementById('sn-act-tipo')?.value?.trim() || 'JORNADA',
+        fecha_programada: document.getElementById('sn-act-fecha')?.value,
+        titulo: document.getElementById('sn-act-titulo')?.value?.trim(),
+        objetivo: document.getElementById('sn-act-objetivo')?.value?.trim(),
+        incluir_uca_completa: true,
+    };
+    snIntegralFetch('/api/salud-nutricion/integral/actividades', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        .then((data) => { snMensaje(data.message || 'Actividad creada.', 'success'); snIntegralCargarActividades(); })
+        .catch((error) => snMensaje(error.message || 'No se pudo crear la actividad.', 'error'));
+}
+
+function snIntegralCargarActividades() {
+    snIntegralFetch('/api/salud-nutricion/integral/actividades')
+        .then((data) => { snEstado.integral.actividades = data.actividades || []; snIntegralRenderActividades(); })
+        .catch((error) => snMensaje(error.message || 'No se pudieron cargar jornadas.', 'error'));
+}
+
+function snIntegralRenderActividades() {
+    const tbody = document.getElementById('sn-integral-actividades');
+    if (!tbody) return;
+    const rows = snEstado.integral.actividades || [];
+    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="8" class="text-center text-slate-500">Sin jornadas registradas.</td></tr>'; return; }
+    tbody.innerHTML = rows.map((a) => `<tr><td>${escaparHtml(a.fecha_programada || '')}</td><td>${escaparHtml(a.unidad_nombre || '')}</td><td>${escaparHtml(a.linea_componente || '')}</td><td>${escaparHtml(a.titulo || '')}</td><td>${escaparHtml(a.estado || '')}</td><td>${Number(a.asistentes_total || 0)}/${Number(a.participantes_total || 0)}</td><td>${Number(a.evidencias_total || 0)}</td><td class="space-x-1"><button onclick="snIntegralPrepararDocumentos(${Number(a.id)})" class="sn-ent-btn">Acta/Listado</button><button onclick="snIntegralSubirEvidencia(${Number(a.id)})" class="sn-ent-btn sn-ent-btn-foto">Evidencia</button></td></tr>`).join('');
+}
+
+function snIntegralPrepararDocumentos(activityId) {
+    snIntegralFetch(`/api/salud-nutricion/integral/actividades/${encodeURIComponent(activityId)}/documentos`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tipos: ['ACTA', 'LISTADO_ASISTENCIA', 'INFORME'] }) })
+        .then((data) => {
+            snMensaje(data.message || 'Documentos preparados.', 'success');
+            (data.resultado?.documentos || []).forEach((p) => window.descargarArchivoAutenticado(`${backendUrl}/api/salud-nutricion/integral/productos/${p.id}/descargar`).catch(() => {}));
+            snIntegralCargarActividades();
+        }).catch((error) => snMensaje(error.message, 'error'));
+}
+
+function snIntegralSubirEvidencia(activityId) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.png,.jpg,.jpeg,.xlsx,.docx,.mp4';
+    input.onchange = () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        const fd = new FormData(); fd.append('file', file); fd.append('actividad_id', activityId); fd.append('tipo', 'EVIDENCIA_ACTIVIDAD');
+        snIntegralFetch('/api/salud-nutricion/integral/evidencias', { method: 'POST', body: fd })
+            .then((data) => { snMensaje(data.message || 'Evidencia cargada.', 'success'); snIntegralCargarActividades(); })
+            .catch((error) => snMensaje(error.message, 'error'));
+    };
+    input.click();
+}
+
+function snIntegralCrearRuta() {
+    const payload = {
+        expediente_id: Number(document.getElementById('sn-ruta-expediente')?.value || 0),
+        tipo_ruta: document.getElementById('sn-ruta-tipo')?.value?.trim(),
+        prioridad: document.getElementById('sn-ruta-prioridad')?.value,
+        entidad_destino: document.getElementById('sn-ruta-entidad')?.value?.trim(),
+        fecha_limite: document.getElementById('sn-ruta-fecha')?.value,
+        motivo: document.getElementById('sn-ruta-motivo')?.value?.trim(),
+    };
+    snIntegralFetch('/api/salud-nutricion/integral/canalizaciones', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        .then((data) => { snMensaje(data.message || 'Ruta registrada.', 'success'); snIntegralCargarRutas(); })
+        .catch((error) => snMensaje(error.message || 'No se pudo registrar la ruta.', 'error'));
+}
+
+function snIntegralCargarRutas() {
+    snIntegralFetch('/api/salud-nutricion/integral/canalizaciones')
+        .then((data) => { snEstado.integral.rutas = data.canalizaciones || []; snIntegralRenderRutas(); })
+        .catch((error) => snMensaje(error.message || 'No se pudieron cargar las rutas.', 'error'));
+}
+
+function snIntegralRenderRutas() {
+    const tbody = document.getElementById('sn-integral-rutas');
+    if (!tbody) return;
+    const rows = snEstado.integral.rutas || [];
+    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="7" class="text-center text-slate-500">Sin canalizaciones registradas.</td></tr>'; return; }
+    tbody.innerHTML = rows.map((r) => `<tr><td>${escaparHtml(r.fecha_activacion || '')}</td><td>${escaparHtml(r.unidad_nombre || '')}</td><td>${escaparHtml(r.tipo_ruta || '')}</td><td>${snBadge(r.prioridad === 'CRITICA' ? 'ROJO' : r.prioridad === 'ALTA' ? 'AMARILLO' : 'VERDE', r.prioridad || '')}</td><td>${escaparHtml(r.entidad_destino || '')}</td><td>${escaparHtml(r.estado || '')}</td><td>${escaparHtml(r.motivo || '')}</td></tr>`).join('');
 }

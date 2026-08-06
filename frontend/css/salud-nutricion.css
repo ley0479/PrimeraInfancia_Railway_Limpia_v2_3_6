@@ -82,3 +82,12 @@
 .sn-ent-btn-foto { border-color: rgba(168, 85, 247, .32); color: rgb(216 180 254); background: rgba(109, 40, 217, .14); }
 .sn-ent-btn-validar { border-color: rgba(16, 185, 129, .32); color: rgb(110 231 183); background: rgba(5, 150, 105, .12); }
 .sn-ent-table td { vertical-align: top; }
+
+/* v2.6.0 - Expediente integral, jornadas y rutas */
+.sn-integral-hero {
+    background:
+        radial-gradient(circle at 12% 15%, rgba(16, 185, 129, .14), transparent 34%),
+        radial-gradient(circle at 90% 20%, rgba(6, 182, 212, .12), transparent 30%),
+        rgba(15, 23, 42, .78);
+    border-color: rgba(16, 185, 129, .25);
+}

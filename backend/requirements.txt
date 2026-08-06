@@ -25,3 +25,4 @@ python-pptx
 Pillow
 
 matplotlib
+psycopg[binary]>=3.2,<4.0

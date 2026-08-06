@@ -415,7 +415,7 @@ def analizar_filas(rows: list[dict[str, Any]], errores: list[dict[str, Any]], do
 
 
 def docentes_por_unidad_desde_db(database_path: str, fundacion_id: int = 1) -> tuple[set[str], list[dict[str, Any]]]:
-    import sqlite3
+    from modules.dbapi_compat import sqlite3
     conn = sqlite3.connect(database_path)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
@@ -482,7 +482,7 @@ def analizar_archivo(path: str, database_path: str, fundacion_id: int = 1, tipo:
 
 
 def analizar_base_actual(database_path: str, fundacion_id: int = 1) -> dict[str, Any]:
-    import sqlite3
+    from modules.dbapi_compat import sqlite3
     conn = sqlite3.connect(database_path)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()

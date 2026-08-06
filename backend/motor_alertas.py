@@ -1,7 +1,7 @@
 """
 Motor de alertas avanzado para SinergiaInfancia
 """
-import sqlite3
+from modules.dbapi_compat import sqlite3
 from datetime import datetime, timedelta
 import json
 

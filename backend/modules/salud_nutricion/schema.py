@@ -191,3 +191,240 @@ CREATE TABLE IF NOT EXISTS sn_referencias_oms (
 
 CREATE INDEX IF NOT EXISTS idx_sn_referencias_indicador ON sn_referencias_oms(indicador, sexo, edad_meses);
 """
+
+# Esquema integral 2.6.0. Se mantiene separado para que las instalaciones
+# existentes puedan evolucionar sin recrear las tablas históricas.
+INTEGRAL_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS sn_expedientes_integrales (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fundacion_id INTEGER NOT NULL DEFAULT 1,
+    beneficiario_id INTEGER,
+    documento TEXT NOT NULL,
+    tipo_participante TEXT DEFAULT 'NINO_NINA',
+    unidad_nombre TEXT,
+    expediente_uca_id INTEGER,
+    responsable_id INTEGER,
+    responsable_nombre TEXT,
+    estado TEXT DEFAULT 'ACTIVO',
+    observaciones TEXT,
+    creado_por INTEGER,
+    fecha_creacion TEXT NOT NULL,
+    actualizado_por INTEGER,
+    fecha_actualizacion TEXT,
+    UNIQUE(fundacion_id, documento)
+);
+CREATE INDEX IF NOT EXISTS idx_sn_exp_integral_fundacion ON sn_expedientes_integrales(fundacion_id);
+CREATE INDEX IF NOT EXISTS idx_sn_exp_integral_unidad ON sn_expedientes_integrales(fundacion_id, unidad_nombre);
+CREATE INDEX IF NOT EXISTS idx_sn_exp_integral_documento ON sn_expedientes_integrales(fundacion_id, documento);
+
+CREATE TABLE IF NOT EXISTS sn_documentos_salud (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fundacion_id INTEGER NOT NULL DEFAULT 1,
+    expediente_id INTEGER NOT NULL,
+    tipo_documento TEXT NOT NULL,
+    estado TEXT DEFAULT 'PENDIENTE',
+    entidad_emisora TEXT,
+    numero_referencia TEXT,
+    fecha_documento TEXT,
+    fecha_verificacion TEXT,
+    fecha_vencimiento TEXT,
+    soporte_modulo TEXT,
+    soporte_id INTEGER,
+    soporte_ruta TEXT,
+    observaciones TEXT,
+    validado_por INTEGER,
+    fecha_validacion TEXT,
+    activo INTEGER DEFAULT 1,
+    creado_por INTEGER,
+    fecha_creacion TEXT NOT NULL,
+    actualizado_por INTEGER,
+    fecha_actualizacion TEXT,
+    FOREIGN KEY (expediente_id) REFERENCES sn_expedientes_integrales(id),
+    UNIQUE(fundacion_id, expediente_id, tipo_documento, activo)
+);
+CREATE INDEX IF NOT EXISTS idx_sn_doc_salud_expediente ON sn_documentos_salud(fundacion_id, expediente_id);
+CREATE INDEX IF NOT EXISTS idx_sn_doc_salud_estado ON sn_documentos_salud(fundacion_id, tipo_documento, estado);
+CREATE INDEX IF NOT EXISTS idx_sn_doc_salud_vencimiento ON sn_documentos_salud(fundacion_id, fecha_vencimiento);
+
+CREATE TABLE IF NOT EXISTS sn_valoracion_validaciones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fundacion_id INTEGER NOT NULL DEFAULT 1,
+    valoracion_id INTEGER NOT NULL,
+    clasificacion_automatica TEXT,
+    reglas_version TEXT,
+    estado_validacion TEXT DEFAULT 'PENDIENTE',
+    clasificacion_profesional TEXT,
+    observacion_profesional TEXT,
+    profesional_id INTEGER,
+    profesional_nombre TEXT,
+    fecha_validacion TEXT,
+    version INTEGER DEFAULT 1,
+    activo INTEGER DEFAULT 1,
+    creado_por INTEGER,
+    fecha_creacion TEXT NOT NULL,
+    actualizado_por INTEGER,
+    fecha_actualizacion TEXT,
+    FOREIGN KEY (valoracion_id) REFERENCES sn_valoraciones(id)
+);
+CREATE INDEX IF NOT EXISTS idx_sn_val_validacion ON sn_valoracion_validaciones(fundacion_id, valoracion_id, activo);
+CREATE INDEX IF NOT EXISTS idx_sn_val_estado ON sn_valoracion_validaciones(fundacion_id, estado_validacion);
+
+CREATE TABLE IF NOT EXISTS sn_actividades_integrales (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fundacion_id INTEGER NOT NULL DEFAULT 1,
+    expediente_uca_id INTEGER,
+    unidad_nombre TEXT,
+    linea_componente TEXT NOT NULL,
+    tipo_actividad TEXT NOT NULL,
+    titulo TEXT NOT NULL,
+    objetivo TEXT,
+    metodologia TEXT,
+    fecha_programada TEXT,
+    fecha_ejecucion TEXT,
+    hora_inicio TEXT,
+    hora_fin TEXT,
+    lugar TEXT,
+    responsable_id INTEGER,
+    responsable_nombre TEXT,
+    estado TEXT DEFAULT 'PROGRAMADA',
+    resultados TEXT,
+    conclusiones_profesionales TEXT,
+    compromisos_generales TEXT,
+    requiere_acta INTEGER DEFAULT 1,
+    requiere_listado INTEGER DEFAULT 1,
+    requiere_evidencias INTEGER DEFAULT 1,
+    motor_fuente TEXT,
+    motor_tarea_id INTEGER,
+    creado_por INTEGER,
+    fecha_creacion TEXT NOT NULL,
+    actualizado_por INTEGER,
+    fecha_actualizacion TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sn_act_integral_unidad ON sn_actividades_integrales(fundacion_id, unidad_nombre);
+CREATE INDEX IF NOT EXISTS idx_sn_act_integral_fecha ON sn_actividades_integrales(fundacion_id, fecha_programada);
+CREATE INDEX IF NOT EXISTS idx_sn_act_integral_estado ON sn_actividades_integrales(fundacion_id, estado);
+
+CREATE TABLE IF NOT EXISTS sn_actividad_participantes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fundacion_id INTEGER NOT NULL DEFAULT 1,
+    actividad_id INTEGER NOT NULL,
+    expediente_id INTEGER,
+    documento TEXT,
+    nombre_completo TEXT,
+    convocado INTEGER DEFAULT 1,
+    asistio INTEGER DEFAULT 0,
+    firma_estado TEXT DEFAULT 'PENDIENTE',
+    observaciones TEXT,
+    creado_por INTEGER,
+    fecha_creacion TEXT NOT NULL,
+    actualizado_por INTEGER,
+    fecha_actualizacion TEXT,
+    FOREIGN KEY (actividad_id) REFERENCES sn_actividades_integrales(id),
+    FOREIGN KEY (expediente_id) REFERENCES sn_expedientes_integrales(id),
+    UNIQUE(fundacion_id, actividad_id, documento)
+);
+CREATE INDEX IF NOT EXISTS idx_sn_act_part_actividad ON sn_actividad_participantes(fundacion_id, actividad_id);
+
+CREATE TABLE IF NOT EXISTS sn_productos_actividad (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fundacion_id INTEGER NOT NULL DEFAULT 1,
+    actividad_id INTEGER,
+    expediente_id INTEGER,
+    tipo_producto TEXT NOT NULL,
+    nombre_archivo TEXT NOT NULL,
+    ruta_archivo TEXT NOT NULL,
+    mime_type TEXT,
+    tamano_bytes INTEGER DEFAULT 0,
+    sha256 TEXT,
+    plantilla_codigo TEXT,
+    plantilla_version TEXT,
+    estado TEXT DEFAULT 'BORRADOR',
+    generado_por INTEGER,
+    fecha_generacion TEXT NOT NULL,
+    revisado_por INTEGER,
+    fecha_revision TEXT,
+    aprobado_por INTEGER,
+    fecha_aprobacion TEXT,
+    observaciones TEXT,
+    activo INTEGER DEFAULT 1,
+    FOREIGN KEY (actividad_id) REFERENCES sn_actividades_integrales(id),
+    FOREIGN KEY (expediente_id) REFERENCES sn_expedientes_integrales(id)
+);
+CREATE INDEX IF NOT EXISTS idx_sn_producto_actividad ON sn_productos_actividad(fundacion_id, actividad_id, activo);
+CREATE INDEX IF NOT EXISTS idx_sn_producto_expediente ON sn_productos_actividad(fundacion_id, expediente_id, activo);
+
+CREATE TABLE IF NOT EXISTS sn_canalizaciones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fundacion_id INTEGER NOT NULL DEFAULT 1,
+    expediente_id INTEGER NOT NULL,
+    valoracion_id INTEGER,
+    alerta_id INTEGER,
+    unidad_nombre TEXT,
+    tipo_ruta TEXT NOT NULL,
+    motivo TEXT NOT NULL,
+    prioridad TEXT DEFAULT 'MEDIA',
+    entidad_destino TEXT,
+    contacto_entidad TEXT,
+    fecha_activacion TEXT NOT NULL,
+    fecha_limite TEXT,
+    estado TEXT DEFAULT 'ABIERTA',
+    responsable_id INTEGER,
+    responsable_nombre TEXT,
+    resultado_cierre TEXT,
+    evidencia_cierre TEXT,
+    fecha_cierre TEXT,
+    cerrado_por INTEGER,
+    creado_por INTEGER,
+    fecha_creacion TEXT NOT NULL,
+    actualizado_por INTEGER,
+    fecha_actualizacion TEXT,
+    FOREIGN KEY (expediente_id) REFERENCES sn_expedientes_integrales(id),
+    FOREIGN KEY (valoracion_id) REFERENCES sn_valoraciones(id),
+    FOREIGN KEY (alerta_id) REFERENCES sn_alertas(id)
+);
+CREATE INDEX IF NOT EXISTS idx_sn_canalizacion_estado ON sn_canalizaciones(fundacion_id, estado, prioridad);
+CREATE INDEX IF NOT EXISTS idx_sn_canalizacion_expediente ON sn_canalizaciones(fundacion_id, expediente_id);
+
+CREATE TABLE IF NOT EXISTS sn_seguimientos_integrales (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fundacion_id INTEGER NOT NULL DEFAULT 1,
+    entidad_tipo TEXT NOT NULL,
+    entidad_id INTEGER NOT NULL,
+    fecha_seguimiento TEXT NOT NULL,
+    actuacion TEXT NOT NULL,
+    resultado TEXT,
+    proximo_seguimiento TEXT,
+    responsable_id INTEGER,
+    responsable_nombre TEXT,
+    evidencia_referencia TEXT,
+    creado_por INTEGER,
+    fecha_creacion TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sn_seg_integral_entidad ON sn_seguimientos_integrales(fundacion_id, entidad_tipo, entidad_id);
+CREATE INDEX IF NOT EXISTS idx_sn_seg_integral_proximo ON sn_seguimientos_integrales(fundacion_id, proximo_seguimiento);
+
+CREATE TABLE IF NOT EXISTS sn_evidencias_integrales (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fundacion_id INTEGER NOT NULL DEFAULT 1,
+    actividad_id INTEGER,
+    canalizacion_id INTEGER,
+    expediente_id INTEGER,
+    tipo TEXT DEFAULT 'SOPORTE',
+    titulo TEXT,
+    nombre_original TEXT NOT NULL,
+    nombre_guardado TEXT NOT NULL,
+    ruta_archivo TEXT NOT NULL,
+    mime_type TEXT,
+    tamano_bytes INTEGER DEFAULT 0,
+    sha256 TEXT NOT NULL,
+    version INTEGER DEFAULT 1,
+    activo INTEGER DEFAULT 1,
+    cargado_por INTEGER,
+    fecha_carga TEXT NOT NULL,
+    FOREIGN KEY (actividad_id) REFERENCES sn_actividades_integrales(id),
+    FOREIGN KEY (canalizacion_id) REFERENCES sn_canalizaciones(id),
+    FOREIGN KEY (expediente_id) REFERENCES sn_expedientes_integrales(id)
+);
+CREATE INDEX IF NOT EXISTS idx_sn_evidencia_actividad ON sn_evidencias_integrales(fundacion_id, actividad_id, activo);
+CREATE INDEX IF NOT EXISTS idx_sn_evidencia_canalizacion ON sn_evidencias_integrales(fundacion_id, canalizacion_id, activo);
+"""

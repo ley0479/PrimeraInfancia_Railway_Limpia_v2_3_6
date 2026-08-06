@@ -1,0 +1,20 @@
+{
+  "version": "2.5.3-biblioteca-motor-gestion",
+  "fecha": "2026-08-05",
+  "datos_personales_incluidos": false,
+  "bases_operativas_incluidas": false,
+  "secretos_incluidos": false,
+  "logs_operativos_incluidos": false,
+  "fuentes_remotas_habilitadas_por_defecto": false,
+  "activacion_documental_automatica": false,
+  "productos_aprobados_automaticamente": false,
+  "controles": [
+    "aislamiento por fundacion",
+    "almacenamiento por tenant",
+    "aprobacion humana",
+    "SHA-256 de productos",
+    "historial documental",
+    "bloqueo de redes privadas en conectores",
+    "HTTPS y dominios permitidos"
+  ]
+}

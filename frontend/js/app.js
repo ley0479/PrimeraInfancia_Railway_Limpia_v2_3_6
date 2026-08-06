@@ -53,13 +53,13 @@ const AUTH_USER_KEY = 'primeraInfanciaAuthUser';
 let usuarioActual = null;
 
 const MENU_POR_ROL = {
-    SUPERADMIN: ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'manual-operativo', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento'],
-    GERENTE: ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'manual-operativo', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento'],
-    COORDINADOR: ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'ajustes', 'calidad-datos', 'base-maestra', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'formatos', 'relacion-mes', 'paquete-mensual', 'reportes-gerenciales', 'cumplimiento'],
-    DOCENTE: ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'ajustes', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'formatos'],
-    NUTRICIONISTA: ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'ajustes', 'calidad-datos', 'base-maestra', 'salud-nutricion', 'nutricion'],
-    PSICOSOCIAL: ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'ajustes', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador'],
-    AUXILIAR_ADMINISTRATIVO: ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'ajustes', 'calidad-datos', 'base-maestra', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'formatos', 'talento', 'cumplimiento']
+    SUPERADMIN: ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'manual-operativo', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes'],
+    GERENTE: ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'manual-operativo', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes'],
+    COORDINADOR: ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'ajustes', 'calidad-datos', 'base-maestra', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'formatos', 'relacion-mes', 'paquete-mensual', 'reportes-gerenciales', 'cumplimiento', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes'],
+    DOCENTE: ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'ajustes', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'formatos', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad'],
+    NUTRICIONISTA: ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'ajustes', 'calidad-datos', 'base-maestra', 'salud-nutricion', 'nutricion', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad'],
+    PSICOSOCIAL: ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'ajustes', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes'],
+    AUXILIAR_ADMINISTRATIVO: ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'ajustes', 'calidad-datos', 'base-maestra', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'formatos', 'talento', 'cumplimiento', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad']
 };
 
 const allowedBaseExtensions = ['.xlsx', '.xls', '.xlsm', '.csv', '.txt', '.tsv', '.tab', '.dat', '.ods', '.html', '.htm', '.json', '.docx', '.pdf'];
@@ -374,35 +374,81 @@ function mensajeErrorLogin(response, data, requestId) {
     return data?.error || `No se pudo iniciar sesión (HTTP ${response.status}; solicitud ${requestId}).`;
 }
 
-function configurarFormularioLogin() {
-    const form = document.getElementById('login-form');
-    if (!form || form.dataset.bound === '1') return;
-    form.dataset.bound = '1';
-    form.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const username = document.getElementById('login-username')?.value.trim();
-        const password = document.getElementById('login-password')?.value || '';
-        const recordar = document.getElementById('login-recordar')?.checked || false;
-        const msg = document.getElementById('login-message');
-        const requestId = crearIdSolicitudLogin();
-        if (msg) msg.textContent = 'Validando credenciales...';
+let loginEnCurso = false;
+
+function esperarLogin(ms) {
+    return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+}
+
+async function solicitarLoginConReintento(username, password, requestId, msg) {
+    const maxIntentos = 2;
+    for (let intento = 0; intento < maxIntentos; intento += 1) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
         try {
-            limpiarSesionLocal();
             const resp = await fetchOriginalPrimeraInfancia(`${backendUrl}/api/auth/login`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Client-Request-ID': requestId
                 },
-                body: JSON.stringify({ username, password })
+                body: JSON.stringify({ username, password }),
+                signal: controller.signal
             });
             const data = await leerRespuestaJsonSegura(resp);
+            const busy = resp.status === 503 && String(data?.code || '') === 'LOGIN_DATABASE_BUSY';
+            if (busy && intento + 1 < maxIntentos) {
+                const retryMs = Math.min(1000, Math.max(250, Number(data?.retry_after || 1) * 500));
+                if (msg) msg.textContent = 'La base estaba ocupada. Reintentando automáticamente...';
+                await esperarLogin(retryMs);
+                continue;
+            }
+            return { resp, data };
+        } catch (error) {
+            if (error?.name === 'AbortError') {
+                throw new Error(`El servidor no respondió a tiempo. Solicitud: ${requestId}. Revisa data/logs.`);
+            }
+            throw error;
+        } finally {
+            clearTimeout(timeoutId);
+        }
+    }
+    throw new Error(`No fue posible completar el inicio de sesión. Solicitud: ${requestId}.`);
+}
+
+function configurarFormularioLogin() {
+    const form = document.getElementById('login-form');
+    if (!form || form.dataset.bound === '1') return;
+    form.dataset.bound = '1';
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (loginEnCurso) return;
+
+        const username = document.getElementById('login-username')?.value.trim();
+        const password = document.getElementById('login-password')?.value || '';
+        const recordar = document.getElementById('login-recordar')?.checked || false;
+        const msg = document.getElementById('login-message');
+        const submitButton = form.querySelector('button[type="submit"]');
+        const requestId = crearIdSolicitudLogin();
+
+        loginEnCurso = true;
+        if (submitButton) {
+            submitButton.disabled = true;
+            submitButton.setAttribute('aria-busy', 'true');
+            submitButton.dataset.originalText = submitButton.textContent || 'Ingresar';
+            submitButton.textContent = 'Validando...';
+        }
+        if (msg) msg.textContent = 'Validando credenciales...';
+
+        try {
+            const { resp, data } = await solicitarLoginConReintento(username, password, requestId, msg);
             if (!resp.ok) {
                 throw new Error(mensajeErrorLogin(resp, data, requestId));
             }
             if (!data.token || !data.usuario) {
                 throw new Error(`El servidor no devolvió una sesión válida. Solicitud: ${requestId}.`);
             }
+            limpiarSesionLocal();
             guardarSesion(data.token, data.usuario, recordar);
             if (msg) msg.textContent = '';
             if (data.usuario?.debe_cambiar_password) {
@@ -413,6 +459,13 @@ function configurarFormularioLogin() {
         } catch (error) {
             if (msg) {
                 msg.textContent = error?.message || 'No fue posible comunicarse con el servidor. Revisa el túnel y ejecuta el diagnóstico.';
+            }
+        } finally {
+            loginEnCurso = false;
+            if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.removeAttribute('aria-busy');
+                submitButton.textContent = submitButton.dataset.originalText || 'Ingresar';
             }
         }
     });
@@ -628,7 +681,7 @@ async function initApp() {
         MenuInstitucionalLateral.init();
     }
     const seccionInicial = (window.location.hash || '').replace('#', '') || 'dashboard';
-    mostrarSeccion(['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'manual-operativo', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes'].includes(seccionInicial) ? seccionInicial : 'dashboard');
+    mostrarSeccion(['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'manual-operativo', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes'].includes(seccionInicial) ? seccionInicial : 'dashboard');
 
     const inputExcel = document.getElementById('input-excel');
     const dropZone = document.getElementById('drop-zone');
@@ -684,11 +737,11 @@ function mostrarSeccion(seccion) {
     if (window.location.hash !== `#${seccion}`) {
         history.replaceState(null, '', `#${seccion}`);
     }
-    ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'manual-operativo', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes'].forEach(id => {
+    ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'manual-operativo', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes'].forEach(id => {
         const section = document.getElementById(id);
         if (section) section.classList.toggle('hidden', id !== seccion);
     });
-    ['nav-dashboard', 'nav-buscador-beneficiarios', 'nav-calendario-inteligente', 'nav-administracion', 'nav-panel-comercial', 'nav-gerencia-general', 'nav-acceso-compartido', 'nav-configuracion-institucional', 'nav-manual-operativo', 'nav-ajustes', 'nav-administrador-disenos', 'nav-backups', 'nav-calidad-datos', 'nav-base-maestra', 'nav-motor-plantillas', 'nav-plantillas-oficiales', 'nav-paquete-mensual', 'nav-reportes-gerenciales', 'nav-facturacion', 'nav-formatos', 'nav-nutricion', 'nav-salud-nutricion', 'nav-talento', 'nav-cumplimiento', 'nav-planeacion-pedagogica', 'nav-gestion-pedagogica', 'nav-gestion-coordinador', 'nav-cuentas-cobro', 'nav-relacion-mes'].forEach(id => {
+    ['nav-dashboard', 'nav-buscador-beneficiarios', 'nav-calendario-inteligente', 'nav-administracion', 'nav-panel-comercial', 'nav-gerencia-general', 'nav-acceso-compartido', 'nav-configuracion-institucional', 'nav-manual-operativo', 'nav-ajustes', 'nav-administrador-disenos', 'nav-backups', 'nav-calidad-datos', 'nav-base-maestra', 'nav-motor-plantillas', 'nav-plantillas-oficiales', 'nav-paquete-mensual', 'nav-reportes-gerenciales', 'nav-facturacion', 'nav-formatos', 'nav-nutricion', 'nav-salud-nutricion', 'nav-talento', 'nav-cumplimiento', 'nav-planeacion-pedagogica', 'nav-gestion-pedagogica', 'nav-gestion-coordinador', 'nav-cuentas-cobro', 'nav-relacion-mes', 'nav-expediente-operativo-uca', 'nav-biblioteca-icbf', 'nav-motor-gestion-proyecto', 'nav-supervision-calidad', 'nav-familias-redes'].forEach(id => {
         const boton = document.getElementById(id);
         if (boton) {
             boton.classList.toggle('bg-indigo-600/10', id === `nav-${seccion}`);
@@ -707,6 +760,21 @@ function mostrarSeccion(seccion) {
     }
     if (seccion === 'calendario-inteligente' && typeof calendarioInteligenteInit === 'function') {
         calendarioInteligenteInit();
+    }
+    if (seccion === 'expediente-operativo-uca' && typeof giuInit === 'function') {
+        giuInit();
+    }
+    if (seccion === 'biblioteca-icbf' && typeof bibliotecaIcbfInit === 'function') {
+        bibliotecaIcbfInit();
+    }
+    if (seccion === 'motor-gestion-proyecto' && typeof motorGestionProyectoInit === 'function') {
+        motorGestionProyectoInit();
+    }
+    if (seccion === 'supervision-calidad' && typeof supervisionCalidadInit === 'function') {
+        supervisionCalidadInit();
+    }
+    if (seccion === 'familias-redes' && typeof familiasRedesInit === 'function') {
+        familiasRedesInit();
     }
     if (seccion === 'planeacion-pedagogica' && typeof ppInit === 'function') {
         ppInit();

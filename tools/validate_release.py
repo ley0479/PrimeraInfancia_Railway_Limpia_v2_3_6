@@ -78,6 +78,61 @@ def check_layout() -> None:
     required = [
         "Dockerfile", "railway.json", "start_hosting.sh", ".env.example",
         "README_RAILWAY.md", "VALIDACION_Y_CAMBIOS.md", "MANIFEST_SHA256.txt",
+        "INFORME_IMPLEMENTACION_GESTION_INTEGRAL_UCA_v2_5_0.md",
+        "GUIA_PRUEBA_GESTION_INTEGRAL_UCA_v2_5_0.md",
+        "PLAN_EVOLUCION_PRIMERA_INFANCIA_POST_v2_5_0.md",
+        "ARCHIVOS_MODIFICADOS_PRIMERA_INFANCIA_v2_5_0.md",
+        "PRIVACIDAD_PRIMERA_INFANCIA_v2_5_0.json",
+        "INFORME_AUDITORIA_AUTENTICACION_v2_5_1.md",
+        "GUIA_PRUEBAS_AUTENTICACION_v2_5_1.md",
+        "ARCHIVOS_MODIFICADOS_PRIMERA_INFANCIA_v2_5_1.md",
+        "RESULTADOS_AUTH_CONCURRENCIA_v2_5_1.json",
+        "PRIVACIDAD_PRIMERA_INFANCIA_v2_5_1.json",
+        "INFORME_IMPLEMENTACION_EXPEDIENTE_UCA_CENTRAL_v2_5_2.md",
+        "GUIA_PRUEBA_EXPEDIENTE_UCA_CENTRAL_v2_5_2.md",
+        "ARQUITECTURA_EXPEDIENTE_UCA_CENTRAL_v2_5_2.md",
+        "ARCHIVOS_MODIFICADOS_PRIMERA_INFANCIA_v2_5_2.md",
+        "PRIVACIDAD_PRIMERA_INFANCIA_v2_5_2.json",
+        "INFORME_IMPLEMENTACION_BIBLIOTECA_MOTOR_GESTION_v2_5_3.md",
+        "ARQUITECTURA_BIBLIOTECA_MOTOR_GESTION_v2_5_3.md",
+        "GUIA_PRUEBA_BIBLIOTECA_MOTOR_GESTION_v2_5_3.md",
+        "ARCHIVOS_MODIFICADOS_PRIMERA_INFANCIA_v2_5_3.md",
+        "RESULTADOS_BIBLIOTECA_MOTOR_GESTION_v2_5_3.json",
+        "PRIVACIDAD_PRIMERA_INFANCIA_v2_5_3.json",
+        "INFORME_IMPLEMENTACION_SUPERVISION_FAMILIAS_REDES_v2_5_4.md",
+        "ARQUITECTURA_SUPERVISION_FAMILIAS_REDES_v2_5_4.md",
+        "GUIA_PRUEBA_SUPERVISION_FAMILIAS_REDES_v2_5_4.md",
+        "ARCHIVOS_MODIFICADOS_PRIMERA_INFANCIA_v2_5_4.md",
+        "RESULTADOS_SUPERVISION_FAMILIAS_REDES_v2_5_4.json",
+        "PRIVACIDAD_PRIMERA_INFANCIA_v2_5_4.json",
+        "INFORME_IMPLEMENTACION_SALUD_NUTRICION_POSTGRES_v2_6_0.md",
+        "ARQUITECTURA_POSTGRES_SALUD_NUTRICION_v2_6_0.md",
+        "GUIA_MIGRACION_SQLITE_POSTGRES_v2_6_0.md",
+        "GUIA_PRUEBAS_SCRIPTS_SALUD_POSTGRES_v2_6_0.md",
+        "PLAN_REVERSION_Y_CONTINGENCIA_v2_6_0.md",
+        "ARCHIVOS_MODIFICADOS_PRIMERA_INFANCIA_v2_6_0.md",
+        "RESULTADOS_PRUEBAS_PRIMERA_INFANCIA_v2_6_0.json",
+        "PRIVACIDAD_PRIMERA_INFANCIA_v2_6_0.json",
+        "CONFIGURAR_POSTGRESQL_LOCAL.bat",
+        "MIGRAR_SQLITE_A_POSTGRESQL.bat",
+        "RESPALDAR_POSTGRESQL.bat",
+        "RESTAURAR_POSTGRESQL.bat",
+        "DIAGNOSTICAR_INICIO_WINDOWS.bat",
+        "scripts_windows/iniciar_plataforma.ps1",
+        "scripts_windows/detener_plataforma.ps1",
+        "scripts_windows/diagnosticar_inicio_windows.ps1",
+        "scripts_windows/configurar_postgresql_local.ps1",
+        "scripts_windows/migrar_sqlite_postgresql.ps1",
+        "scripts_windows/respaldar_postgresql.ps1",
+        "scripts_windows/restaurar_postgresql.ps1",
+        "backend/modules/dbapi_compat.py",
+        "backend/modules/salud_nutricion/integral.py",
+        "backend/tools/check_database.py",
+        "backend/tools/migrate_sqlite_to_postgresql.py",
+        "backend/tests/test_postgresql_compat_v2_6_0.py",
+        "backend/tests/test_windows_launchers_v2_6_0.py",
+        "backend/tests/test_salud_nutricion_integral_v2_6_0.py",
+        "backend/tests/test_migration_tool_v2_6_0.py",
         "backend/app.py", "backend/wsgi.py", "backend/init_hosting.py",
         "backend/requirements-production.txt", "frontend/index.html",
         "frontend/js/config.js", "frontend/js/app.js",
@@ -91,15 +146,55 @@ def check_layout() -> None:
         "backend/tests/test_multitenant_release_v2_4_0.py",
         "backend/tests/test_tunnel_admin_recovery_v2_4_1.py",
         "backend/tests/test_tunnel_login_logging_v2_4_2.py",
+        "backend/tests/test_tunnel_cloudflare_v2_4_3.py",
+        "backend/tests/test_gestion_integral_uca_v2_5_0.py",
+        "backend/tests/test_auth_concurrency_v2_5_1.py",
+        "backend/modules/gestion_integral_uca/__init__.py",
+        "backend/modules/gestion_integral_uca/schema.py",
+        "backend/modules/gestion_integral_uca/services.py",
+        "backend/modules/gestion_integral_uca/repository.py",
+        "backend/modules/gestion_integral_uca/routes.py",
+        "backend/modules/gestion_integral_uca/integrations.py",
+        "backend/tests/test_expediente_uca_central_v2_5_2.py",
+        "frontend/js/modules/gestion-integral-uca.js",
+        "frontend/css/gestion-integral-uca.css",
+        "backend/modules/motor_gestion_proyecto/__init__.py",
+        "backend/modules/motor_gestion_proyecto/schema.py",
+        "backend/modules/motor_gestion_proyecto/services.py",
+        "backend/modules/motor_gestion_proyecto/repository.py",
+        "backend/modules/motor_gestion_proyecto/routes.py",
+        "backend/modules/gestion_integral_uca/library_updates.py",
+        "backend/tests/test_biblioteca_motor_gestion_v2_5_3.py",
+        "frontend/js/modules/motor-gestion-proyecto.js",
+        "frontend/css/motor-gestion-proyecto.css",
+        "backend/modules/supervision_calidad/__init__.py",
+        "backend/modules/supervision_calidad/schema.py",
+        "backend/modules/supervision_calidad/services.py",
+        "backend/modules/supervision_calidad/repository.py",
+        "backend/modules/supervision_calidad/routes.py",
+        "backend/modules/familias_redes/__init__.py",
+        "backend/modules/familias_redes/schema.py",
+        "backend/modules/familias_redes/services.py",
+        "backend/modules/familias_redes/repository.py",
+        "backend/modules/familias_redes/routes.py",
+        "backend/tests/test_supervision_familias_redes_v2_5_4.py",
+        "frontend/js/modules/supervision-calidad.js",
+        "frontend/js/modules/familias-redes.js",
+        "frontend/css/supervision-calidad.css",
+        "frontend/css/familias-redes.css",
         "scripts_windows/iniciar_tunel_cloudflare.ps1",
         "scripts_windows/diagnosticar_login_tunel.ps1",
         "DIAGNOSTICAR_LOGIN_TUNEL.bat",
+        "DIAGNOSTICAR_TUNEL_CLOUDFLARE.bat",
         "ABRIR_LOGS_ERRORES.bat",
         "README_SCRIPTS_LOCAL_TUNEL.md",
         "GUIA_PRUEBAS_TUNEL_USUARIOS_RECUPERACION_v2_4_1.md",
         "INFORME_CORRECCION_LOGIN_TUNEL_Y_LOGS_v2_4_2.md",
         "GUIA_PRUEBA_LOGIN_TUNEL_v2_4_2.md",
         "ARCHIVOS_MODIFICADOS_PRIMERA_INFANCIA_v2_4_2.md",
+        "INFORME_CORRECCION_TUNEL_CLOUDFLARE_v2_4_3.md",
+        "GUIA_PRUEBA_TUNEL_CLOUDFLARE_v2_4_3.md",
+        "ARCHIVOS_MODIFICADOS_PRIMERA_INFANCIA_v2_4_3.md",
         "backend/migrations/migrate_multitenant_phase3.py",
         "backend/modules/seguridad/tenant_context.py",
         "backend/modules/seguridad/tenant_sql_guard.py",
@@ -491,6 +586,7 @@ def check_config_and_security_bootstrap() -> None:
                 "MIN_PASSWORD_LENGTH": 12,
                 "DATA_DIR": str(data_dir),
                 "DATABASE_PATH": str(data_dir / "database.sqlite3"),
+                "DATABASE_URL": "sqlite:///" + (data_dir / "database.sqlite3").as_posix(),
                 "STORAGE_BACKEND": "local",
                 "ALLOWED_ORIGINS": "",
                 "ALLOW_LEGACY_QUERY_TOKENS": False,
@@ -720,7 +816,15 @@ def check_security_text_invariants() -> None:
         "TENANT_STORAGE_ISOLATION=true",
         "MULTI_TENANT_SCHEMA_VERSION=3",
         "SYNC_MANAGED_TEMPLATES=true",
-        "APP_VERSION=2.4.2-tunel-login-logging-corregido",
+        "APP_VERSION=2.6.0-salud-nutricion-postgresql",
+        "BIBLIOTECA_REMOTE_CHECKS_ENABLED=false",
+        "BIBLIOTECA_ALLOWED_DOMAINS=icbf.gov.co,www.icbf.gov.co",
+        "MOTOR_GESTION_ENABLED=true",
+        "LOGIN_DB_RETRY_ATTEMPTS=4",
+        "LOGIN_DB_BUSY_TIMEOUT_MS=150",
+        "LOGIN_DB_RETRY_BASE_MS=50",
+        "LOGIN_DB_RETRY_BUDGET_MS=1200",
+        "LOGIN_SLOW_THRESHOLD_MS=1500",
         "RAILWAY_PUBLIC_DOMAIN=",
     ]:
         if required_line not in env_text:
@@ -749,22 +853,33 @@ def check_security_text_invariants() -> None:
         "/api/health", "RedirectStandardError", "cloudflared_tunnel.pid",
         "public_tunnel_mode", "Stop-VerifiedLocalBackend", "trycloudflare.com",
         "ExpectedInstanceId", "project_instance_id", "Test-ExpectedBackend",
+        "cloudflared_home_aislado", "Invoke-CurlDownload", "Tls12",
+        "Protocol = 'auto'", "Protocol = 'http2'", "ULTIMO_COMANDO_CLOUDFLARED.txt",
     ]:
         if required not in tunnel_text:
             failures.append(f"script de túnel no contiene {required}")
-    local_bat_text = (ROOT / "INICIAR_PLATAFORMA_LOCAL.bat").read_text(encoding="utf-8")
-    if "/api/acceso/ping" in local_bat_text:
+    argument_start = tunnel_text.find("$cloudflaredArgs = @(")
+    argument_end = tunnel_text.find("# El proceso hereda", argument_start)
+    argument_block = tunnel_text[argument_start:argument_end] if argument_start >= 0 and argument_end > argument_start else ""
+    if "--config" in argument_block or "$QuickConfig" in tunnel_text:
+        failures.append("Quick Tunnel continúa usando --config/configuración nombrada")
+    local_bat_text = (ROOT / "INICIAR_PLATAFORMA_LOCAL.bat").read_text(encoding="utf-8-sig")
+    launcher_text = (ROOT / "scripts_windows" / "iniciar_plataforma.ps1").read_text(encoding="utf-8-sig")
+    if "iniciar_plataforma.ps1" not in local_bat_text or "-Mode Local" not in local_bat_text:
+        failures.append("el BAT local no delega al lanzador PowerShell robusto")
+    if "/api/acceso/ping" in launcher_text:
         failures.append("inicio local continúa usando ping autenticado")
     for forbidden in ["AdminLocal2026*", "local-dev-secret-key", "local-dev-jwt-secret-key"]:
-        if forbidden in local_bat_text:
+        if forbidden in launcher_text:
             failures.append(f"inicio local conserva secreto/credencial fija: {forbidden}")
     for required in [
         "CREDENCIALES_INICIALES_LOCAL.txt", "secrets.token_urlsafe(64)",
-        "INITIAL_ADMIN_FORCE_PASSWORD_CHANGE=true", "PROJECT_INSTANCE_ID",
-        "EXPECTED_TUNNEL_MODE", "project_instance_id", "data\\logs",
+        "INITIAL_ADMIN_FORCE_PASSWORD_CHANGE", "PROJECT_INSTANCE_ID",
+        "ExpectedTunnel", "project_instance_id", "data\\logs", "/api/health",
+        "postgresql+psycopg://", "DB_POOL_SIZE",
     ]:
-        if required not in local_bat_text:
-            failures.append(f"inicio local no contiene protección requerida: {required}")
+        if required not in launcher_text:
+            failures.append(f"lanzador local no contiene protección requerida: {required}")
     if "public_tunnel_mode" not in app_text or "server_mode" not in app_text or "project_instance_id" not in app_text:
         failures.append("healthcheck no informa modo local/túnel e instancia")
     for required in ["X-Client-Request-ID", "trace_id", "log_file", "LOGIN_DATABASE_BUSY"]:
@@ -775,7 +890,13 @@ def check_security_text_invariants() -> None:
         if required not in diagnostics_text:
             failures.append(f"logging robusto no contiene {required}")
     diagnostic_script = (ROOT / "scripts_windows" / "diagnosticar_login_tunel.ps1").read_text(encoding="utf-8-sig")
-    if "DIAGNOSTICO_TUNEL_LOGIN" not in diagnostic_script or "data\\logs" not in diagnostic_script:
+    if (
+        "DIAGNOSTICO DE TUNEL Y LOGIN" not in diagnostic_script
+        or "data\\logs" not in diagnostic_script
+        or "logs_tunel" not in diagnostic_script
+        or "7844" not in diagnostic_script
+        or "HTTP/2/TCP" not in diagnostic_script
+    ):
         failures.append("diagnóstico de login/túnel incompleto")
     for required in ["Editar", "Eliminar", "Restablecer clave", "local_recovery_code"]:
         if required not in frontend_app_text:
@@ -812,16 +933,177 @@ def check_security_text_invariants() -> None:
         if required not in app_text:
             failures.append(f"app.py no contiene {required}")
 
+    giu_repository = (BACKEND / "modules" / "gestion_integral_uca" / "repository.py").read_text(encoding="utf-8")
+    giu_routes = (BACKEND / "modules" / "gestion_integral_uca" / "routes.py").read_text(encoding="utf-8")
+    giu_html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+    giu_js = (ROOT / "frontend" / "js" / "modules" / "gestion-integral-uca.js").read_text(encoding="utf-8")
+    for required in [
+        "giu_expedientes_uca", "giu_ruta_instancias", "giu_planes_uca",
+        "biblioteca_icbf_documentos", "build_supervision_package",
+        "Esta actividad exige al menos una evidencia",
+        "allowed_keys is not None",
+        "archivos_actualizados",
+    ]:
+        if required not in giu_repository:
+            failures.append(f"Gestión Integral UCA no contiene {required}")
+    for required in [
+        "/api/gestion-integral-uca", "paquete-supervision",
+        "/biblioteca/documentos", "tenant_storage_root",
+        "_safe_tenant_file", "DESCARGAR_EVIDENCIA_RUTA",
+    ]:
+        if required not in giu_routes and required not in (BACKEND / "modules" / "seguridad" / "services.py").read_text(encoding="utf-8"):
+            failures.append(f"rutas Gestión Integral UCA no contienen {required}")
+    for required in ["expediente-operativo-uca", "biblioteca-icbf", "gestion-integral-uca.js"]:
+        if required not in giu_html:
+            failures.append(f"interfaz Gestión Integral UCA no contiene {required}")
+    for required in ["giuInit", "bibliotecaIcbfInit", "Paquete supervisión", "Ocho planes"]:
+        if required not in giu_js:
+            failures.append(f"frontend Gestión Integral UCA no contiene {required}")
+
+    giu_integrations = (BACKEND / "modules" / "gestion_integral_uca" / "integrations.py").read_text(encoding="utf-8")
+    giu_schema = (BACKEND / "modules" / "gestion_integral_uca" / "schema.py").read_text(encoding="utf-8")
+    giu_test = (BACKEND / "tests" / "test_expediente_uca_central_v2_5_2.py").read_text(encoding="utf-8")
+    for required in [
+        "class UCAIntegrationEngine", "def build_view", "def documents", "def alerts",
+        "def schedule", "Lectura integrada y referencias; no se duplican registros operativos",
+    ]:
+        if required not in giu_integrations:
+            failures.append(f"Expediente UCA central 2.5.2 no contiene {required}")
+    for required in ["SCHEMA_VERSION = 3", "giu_vinculos_documentales", "giu_paquetes_supervision", "biblioteca_icbf_fuentes", "biblioteca_icbf_candidatos", "biblioteca_icbf_notificaciones", "biblioteca_icbf_historial"]:
+        if required not in giu_schema:
+            failures.append(f"esquema GIU 2.5.3 no contiene {required}")
+    for required in ["vista-unica", "preparacion-supervision", "documentos/<int:link_id>/descargar"]:
+        if required not in giu_routes:
+            failures.append(f"rutas Expediente UCA central no contienen {required}")
+    for required in ["Centro operativo", "Componentes", "Documentos", "Alertas", "Cronograma", "Indicadores"]:
+        if required not in giu_js:
+            failures.append(f"interfaz Expediente UCA central no contiene {required}")
+    if "test_expediente_uca_central_v2_5_2" not in giu_test and "componentes_integrados" not in giu_test:
+        failures.append("suite 2.5.2 no cubre la vista única por UCA")
+
+    library_update_text = (BACKEND / "modules" / "gestion_integral_uca" / "library_updates.py").read_text(encoding="utf-8")
+    motor_schema_text = (BACKEND / "modules" / "motor_gestion_proyecto" / "schema.py").read_text(encoding="utf-8")
+    motor_repo_text = (BACKEND / "modules" / "motor_gestion_proyecto" / "repository.py").read_text(encoding="utf-8")
+    motor_routes_text = (BACKEND / "modules" / "motor_gestion_proyecto" / "routes.py").read_text(encoding="utf-8")
+    motor_js_text = (ROOT / "frontend" / "js" / "modules" / "motor-gestion-proyecto.js").read_text(encoding="utf-8")
+    v253_test = (BACKEND / "tests" / "test_biblioteca_motor_gestion_v2_5_3.py").read_text(encoding="utf-8")
+    for required in ["biblioteca_icbf_fuentes", "biblioteca_icbf_candidatos", "biblioteca_icbf_notificaciones", "biblioteca_icbf_historial"]:
+        if required not in giu_schema:
+            failures.append(f"Biblioteca 2.5.3 no contiene {required}")
+    for required in ["BIBLIOTECA_REMOTE_CHECKS_ENABLED", "CATALOGO_JSON", "allow_redirects=False", "_reject_private_resolution"]:
+        if required not in library_update_text:
+            failures.append(f"verificación controlada Biblioteca no contiene {required}")
+    for required in ["mgp_tareas", "mgp_dependencias", "mgp_recordatorios", "mgp_productos", "mgp_cierres_mensuales", "mgp_auditoria"]:
+        if required not in motor_schema_text:
+            failures.append(f"Motor de Gestión 2.5.3 no contiene {required}")
+    for required in ["def synchronize", "prepare_monthly_products", "BORRADOR", "recalculate_priorities", "generate_reminders"]:
+        if required not in motor_repo_text:
+            failures.append(f"repositorio Motor de Gestión no contiene {required}")
+    for required in ["/api/motor-gestion-proyecto", "/productos/preparar", "/cierres", "/recordatorios"]:
+        if required not in motor_routes_text and required not in services_text:
+            failures.append(f"rutas Motor de Gestión no contienen {required}")
+    for required in ["Motor Inteligente de Gestión del Proyecto", "prepareProducts", "prepareClosure", "motorGestionProyectoInit"]:
+        if required not in motor_js_text and required not in giu_html:
+            failures.append(f"frontend Motor de Gestión no contiene {required}")
+    for required in ["fuentes remotas cerradas", "productos borrador", "aislamiento multi-fundación"]:
+        if required not in v253_test:
+            failures.append(f"suite 2.5.3 no cubre {required}")
+
+    csc_schema_text = (BACKEND / "modules" / "supervision_calidad" / "schema.py").read_text(encoding="utf-8")
+    csc_repo_text = (BACKEND / "modules" / "supervision_calidad" / "repository.py").read_text(encoding="utf-8")
+    csc_routes_text = (BACKEND / "modules" / "supervision_calidad" / "routes.py").read_text(encoding="utf-8")
+    fcr_schema_text = (BACKEND / "modules" / "familias_redes" / "schema.py").read_text(encoding="utf-8")
+    fcr_repo_text = (BACKEND / "modules" / "familias_redes" / "repository.py").read_text(encoding="utf-8")
+    fcr_routes_text = (BACKEND / "modules" / "familias_redes" / "routes.py").read_text(encoding="utf-8")
+    csc_js_text = (ROOT / "frontend" / "js" / "modules" / "supervision-calidad.js").read_text(encoding="utf-8")
+    fcr_js_text = (ROOT / "frontend" / "js" / "modules" / "familias-redes.js").read_text(encoding="utf-8")
+    v254_test = (BACKEND / "tests" / "test_supervision_familias_redes_v2_5_4.py").read_text(encoding="utf-8")
+    for required in [
+        "csc_checklist_catalogo", "csc_supervisiones", "csc_verificaciones",
+        "csc_hallazgos", "csc_planes_mejora", "csc_acciones_mejora",
+        "csc_seguimientos", "csc_evidencias", "csc_productos", "csc_auditoria",
+    ]:
+        if required not in csc_schema_text:
+            failures.append(f"esquema Supervisión/Calidad 2.5.4 no contiene {required}")
+    for required in [
+        "build_products", "Carga la evidencia requerida antes de validar la acción.",
+        "Todos los planes asociados deben estar cerrados y validados.",
+        "tenant_storage_root", "BORRADOR",
+    ]:
+        if required not in csc_repo_text:
+            failures.append(f"repositorio Supervisión/Calidad 2.5.4 no contiene {required}")
+    for required in ["/api/supervision-calidad", "/supervisiones", "/hallazgos", "/planes", "/productos"]:
+        if required not in csc_routes_text and required not in services_text:
+            failures.append(f"rutas Supervisión/Calidad no contienen {required}")
+    for required in [
+        "fcr_expedientes_familiares", "fcr_actividades", "fcr_asistencias",
+        "fcr_compromisos", "fcr_seguimientos", "fcr_redes_apoyo",
+        "fcr_alertas", "fcr_evidencias", "fcr_documentos_generados", "fcr_auditoria",
+    ]:
+        if required not in fcr_schema_text:
+            failures.append(f"esquema Familias/Redes 2.5.4 no contiene {required}")
+    for required in [
+        "sync_family_records", "prepare_activity_documents", "_write_activity_pdf",
+        "_write_attendance", "prepare_summary_package", "tenant_storage_root",
+    ]:
+        if required not in fcr_repo_text:
+            failures.append(f"repositorio Familias/Redes 2.5.4 no contiene {required}")
+    for required in [
+        "/api/familias-redes", "/expedientes/sincronizar",
+        "/actividades", "/compromisos", "/alertas", "/reportes/preparar",
+    ]:
+        if required not in fcr_routes_text and required not in services_text:
+            failures.append(f"rutas Familias/Redes no contienen {required}")
+    for required in ["Centro Inteligente de Supervisión", "createPlan", "prepareProducts"]:
+        if required not in csc_js_text and required not in giu_html:
+            failures.append(f"frontend Supervisión/Calidad no contiene {required}")
+    for required in ["Gestión Integral de Familias", "prepareDocs", "prepareReport"]:
+        if required not in fcr_js_text and required not in giu_html:
+            failures.append(f"frontend Familias/Redes no contiene {required}")
+    for required in [
+        "expedientes familiares idempotentes", "acta y listado automáticos",
+        "compromisos y alertas con cierre humano", "Motor idempotente",
+        "aislamiento multi-fundación",
+    ]:
+        if required not in v254_test:
+            failures.append(f"suite 2.5.4 no cubre {required}")
+
+    auth_test = (BACKEND / "tests" / "test_auth_concurrency_v2_5_1.py").read_text(encoding="utf-8")
+    auth_services = (BACKEND / "modules" / "seguridad" / "services.py").read_text(encoding="utf-8")
+    auth_routes = (BACKEND / "modules" / "seguridad" / "routes.py").read_text(encoding="utf-8")
+    billing_services = (BACKEND / "modules" / "facturacion_suscripcion" / "services.py").read_text(encoding="utf-8")
+    for required in [
+        "create_login_session_atomic", "record_login_failure_atomic", "load_login_state",
+        "BEGIN IMMEDIATE", "LOGIN_DB_RETRY_BUDGET_MS",
+    ]:
+        if required not in auth_services and required not in auth_routes:
+            failures.append(f"autenticación 2.5.1 no contiene {required}")
+    for required in [
+        "let loginEnCurso = false", "new AbortController()", "LOGIN_DATABASE_BUSY",
+        "Reintentando automáticamente",
+    ]:
+        if required not in frontend_app_text:
+            failures.append(f"frontend login 2.5.1 no contiene {required}")
+    if "trusted_internal=True" not in auth_routes or "g.current_user = user_payload" in auth_routes:
+        failures.append("login no mantiene aislado el contexto previo a autenticación")
+    if "get_subscription_snapshot" not in billing_services or "_INITIALIZED_DATABASES" not in billing_services:
+        failures.append("facturación no evidencia snapshot de lectura e inicialización única")
+    if "test_parallel_sessions" not in auth_test or "false_rate_limit_rows" not in auth_test:
+        failures.append("suite 2.5.1 no cubre sesiones concurrentes y falsos bloqueos")
+
     source_hash = (ROOT / "SOURCE_ARCHIVE_SHA256.txt").read_text(encoding="utf-8").strip()
+    expected_source = "60c3c873fb6d2b7932bedfa454c5b6120f100095167bbad3aa8fcd2282e660ce  PrimeraInfancia_v2_5_4_SUPERVISION_FAMILIAS_REDES.zip"
     if not re.fullmatch(r"[0-9a-f]{64}  [^/\\]+\.zip", source_hash):
         failures.append("SOURCE_ARCHIVE_SHA256.txt tiene formato o ruta insegura")
+    elif source_hash != expected_source:
+        failures.append("SOURCE_ARCHIVE_SHA256.txt no corresponde a la base 2.5.3 declarada")
 
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     start_script = (ROOT / "start_hosting.sh").read_text(encoding="utf-8")
     if "COPY --chown=appuser:appuser" not in dockerfile or "gosu appuser" not in start_script:
         failures.append("el proceso de aplicación no abandona privilegios root")
-    if "--workers 1" not in start_script:
-        failures.append("Gunicorn no está fijado a un worker para SQLite")
+    if 'GUNICORN_WORKERS' not in start_script or '--workers "${GUNICORN_WORKERS:-1}"' not in start_script:
+        failures.append("Gunicorn no conserva un worker seguro por defecto y parametrización PostgreSQL")
 
     record("Invariantes de privacidad y seguridad", not failures, " | ".join(failures) if failures else "sin datos runtime, secretos, tokens en URL ni fallbacks públicos a localhost")
 
@@ -833,6 +1115,16 @@ def check_multitenant_isolation() -> None:
         BACKEND / "tests" / "test_multitenant_release_v2_4_0.py",
         BACKEND / "tests" / "test_tunnel_admin_recovery_v2_4_1.py",
         BACKEND / "tests" / "test_tunnel_login_logging_v2_4_2.py",
+        BACKEND / "tests" / "test_tunnel_cloudflare_v2_4_3.py",
+        BACKEND / "tests" / "test_gestion_integral_uca_v2_5_0.py",
+        BACKEND / "tests" / "test_auth_concurrency_v2_5_1.py",
+        BACKEND / "tests" / "test_expediente_uca_central_v2_5_2.py",
+        BACKEND / "tests" / "test_biblioteca_motor_gestion_v2_5_3.py",
+        BACKEND / "tests" / "test_supervision_familias_redes_v2_5_4.py",
+        BACKEND / "tests" / "test_postgresql_compat_v2_6_0.py",
+        BACKEND / "tests" / "test_windows_launchers_v2_6_0.py",
+        BACKEND / "tests" / "test_salud_nutricion_integral_v2_6_0.py",
+        BACKEND / "tests" / "test_migration_tool_v2_6_0.py",
     ]
     env = dict(os.environ)
     env["PYTHONPATH"] = str(BACKEND)
@@ -852,7 +1144,7 @@ def check_multitenant_isolation() -> None:
     record(
         "Aislamiento multi-fundación fail-closed",
         not failures,
-        "migración, SQLite, Core, JOIN, storage, administración, recuperación, login y túnel OK" if not failures else " | ".join(failures),
+        "migración, SQLite, Core, JOIN, storage, administración, recuperación, Quick Tunnel, autenticación, Expediente UCA central, Biblioteca y Motor 2.5.3, Supervisión/Familias 2.5.4, Salud Integral/PostgreSQL/scripts 2.6.0 OK" if not failures else " | ".join(failures),
     )
 
 
@@ -870,10 +1162,10 @@ def check_railway_config() -> None:
     except Exception as exc:  # noqa: BLE001
         failures.append(str(exc))
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8", errors="ignore")
-    for required in ["python:3.12-slim", "requirements-production.txt", "tesseract-ocr-spa", "poppler-utils"]:
+    for required in ["python:3.12-slim", "requirements-production.txt", "tesseract-ocr-spa", "poppler-utils", "postgresql-client"]:
         if required not in dockerfile:
             failures.append(f"Dockerfile sin {required}")
-    record("Configuración Railway/Docker", not failures, ", ".join(failures) if failures else "Dockerfile, healthcheck, reinicio y OCR presentes")
+    record("Configuración Railway/Docker", not failures, ", ".join(failures) if failures else "Dockerfile, PostgreSQL Client, healthcheck, reinicio y OCR presentes")
 
 
 def main() -> int:
@@ -895,7 +1187,9 @@ def main() -> int:
     failures = [item for item in RESULTS if item["status"] == "FAIL"]
     skipped = [item for item in RESULTS if item["status"] == "SKIP"]
     summary = {
-        "root": str(ROOT),
+        "root": ROOT.name,
+        "version": "2.6.0-salud-nutricion-postgresql",
+        "generated_at": "2026-08-05",
         "checks": len(RESULTS),
         "passed": sum(item["status"] == "PASS" for item in RESULTS),
         "failed": len(failures),

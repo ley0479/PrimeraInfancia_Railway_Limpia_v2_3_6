@@ -1,0 +1,44 @@
+{
+  "version": "2.5.4-supervision-familias-redes",
+  "fecha": "2026-08-05",
+  "resultado": "APROBADO_EN_PRUEBA_AUTOMATIZADA_ESPECIFICA",
+  "supervision_calidad": {
+    "criterios_catalogo": 14,
+    "hallazgos_planes_acciones": "aprobado",
+    "cierres_con_validacion_humana": true,
+    "productos": [
+      "XLSX",
+      "PDF",
+      "ZIP"
+    ],
+    "integridad_sha256": true
+  },
+  "familias_redes": {
+    "sincronizacion_idempotente": true,
+    "acta_pdf_borrador": true,
+    "listado_xlsx_borrador": true,
+    "informe_pdf_disponible": true,
+    "compromisos_motor": true,
+    "redes_alertas_seguimientos": true,
+    "cierres_con_validacion_humana": true,
+    "paquete_seguimiento_zip": true,
+    "historia_psicosocial_clinica": false
+  },
+  "integraciones": {
+    "expediente_uca_dominios": 10,
+    "motor_idempotente": true,
+    "documentos_vinculados": true
+  },
+  "multi_fundacion": {
+    "fundaciones_probadas": 2,
+    "aislamiento": "aprobado",
+    "alcance_uca_fail_closed": true
+  },
+  "pendiente": [
+    "prueba integral en navegador Windows",
+    "PowerShell y Cloudflare Tunnel reales",
+    "Docker completo",
+    "Railway con volumen y tráfico real",
+    "evaluacion institucional antes de datos personales reales"
+  ]
+}

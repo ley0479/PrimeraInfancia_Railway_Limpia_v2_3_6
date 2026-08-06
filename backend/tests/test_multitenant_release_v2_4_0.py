@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Controles de regresión del núcleo multi-fundación, vigente en 2.4.2."""
+"""Controles de regresión del núcleo multi-fundación, vigente en 2.5.2."""
 from __future__ import annotations
 
 import re
@@ -19,7 +19,7 @@ def require(path: str, *needles: str) -> str:
 def main() -> None:
     env = require(
         ".env.example",
-        "APP_VERSION=2.4.2-tunel-login-logging-corregido",
+        "APP_VERSION=2.6.0-salud-nutricion-postgresql",
         "SINGLE_TENANT_MODE=false",
         "ALLOW_EXPERIMENTAL_MULTI_TENANT=true",
         "MULTI_TENANT_STRICT=true",
@@ -86,14 +86,18 @@ def main() -> None:
         "Authorization",
         "URL.createObjectURL",
     )
-    local_bat = require(
+    require(
         "INICIAR_PLATAFORMA_LOCAL.bat",
-        'set "SINGLE_TENANT_MODE=false"',
-        'set "ALLOW_EXPERIMENTAL_MULTI_TENANT=true"',
-        'set "MULTI_TENANT_STRICT=true"',
+        "scripts_windows\\iniciar_plataforma.ps1",
+        "-Mode Local",
     )
-    if 'set "TENANT_STORAGE_ISOLATION=true"' not in local_bat:
-        raise AssertionError("script local no activa aislamiento físico")
+    launcher = require(
+        "scripts_windows/iniciar_plataforma.ps1",
+        "$env:SINGLE_TENANT_MODE = 'false'",
+        "$env:ALLOW_EXPERIMENTAL_MULTI_TENANT = 'true'",
+        "$env:MULTI_TENANT_STRICT = 'true'",
+        "$env:TENANT_STORAGE_ISOLATION = 'true'",
+    )
 
     # Los servicios que reciben un TenantPath deben resolverlo en tiempo de uso.
     require("backend/modules/paquete_mensual/services.py", "os.fspath(self._output_folder)")
