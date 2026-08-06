@@ -19,7 +19,7 @@ def require(path: str, *needles: str) -> str:
 def main() -> None:
     env = require(
         ".env.example",
-        "APP_VERSION=2.6.0-salud-nutricion-postgresql",
+        "APP_VERSION=2.7.0-centro-planeacion-psicosocial",
         "SINGLE_TENANT_MODE=false",
         "ALLOW_EXPERIMENTAL_MULTI_TENANT=true",
         "MULTI_TENANT_STRICT=true",

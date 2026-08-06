@@ -1,0 +1,25 @@
+{
+  "version": "2.7.0-centro-planeacion-psicosocial",
+  "generated_at": "2026-08-06",
+  "contains_operational_database": false,
+  "contains_personal_data": false,
+  "contains_real_health_data": false,
+  "contains_real_psychosocial_notes": false,
+  "contains_passwords_or_tokens": false,
+  "contains_runtime_logs": false,
+  "contains_environment_secrets": false,
+  "tenant_isolation": "fundacion_id + UCA fail-closed",
+  "restricted_documents": [
+    "informes psicosociales",
+    "caracterizaciones profesionales"
+  ],
+  "safeguards": [
+    "referencias sin duplicar participantes",
+    "auditoría de consultas y descargas",
+    "almacenamiento por tenant",
+    "validación SHA-256 de documentos",
+    "aprobación y cierre humanos",
+    "sin diagnóstico automatizado"
+  ],
+  "production_status": "candidata para pruebas controladas con datos ficticios"
+}

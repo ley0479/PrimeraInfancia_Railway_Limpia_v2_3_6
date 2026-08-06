@@ -98,7 +98,7 @@ function Add-TunnelLogAnalysis {
 }
 
 $ExpectedId = Get-ProjectInstanceId $Root
-Add-Report 'PRIMERA INFANCIA 2.6.0 - DIAGNOSTICO DE TUNEL Y LOGIN'
+Add-Report 'PRIMERA INFANCIA 2.7.0 - DIAGNOSTICO DE TUNEL Y LOGIN'
 Add-Report '=========================================================='
 Add-Report "Fecha: $(Get-Date -Format s)"
 Add-Report "Proyecto: $Root"

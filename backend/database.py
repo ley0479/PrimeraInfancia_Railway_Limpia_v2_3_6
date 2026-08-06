@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import sqlite3
 import threading
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Connection, Engine
+from sqlalchemy.exc import DBAPIError, OperationalError
 
 
 class DatabaseManager:
@@ -24,6 +26,10 @@ class DatabaseManager:
         self.sqlite_timeout = 30
         self._sqlite_wal_lock = threading.RLock()
         self._sqlite_wal_initialized_path: str | None = None
+        self._pool_lock = threading.RLock()
+        self._pool_active = 0
+        self._pool_peak = 0
+        self._pool_checkouts = 0
 
     def configure(self, app) -> None:
         database_url = str(app.config["DATABASE_URL"]).strip()
@@ -64,6 +70,18 @@ class DatabaseManager:
         self.database_url = database_url
         self.database_path = database_path
         self.engine = create_engine(database_url, **options)
+
+        @event.listens_for(self.engine, "checkout")
+        def _pool_checkout(_dbapi_connection, _connection_record, _connection_proxy):
+            with self._pool_lock:
+                self._pool_active += 1
+                self._pool_checkouts += 1
+                self._pool_peak = max(self._pool_peak, self._pool_active)
+
+        @event.listens_for(self.engine, "checkin")
+        def _pool_checkin(_dbapi_connection, _connection_record):
+            with self._pool_lock:
+                self._pool_active = max(0, self._pool_active - 1)
 
         if self.is_sqlite:
             self._initialize_sqlite_wal(database_path)
@@ -128,6 +146,46 @@ class DatabaseManager:
         with self.engine.begin() as connection:
             yield connection
 
+    def pool_snapshot(self) -> dict[str, Any]:
+        with self._pool_lock:
+            data = {
+                "active": self._pool_active,
+                "peak": self._pool_peak,
+                "checkouts": self._pool_checkouts,
+            }
+        pool = getattr(self.engine, "pool", None)
+        for name in ("size", "checkedin", "checkedout", "overflow"):
+            method = getattr(pool, name, None)
+            if callable(method):
+                try:
+                    data[name] = method()
+                except Exception:
+                    pass
+        return data
+
+    @staticmethod
+    def _retryable_transaction_error(exc: Exception) -> bool:
+        original = getattr(exc, "orig", None)
+        pgcode = getattr(original, "sqlstate", None) or getattr(original, "pgcode", None)
+        if pgcode in {"40001", "40P01", "55P03"}:
+            return True
+        message = str(original or exc).lower()
+        return "database is locked" in message or "database is busy" in message
+
+    def execute_transaction(self, callback, *, retries: int = 3, base_delay: float = 0.05):
+        """Ejecuta una transacción reintentable para fallos transitorios seguros."""
+        last = None
+        for attempt in range(max(1, retries)):
+            try:
+                with self.transaction() as connection:
+                    return callback(connection)
+            except (OperationalError, DBAPIError) as exc:
+                last = exc
+                if attempt + 1 >= retries or not self._retryable_transaction_error(exc):
+                    raise
+                time.sleep(base_delay * (2 ** attempt))
+        raise last  # pragma: no cover
+
     def healthcheck(self) -> dict[str, Any]:
         started = __import__('time').perf_counter()
         try:
@@ -137,6 +195,7 @@ class DatabaseManager:
                 "ok": True,
                 "dialect": self.dialect_name,
                 "latency_ms": round((__import__('time').perf_counter() - started) * 1000, 2),
+                "pool": self.pool_snapshot(),
             }
         except Exception as exc:
             return {
@@ -144,6 +203,7 @@ class DatabaseManager:
                 "dialect": self.dialect_name,
                 "latency_ms": round((__import__('time').perf_counter() - started) * 1000, 2),
                 "error": type(exc).__name__,
+                "pool": self.pool_snapshot(),
             }
 
     def legacy_sqlite_connection(self):

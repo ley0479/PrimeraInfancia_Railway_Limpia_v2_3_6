@@ -1,4 +1,31 @@
-# PrimeraInfancia 2.6.0 — Salud y Nutrición Integral + PostgreSQL
+# PrimeraInfancia 2.7.0 — Planeación Operativa y Componente Psicosocial
+
+Esta versión conserva PostgreSQL como backend obligatorio en producción, el Motor de Integridad y todos los módulos estables. Añade el **Centro Inteligente de Planeación y Calendario Operativo** y el **Componente Psicosocial especializado**, ambos integrados con el Expediente Operativo por UCA, el Motor de Gestión y Gestión de Familias y Redes, sin copiar participantes ni actividades fuente.
+
+## Novedad 2.7.0 — Planeación transversal y Psicosocial
+
+- Calendario central sobre `calendario_entregables`, con metadatos, reglas configurables, dependencias y recordatorios.
+- Vista diaria por rol y vista global para coordinación, con alcance por fundación y UCA.
+- Preparación de agendas, actas, listados e informes como borradores sujetos a revisión humana.
+- Paquetes mensuales por periodo con resúmenes por componente y UCA.
+- Expedientes psicosociales referenciales sobre Gestión de Familias y Redes, sin duplicar participantes.
+- Caracterizaciones versionadas, planes de acompañamiento, acciones, seguimientos e informes restringidos.
+- Cierres y validaciones reservados a coordinación; una evidencia obligatoria ausente bloquea la validación.
+- Integración de los dos dominios en la vista única por UCA y en el gate de integridad.
+
+**Importante:** el paquete no afirma haber migrado la base productiva del operador. La migración real requiere la URL PostgreSQL, el SQLite vigente, una ventana de mantenimiento y aprobación del corte. Consulte `GUIA_MIGRACION_COMPLETA_POSTGRES_v2_6_1.md`.
+
+## Novedad 2.6.1 — Gate y operación PostgreSQL
+
+- PostgreSQL obligatorio en producción mediante `REQUIRE_POSTGRESQL_IN_PRODUCTION=true`.
+- Orquestador `postgresql_cutover.py`: preflight, auditoría SQL, snapshot, copia, verificación y gate.
+- Verificación de conteos y huellas SHA-256 por tabla.
+- Motor de Integridad con baseline 2.7.0, regresión y bloqueo por código de salida.
+- `/api/ready` como healthcheck de Railway.
+- Observabilidad con `X-Request-ID`, `Server-Timing`, métricas agregadas y pool.
+- Workflow GitHub Actions con PostgreSQL 16 y job final `Deployment Gate`.
+- Safe Repair limitado a cachés, temporales y rotación de logs.
+
 
 ## Base de datos de producción
 
@@ -101,19 +128,20 @@ Los archivos de `backend/seed_data/` son semillas sanitizadas. En Railway se sin
 
 ## 3. Requisitos obligatorios en Railway
 
-La aplicación utiliza SQLite y genera archivos. Por eso necesita:
+La aplicación utiliza PostgreSQL para datos transaccionales y `/data` para documentos, evidencias, productos, reportes de integridad y respaldos.
 
-1. Un único servicio conectado al repositorio privado de GitHub.
-2. Un volumen persistente montado exactamente en:
+1. Un servicio de aplicación conectado al repositorio privado de GitHub.
+2. Un servicio PostgreSQL independiente y su `DATABASE_URL` privada.
+3. Un volumen persistente montado exactamente en:
 
 ```text
 /data
 ```
 
-3. Una sola réplica mientras se utilice SQLite.
-4. Un solo worker Gunicorn; `start_hosting.sh` ya lo configura.
+4. Un worker Gunicorn por defecto mientras existan jobs operativos en memoria; aumentar workers solo después de externalizarlos.
 5. Un dominio público HTTPS generado en Railway.
 6. Variables privadas configuradas desde el panel, nunca dentro del repositorio.
+7. `Deployment Gate` configurado como verificación obligatoria en el repositorio.
 
 ## 4. Variables recomendadas
 
@@ -121,8 +149,12 @@ Use `.env.example` únicamente como inventario. En Railway configure, como míni
 
 ```env
 APP_ENV=production
-APP_VERSION=2.5.2-expediente-uca-central
+APP_VERSION=2.7.0-centro-planeacion-psicosocial
 DATA_DIR=/data
+DATABASE_URL=postgresql://USUARIO:PASSWORD@HOST:5432/BASE
+REQUIRE_POSTGRESQL_IN_PRODUCTION=true
+INTEGRITY_ENGINE_ENABLED=true
+METRICS_ENABLED=true
 PROJECT_INSTANCE_ID=
 SYNC_MANAGED_TEMPLATES=true
 
@@ -176,7 +208,7 @@ No copie secretos en GitHub, capturas, chats ni archivos del proyecto.
 5. Haga `commit` y `push` a la rama conectada.
 6. Railway construirá y desplegará automáticamente.
 7. Revise los logs de inicialización.
-8. Abra `/api/health`; debe responder `status: ok`.
+8. Abra `/api/ready`; debe responder `status: ready` y base PostgreSQL disponible.
 9. Abra el dominio raíz e inicie sesión con el administrador inicial.
 10. Cambie la contraseña cuando la plataforma lo solicite.
 
@@ -184,7 +216,7 @@ El inicializador:
 
 - verifica SHA-256 de las semillas;
 - crea las carpetas persistentes;
-- inicializa y migra el esquema SQLite;
+- valida PostgreSQL e inicializa/migra el esquema compatible;
 - migra nombres `UNIDAD DEMO` hacia el catálogo central;
 - registra las 32 UDS que no existan;
 - carga la minuta RPP solamente si no hay una minuta previa;
@@ -201,7 +233,7 @@ GET /api/acceso/storage-health
 
 comprueba que:
 
-- la base esté dentro de `DATA_DIR`;
+- el almacenamiento documental esté dentro de `DATA_DIR`;
 - las carpetas requeridas sean escribibles;
 - existan los marcadores de inicialización y sincronización;
 - Railway haya declarado la ruta del volumen cuando esté disponible.
@@ -260,7 +292,7 @@ Comportamiento:
 - no reutiliza silenciosamente una minuta de otro periodo;
 - el diagnóstico previo informa por qué no está listo el RPP.
 
-Cuando exista una nueva minuta oficial, cárguela desde el módulo administrativo y verifique su periodo. No reemplace la base SQLite desde GitHub.
+Cuando exista una nueva minuta oficial, cárguela desde el módulo administrativo y verifique su periodo. No reemplace la base PostgreSQL ni el volumen `/data` desde GitHub.
 
 ## 9. RAM histórico y RAM V3
 
@@ -395,7 +427,7 @@ Antes de datos reales, ejecute la prueba de aceptación con dos fundaciones desc
 ## 16. Límites y operación responsable
 
 - El contenedor completo debe validarse en Railway con Flask, Gunicorn, OCR, PDF y las dependencias de producción.
-- SQLite requiere una sola réplica y un solo worker.
+- PostgreSQL elimina la contención de archivo; se conserva un worker por defecto hasta externalizar los jobs en memoria.
 - Procesamientos grandes pueden exceder memoria o tiempo del plan de ensayo.
 - El frontend heredado todavía utiliza Tailwind Play CDN; para una operación final debe compilarse CSS estático.
 - La entrega está sanitizada, pero la privacidad futura depende de los archivos y datos que los usuarios carguen.

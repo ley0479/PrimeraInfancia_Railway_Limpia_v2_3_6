@@ -203,8 +203,8 @@ def run() -> None:
         view_b = repo.integrated_view(2, exp_b["id"])
 
         components_a = {item["codigo"]: item for item in view_a["componentes"]}
-        require(len(components_a) == 10, "La vista no contiene los diez dominios integrados")
-        require({"familias_redes", "supervision_calidad"} <= set(components_a), "Faltan Familias/Redes o Supervisión/Calidad en la vista central")
+        require(len(components_a) == 12, "La vista no contiene los doce dominios integrados")
+        require({"familias_redes", "supervision_calidad", "planeacion_operativa", "psicosocial"} <= set(components_a), "Faltan dominios integrados recientes en la vista central")
         require(components_a["base_maestra"]["metricas"]["total_participantes"] == 2, "Base Maestra A no está filtrada por UCA")
         require({i["codigo"] for i in view_a["indicadores"]} >= {"UCA_PARTICIPANTES", "UCA_COBERTURA_VALORACION", "UCA_CRONOGRAMA"}, "Indicadores centrales incompletos")
         require(components_a["salud_nutricion"]["metricas"]["participantes_valorados"] == 1, "Cobertura de Salud A incorrecta")
@@ -264,7 +264,7 @@ def run() -> None:
     print(json.dumps({
         "ok": True,
         "schema_version": SCHEMA_VERSION,
-        "componentes_integrados": 10,
+        "componentes_integrados": 12,
         "pruebas": [
             "vista única por UCA", "aislamiento por fundación", "lectura en vivo sin duplicación",
             "índice documental idempotente", "alertas", "cronograma", "indicadores", "paquete de supervisión ampliado",

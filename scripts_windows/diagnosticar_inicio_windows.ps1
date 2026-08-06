@@ -19,7 +19,7 @@ function Mask-DatabaseUrl([string]$Url) {
     if([string]::IsNullOrWhiteSpace($Url)){ return '' }
     return ($Url -replace '://([^:@/]+):([^@/]+)@','://$1:***@')
 }
-Add-Line 'PRIMERA INFANCIA 2.6.0 - DIAGNOSTICO DE INICIO WINDOWS'
+Add-Line 'PRIMERA INFANCIA 2.7.0 - DIAGNOSTICO DE INICIO WINDOWS'
 Add-Line ("Fecha: {0}" -f (Get-Date -Format s))
 Add-Line ("Proyecto: {0}" -f $Root)
 Add-Line ''

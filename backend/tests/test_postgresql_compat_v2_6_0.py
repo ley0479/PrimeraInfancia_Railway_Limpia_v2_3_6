@@ -18,6 +18,8 @@ require(sql2.count(':p')==2 and bind=={'p0':10,'p1':20},'placeholders qmark inco
 require('STRING_AGG' in _translate_sqlite_sql("SELECT GROUP_CONCAT(nombre, ', ') FROM demo"),'GROUP_CONCAT no se tradujo')
 require("LPAD(CAST(id AS TEXT), 10, '0')" in _translate_sqlite_sql("SELECT printf('%010d', id) FROM demo"),'printf entero no se tradujo')
 require('TO_CHAR' in _translate_sqlite_sql("SELECT strftime('%Y', fecha) FROM demo"),'strftime no se tradujo')
+require('EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)' in _translate_sqlite_sql("SELECT julianday('now')"),'julianday now no se tradujo')
+require('EXTRACT(EPOCH FROM CAST(fecha AS TIMESTAMP))' in _translate_sqlite_sql("SELECT julianday(fecha) FROM demo"),'julianday columna no se tradujo')
 approved={'database.py','modules/dbapi_compat.py','modules/seguridad/tenant_sql_guard.py'}
 hits=[]
 for p in BACKEND.rglob('*.py'):

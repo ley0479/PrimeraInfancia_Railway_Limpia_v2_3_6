@@ -1,0 +1,17 @@
+(function(){
+'use strict';
+const API=()=>`${window.backendUrl||window.getBackendUrl?.()||window.location.origin}/api/integrity`;
+const $=id=>document.getElementById(id);
+const esc=v=>String(v??'').replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+const role=()=>String(window.usuarioActual?.rol||window.authUser?.()?.rol||'').toUpperCase();
+const canRun=()=>['SUPERADMIN','GERENTE'].includes(role());
+const canRepair=()=>role()==='SUPERADMIN';
+async function req(path,options={}){const r=await fetch(`${API()}${path}`,options);const ct=r.headers.get('content-type')||'';const d=ct.includes('json')?await r.json():null;if(!r.ok)throw new Error(d?.error||`Error HTTP ${r.status}`);return d;}
+function msg(text='',kind='info'){const el=$('ies-message');if(!el)return;el.className=`ies-message ${kind}`;el.textContent=text;el.classList.toggle('hidden',!text);}
+function badge(status){const s=String(status||'SIN_EJECUTAR').toUpperCase();const c=/PASS|OK|READY/.test(s)?'green':/BLOCK|FAIL|ERROR|NOT_READY/.test(s)?'red':'yellow';return `<span class="ies-badge ${c}">${esc(s)}</span>`;}
+function checks(rows=[]){return rows.map(x=>`<article class="ies-row"><div><strong>${esc(x.name)}</strong><small>${esc(x.detail||'')}</small></div>${badge(x.status)}</article>`).join('')||'<div class="ies-empty">No existe un gate ejecutado todavía.</div>';}
+async function load(){try{msg('Consultando integridad y estabilidad…');const d=await req('/status');const gate=d.gate||{};const db=d.database||{};const rt=d.runtime||{};$('ies-summary').innerHTML=[['Gate',gate.status||'SIN_EJECUTAR'],['Base',db.ok?String(db.dialect||'OK').toUpperCase():'NO DISPONIBLE'],['Latencia DB',`${db.latency_ms??'-'} ms`],['Solicitudes',rt.requests_total??0],['Errores 5xx',rt.errors_total??0]].map(([l,v])=>`<div class="ies-stat"><strong>${esc(v)}</strong><span>${esc(l)}</span></div>`).join('');$('ies-checks').innerHTML=checks(gate.checks);$('ies-architecture').textContent=JSON.stringify(d.architecture||{},null,2);$('ies-runtime').textContent=JSON.stringify({database:db,uptime_seconds:rt.uptime_seconds,error_rate:rt.error_rate,duration_average_ms:rt.duration_average_ms},null,2);$('ies-run-actions')?.classList.toggle('hidden',!canRun());$('ies-repair-actions')?.classList.toggle('hidden',!canRepair());msg('');if(window.lucide)lucide.createIcons();}catch(e){msg(e.message,'error');}}
+async function run(includeTests=true){try{msg('Iniciando gate. El proceso no modifica datos de negocio.');const d=await req('/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({include_tests:includeTests})});msg(`Gate iniciado. Trabajo ${d.job?.id||''}. Consulta de nuevo en unos minutos.`,'success');}catch(e){msg(e.message,'error');}}
+async function repair(apply=false){try{const text=apply?'Aplicando únicamente reparaciones permitidas…':'Preparando plan de reparaciones seguras…';msg(text);const d=await req('/safe-repair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apply})});msg(`${d.message} Trabajo ${d.job?.id||''}.`,'success');}catch(e){msg(e.message,'error');}}
+window.IntegrityStability={load,run,repair};window.integrityStabilityInit=load;
+})();

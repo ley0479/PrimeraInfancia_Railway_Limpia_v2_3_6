@@ -29,7 +29,7 @@ function Stop-RecordedProcess([string]$PidFile,[string]$ExpectedName) {
 }
 
 Write-Host '============================================================'
-Write-Host ' PRIMERA INFANCIA 2.6.0 - CIERRE SEGURO'
+Write-Host ' PRIMERA INFANCIA 2.7.0 - CIERRE SEGURO'
 Write-Host '============================================================'
 $stopped=$false
 $stopped = (Stop-RecordedProcess (Join-Path $Runtime 'cloudflared_tunnel.pid') 'cloudflared*') -or $stopped

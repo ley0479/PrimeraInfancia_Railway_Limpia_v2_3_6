@@ -2,7 +2,9 @@
 
 ## Versión
 
-**PrimeraInfancia 2.6.0 — Salud y Nutrición Integral, PostgreSQL, scripts Windows robustos y Quick Tunnel Cloudflare.**
+**PrimeraInfancia 2.7.0 — PostgreSQL, Planeación Operativa, Psicosocial, Motor de Integridad y Quick Tunnel Cloudflare.**
+
+La versión 2.7.0 conserva las herramientas PostgreSQL e integridad de 2.6.1 y añade Planeación Operativa y Componente Psicosocial. El inicio local puede conservar SQLite para recuperación y pruebas; producción exige PostgreSQL.
 
 Los scripts de esta carpeta sirven para dos escenarios distintos:
 
@@ -199,13 +201,18 @@ El primer ingreso obliga a cambiarla. Después de hacerlo, elimine ese archivo. 
 No utilice información personal real durante estas pruebas.
 
 
-## Lanzadores 2.6.0
+## Lanzadores 2.6.1
 
 Los archivos BAT de raíz son envoltorios mínimos CRLF. Toda la lógica está en PowerShell para evitar fragmentación de comandos por codificación o saltos de línea.
 
 - `INICIAR_PLATAFORMA_LOCAL.bat`: inicia SQLite o PostgreSQL según `DATABASE_URL`.
 - `INICIAR_PLATAFORMA_TUNEL_ONLINE.bat`: inicia la misma copia en modo túnel y luego Quick Tunnel.
 - `CONFIGURAR_POSTGRESQL_LOCAL.bat`: comprueba y guarda de forma local la URL.
-- `MIGRAR_SQLITE_A_POSTGRESQL.bat`: respalda SQLite, migra y valida conteos.
+- `MIGRAR_SQLITE_A_POSTGRESQL.bat`: alias compatible hacia el corte completo.
+- `MIGRAR_COMPLETO_A_POSTGRESQL.bat`: preflight, auditoría SQL, snapshot, migración, huellas, gate y activación explícita.
+- `VERIFICAR_MIGRACION_POSTGRESQL.bat`: verifica una migración existente sin copiar datos.
+- `EJECUTAR_GATE_INTEGRIDAD.bat`: compara el proyecto contra la base estable y ejecuta regresión.
+- `REPARACION_SEGURA.bat`: plan/aplicación únicamente de reparaciones no destructivas.
+- `MONITOREAR_PLATAFORMA.bat`: monitor técnico de readiness y salud.
 - `RESPALDAR_POSTGRESQL.bat` / `RESTAURAR_POSTGRESQL.bat`: usan `pg_dump` y `pg_restore`.
 - `DETENER_PLATAFORMA_LOCAL.bat`: cierra solo procesos confirmados de esta carpeta.

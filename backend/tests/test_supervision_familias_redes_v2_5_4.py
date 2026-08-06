@@ -320,7 +320,7 @@ def run() -> None:
 
         view = giu.integrated_view(1, exp_a["id"])
         codes = {row["codigo"] for row in view["componentes"]}
-        require({"familias_redes", "supervision_calidad"} <= codes and len(codes) == 10, "La vista UCA no integra los nuevos dominios")
+        require({"familias_redes", "supervision_calidad", "planeacion_operativa", "psicosocial"} <= codes and len(codes) == 12, "La vista UCA no integra los dominios actuales")
         require(any(row.get("source_table") == "fcr_alertas" for row in view["alertas"]), "No se integraron las alertas familiares")
         require(any(str(row.get("source_table") or "").startswith("csc_") for row in view["cronograma"]), "No se integró el cronograma de supervisión")
         document_links = giu.list_document_links(1, exp_a["id"])
@@ -367,7 +367,7 @@ def run() -> None:
             "checklist, hallazgos, planes y acciones",
             "productos XLSX/PDF/ZIP con integridad",
             "Motor idempotente",
-            "Expediente UCA con diez dominios",
+            "Expediente UCA con doce dominios",
             "aislamiento multi-fundación",
         ],
     }, ensure_ascii=False, indent=2))

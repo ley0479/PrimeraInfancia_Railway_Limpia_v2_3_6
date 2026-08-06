@@ -113,6 +113,68 @@ def check_layout() -> None:
         "ARCHIVOS_MODIFICADOS_PRIMERA_INFANCIA_v2_6_0.md",
         "RESULTADOS_PRUEBAS_PRIMERA_INFANCIA_v2_6_0.json",
         "PRIVACIDAD_PRIMERA_INFANCIA_v2_6_0.json",
+        "INFORME_MIGRACION_POSTGRES_INTEGRIDAD_v2_6_1.md",
+        "ARQUITECTURA_MOTOR_INTEGRIDAD_v2_6_1.md",
+        "GUIA_MIGRACION_COMPLETA_POSTGRES_v2_6_1.md",
+        "GUIA_CI_OBSERVABILIDAD_POSTGRES_v2_6_1.md",
+        "PLAN_ROLLBACK_POSTGRES_v2_6_1.md",
+        "ARCHIVOS_MODIFICADOS_PRIMERA_INFANCIA_v2_6_1.md",
+        "RESULTADOS_PRUEBAS_PRIMERA_INFANCIA_v2_6_1.json",
+        "PRIVACIDAD_PRIMERA_INFANCIA_v2_6_1.json",
+        "VALIDACION_PRIMERA_INFANCIA_v2_6_1.json",
+        "VALIDACION_ZIP_EXTRAIDO_PRIMERA_INFANCIA_v2_6_1.json",
+        "SOURCE_ARCHIVE_SHA256.txt",
+        ".github/workflows/integrity-ci.yml",
+        "EJECUTAR_GATE_INTEGRIDAD.bat",
+        "REPARACION_SEGURA.bat",
+        "MONITOREAR_PLATAFORMA.bat",
+        "MIGRAR_COMPLETO_A_POSTGRESQL.bat",
+        "VERIFICAR_MIGRACION_POSTGRESQL.bat",
+        "scripts_windows/ejecutar_gate_integridad.ps1",
+        "scripts_windows/reparacion_segura.ps1",
+        "scripts_windows/monitorear_plataforma.ps1",
+        "scripts_windows/migrar_completo_postgresql.ps1",
+        "integrity/baseline_v2_7_0.json",
+        "integrity/critical_tests.json",
+        "integrity/safe_autofix_policy.json",
+        "backend/services/observability.py",
+        "backend/modules/integrity_stability/__init__.py",
+        "backend/modules/integrity_stability/service.py",
+        "backend/modules/integrity_stability/routes.py",
+        "backend/tools/integrity_gate.py",
+        "backend/tools/safe_repair.py",
+        "backend/tools/postgresql_preflight.py",
+        "backend/tools/postgresql_runtime_audit.py",
+        "backend/tools/postgresql_cutover.py",
+        "backend/tools/verify_sqlite_postgresql.py",
+        "backend/tools/runtime_monitor.py",
+        "backend/tools/capture_integrity_baseline.py",
+        "backend/tests/test_integrity_postgresql_v2_6_1.py",
+        "frontend/js/modules/integrity-stability.js",
+        "frontend/css/integrity-stability.css",
+        "INFORME_IMPLEMENTACION_CENTRO_PLANEACION_PSICOSOCIAL_v2_7_0.md",
+        "ARQUITECTURA_CENTRO_PLANEACION_PSICOSOCIAL_v2_7_0.md",
+        "GUIA_PRUEBA_CENTRO_PLANEACION_PSICOSOCIAL_v2_7_0.md",
+        "ARCHIVOS_MODIFICADOS_PRIMERA_INFANCIA_v2_7_0.md",
+        "RESULTADOS_PRUEBAS_PRIMERA_INFANCIA_v2_7_0.json",
+        "VALIDACION_PRIMERA_INFANCIA_v2_7_0.json",
+        "VALIDACION_ZIP_EXTRAIDO_PRIMERA_INFANCIA_v2_7_0.json",
+        "PRIVACIDAD_PRIMERA_INFANCIA_v2_7_0.json",
+        "backend/modules/centro_planeacion/__init__.py",
+        "backend/modules/centro_planeacion/schema.py",
+        "backend/modules/centro_planeacion/services.py",
+        "backend/modules/centro_planeacion/repository.py",
+        "backend/modules/centro_planeacion/routes.py",
+        "backend/modules/componente_psicosocial/__init__.py",
+        "backend/modules/componente_psicosocial/schema.py",
+        "backend/modules/componente_psicosocial/services.py",
+        "backend/modules/componente_psicosocial/repository.py",
+        "backend/modules/componente_psicosocial/routes.py",
+        "backend/tests/test_centro_planeacion_psicosocial_v2_7_0.py",
+        "frontend/js/modules/centro-planeacion.js",
+        "frontend/js/modules/componente-psicosocial.js",
+        "frontend/css/centro-planeacion.css",
+        "frontend/css/componente-psicosocial.css",
         "CONFIGURAR_POSTGRESQL_LOCAL.bat",
         "MIGRAR_SQLITE_A_POSTGRESQL.bat",
         "RESPALDAR_POSTGRESQL.bat",
@@ -519,7 +581,7 @@ def check_route_authorization() -> None:
         return next((prefix for prefix in prefixes if normalized == prefix or normalized.startswith(prefix + "/")), None)
 
     api_routes = [item for item in routes if item[0].startswith("/api/")]
-    unknown = [item for item in api_routes if item[0] != "/api/health" and not covered(item[0])]
+    unknown = [item for item in api_routes if item[0] not in {"/api/health", "/api/ready"} and not covered(item[0])]
     detail = f"{len(api_routes)} rutas API, {len(prefixes)} familias declaradas"
     if parse_errors:
         detail += "; errores AST: " + " | ".join(parse_errors[:3])
@@ -586,7 +648,8 @@ def check_config_and_security_bootstrap() -> None:
                 "MIN_PASSWORD_LENGTH": 12,
                 "DATA_DIR": str(data_dir),
                 "DATABASE_PATH": str(data_dir / "database.sqlite3"),
-                "DATABASE_URL": "sqlite:///" + (data_dir / "database.sqlite3").as_posix(),
+                "DATABASE_URL": "postgresql+psycopg://release:secret@example.invalid:5432/primera_infancia",
+                "REQUIRE_POSTGRESQL_IN_PRODUCTION": True,
                 "STORAGE_BACKEND": "local",
                 "ALLOWED_ORIGINS": "",
                 "ALLOW_LEGACY_QUERY_TOKENS": False,
@@ -816,7 +879,11 @@ def check_security_text_invariants() -> None:
         "TENANT_STORAGE_ISOLATION=true",
         "MULTI_TENANT_SCHEMA_VERSION=3",
         "SYNC_MANAGED_TEMPLATES=true",
-        "APP_VERSION=2.6.0-salud-nutricion-postgresql",
+        "APP_VERSION=2.7.0-centro-planeacion-psicosocial",
+        "REQUIRE_POSTGRESQL_IN_PRODUCTION=true",
+        "INTEGRITY_ENGINE_ENABLED=true",
+        "METRICS_ENABLED=true",
+        "READINESS_MAX_DB_LATENCY_MS=2000",
         "BIBLIOTECA_REMOTE_CHECKS_ENABLED=false",
         "BIBLIOTECA_ALLOWED_DOMAINS=icbf.gov.co,www.icbf.gov.co",
         "MOTOR_GESTION_ENABLED=true",
@@ -1068,6 +1135,63 @@ def check_security_text_invariants() -> None:
         if required not in v254_test:
             failures.append(f"suite 2.5.4 no cubre {required}")
 
+    cpo_schema_text = (BACKEND / "modules" / "centro_planeacion" / "schema.py").read_text(encoding="utf-8")
+    cpo_repo_text = (BACKEND / "modules" / "centro_planeacion" / "repository.py").read_text(encoding="utf-8")
+    cpo_routes_text = (BACKEND / "modules" / "centro_planeacion" / "routes.py").read_text(encoding="utf-8")
+    ps_schema_text = (BACKEND / "modules" / "componente_psicosocial" / "schema.py").read_text(encoding="utf-8")
+    ps_repo_text = (BACKEND / "modules" / "componente_psicosocial" / "repository.py").read_text(encoding="utf-8")
+    ps_routes_text = (BACKEND / "modules" / "componente_psicosocial" / "routes.py").read_text(encoding="utf-8")
+    cpo_js_text = (ROOT / "frontend" / "js" / "modules" / "centro-planeacion.js").read_text(encoding="utf-8")
+    ps_js_text = (ROOT / "frontend" / "js" / "modules" / "componente-psicosocial.js").read_text(encoding="utf-8")
+    v270_test = (BACKEND / "tests" / "test_centro_planeacion_psicosocial_v2_7_0.py").read_text(encoding="utf-8")
+    for required in [
+        "cpo_reglas_operativas", "cpo_actividad_metadata", "cpo_dependencias",
+        "cpo_documentos_preparados", "cpo_notificaciones", "cpo_auditoria",
+    ]:
+        if required not in cpo_schema_text:
+            failures.append(f"esquema Centro Planeación 2.7.0 no contiene {required}")
+    for required in [
+        "synchronize", "prepare_documents", "export_monthly_package",
+        "fuente_tabla", "fuente_clave", "ON CONFLICT", "BORRADOR",
+    ]:
+        if required not in cpo_repo_text:
+            failures.append(f"repositorio Centro Planeación 2.7.0 no contiene {required}")
+    for required in [
+        "ps_expedientes", "ps_caracterizaciones", "ps_planes_acompanamiento",
+        "ps_acciones_plan", "ps_vinculos_actividad", "ps_seguimientos",
+        "ps_documentos", "ps_auditoria_accesos",
+    ]:
+        if required not in ps_schema_text:
+            failures.append(f"esquema Psicosocial 2.7.0 no contiene {required}")
+    for required in [
+        "sync_expedientes", "create_characterization", "review_characterization",
+        "create_plan", "create_action", "close_plan", "prepare_report",
+        "RESTRINGIDO", "La acción requiere evidencia.",
+    ]:
+        if required not in ps_repo_text:
+            failures.append(f"repositorio Psicosocial 2.7.0 no contiene {required}")
+    for required in ["/api/centro-planeacion", "/dashboard", "/sincronizar", "/paquetes/mensual"]:
+        if required not in cpo_routes_text and required not in services_text:
+            failures.append(f"rutas Centro Planeación no contienen {required}")
+    for required in ["/api/psicosocial", "/expedientes", "/caracterizaciones", "/planes", "/seguimientos"]:
+        if required not in ps_routes_text and required not in services_text:
+            failures.append(f"rutas Psicosocial no contienen {required}")
+    for required in ["Centro Inteligente de Planeación", "sincronizar", "paquete"]:
+        if required.lower() not in cpo_js_text.lower() and required not in giu_html:
+            failures.append(f"frontend Centro Planeación no contiene {required}")
+    for required in ["Componente Psicosocial", "caracterización", "plan", "informe"]:
+        if required.lower() not in ps_js_text.lower() and required not in giu_html:
+            failures.append(f"frontend Psicosocial no contiene {required}")
+    for required in [
+        "Sincronización del centro no idempotente", "El Motor de Gestión duplicó actividades",
+        "Escalamiento de vista por parámetro", "Aislamiento psicosocial",
+        "evidencia", "dependencia", "paquete mensual",
+    ]:
+        if required.lower() not in v270_test.lower():
+            failures.append(f"suite 2.7.0 no cubre {required}")
+    if "('/api/centro-planeacion', ALL_ROLES)" not in services_text or "('/api/psicosocial', FAMILY_SOCIAL)" not in services_text:
+        failures.append("matriz de roles no cubre Centro Planeación y Psicosocial")
+
     auth_test = (BACKEND / "tests" / "test_auth_concurrency_v2_5_1.py").read_text(encoding="utf-8")
     auth_services = (BACKEND / "modules" / "seguridad" / "services.py").read_text(encoding="utf-8")
     auth_routes = (BACKEND / "modules" / "seguridad" / "routes.py").read_text(encoding="utf-8")
@@ -1091,12 +1215,46 @@ def check_security_text_invariants() -> None:
     if "test_parallel_sessions" not in auth_test or "false_rate_limit_rows" not in auth_test:
         failures.append("suite 2.5.1 no cubre sesiones concurrentes y falsos bloqueos")
 
+    integrity_routes = (BACKEND / "modules" / "integrity_stability" / "routes.py").read_text(encoding="utf-8")
+    integrity_service = (BACKEND / "modules" / "integrity_stability" / "service.py").read_text(encoding="utf-8")
+    observability_text = (BACKEND / "services" / "observability.py").read_text(encoding="utf-8")
+    workflow_text = (ROOT / ".github" / "workflows" / "integrity-ci.yml").read_text(encoding="utf-8")
+    migration_text_v261 = (BACKEND / "tools" / "migrate_sqlite_to_postgresql.py").read_text(encoding="utf-8")
+    cutover_text = (BACKEND / "tools" / "postgresql_cutover.py").read_text(encoding="utf-8")
+    runtime_audit_text = (BACKEND / "tools" / "postgresql_runtime_audit.py").read_text(encoding="utf-8")
+    safe_repair_text = (BACKEND / "tools" / "safe_repair.py").read_text(encoding="utf-8")
+    for required in ["/api/ready", 'url_prefix="/api/integrity"', '@bp.get("/status")', '@bp.post("/run")', '@bp.get("/metrics")']:
+        if required not in integrity_routes:
+            failures.append(f"Motor de Integridad no contiene {required}")
+    for required in ["X-Metrics-Token", "METRICS_TOKEN", "integrity_gate", "safe_repair"]:
+        if required not in integrity_routes + integrity_service:
+            failures.append(f"Motor de Integridad no contiene {required}")
+    if "metrics_token" in integrity_routes.lower() and "request.args" in integrity_routes:
+        failures.append("el token de métricas no debe aceptarse por query string")
+    for required in ["X-Request-ID", "Server-Timing", "http_request", "def prometheus"]:
+        if required not in observability_text:
+            failures.append(f"observabilidad no contiene {required}")
+    for required in ["postgres:16-alpine", "Integrity Gate + PostgreSQL Migration", "Deployment Gate", "upload-artifact@v4"]:
+        if required not in workflow_text:
+            failures.append(f"CI de integridad no contiene {required}")
+    for required in ["sqlite_consistent_backup", "table_fingerprint", "reset_sequences", "cleanup-on-error"]:
+        if required not in migration_text_v261:
+            failures.append(f"migración PostgreSQL no contiene {required}")
+    for required in ["postgresql_preflight", "postgresql_runtime_audit", "verify_after_migration", "activation_completed"]:
+        if required not in cutover_text:
+            failures.append(f"corte PostgreSQL no contiene {required}")
+    if "unsupported_constructs" not in runtime_audit_text or "direct_sqlite_imports" not in runtime_audit_text:
+        failures.append("auditoría SQL runtime incompleta")
+    for forbidden in ["change_business_rules", "auto_apply_database_migrations_in_production"]:
+        if forbidden not in safe_repair_text and forbidden not in (ROOT / "integrity" / "safe_autofix_policy.json").read_text(encoding="utf-8"):
+            failures.append(f"política de autocorrección no protege {forbidden}")
+
     source_hash = (ROOT / "SOURCE_ARCHIVE_SHA256.txt").read_text(encoding="utf-8").strip()
-    expected_source = "60c3c873fb6d2b7932bedfa454c5b6120f100095167bbad3aa8fcd2282e660ce  PrimeraInfancia_v2_5_4_SUPERVISION_FAMILIAS_REDES.zip"
+    expected_source = "37dde6dd72b64fc4a98dc6ca70ac68efba2c111b3fc225f7445baacf5e521f4d  PrimeraInfancia_v2_6_1_POSTGRES_INTEGRIDAD_ESTABILIDAD.zip"
     if not re.fullmatch(r"[0-9a-f]{64}  [^/\\]+\.zip", source_hash):
         failures.append("SOURCE_ARCHIVE_SHA256.txt tiene formato o ruta insegura")
     elif source_hash != expected_source:
-        failures.append("SOURCE_ARCHIVE_SHA256.txt no corresponde a la base 2.5.3 declarada")
+        failures.append("SOURCE_ARCHIVE_SHA256.txt no corresponde a la base estable 2.6.1 declarada")
 
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     start_script = (ROOT / "start_hosting.sh").read_text(encoding="utf-8")
@@ -1125,6 +1283,8 @@ def check_multitenant_isolation() -> None:
         BACKEND / "tests" / "test_windows_launchers_v2_6_0.py",
         BACKEND / "tests" / "test_salud_nutricion_integral_v2_6_0.py",
         BACKEND / "tests" / "test_migration_tool_v2_6_0.py",
+        BACKEND / "tests" / "test_integrity_postgresql_v2_6_1.py",
+        BACKEND / "tests" / "test_centro_planeacion_psicosocial_v2_7_0.py",
     ]
     env = dict(os.environ)
     env["PYTHONPATH"] = str(BACKEND)
@@ -1144,7 +1304,7 @@ def check_multitenant_isolation() -> None:
     record(
         "Aislamiento multi-fundación fail-closed",
         not failures,
-        "migración, SQLite, Core, JOIN, storage, administración, recuperación, Quick Tunnel, autenticación, Expediente UCA central, Biblioteca y Motor 2.5.3, Supervisión/Familias 2.5.4, Salud Integral/PostgreSQL/scripts 2.6.0 OK" if not failures else " | ".join(failures),
+        "migración, SQLite, Core, JOIN, storage, administración, recuperación, Quick Tunnel, autenticación, Expediente UCA central, Biblioteca y Motor 2.5.3, Supervisión/Familias 2.5.4, Salud Integral/PostgreSQL/scripts 2.6.0, Integridad/PostgreSQL 2.6.1 y Planeación/Psicosocial 2.7.0 OK" if not failures else " | ".join(failures),
     )
 
 
@@ -1155,7 +1315,7 @@ def check_railway_config() -> None:
         deploy = cfg.get("deploy") or {}
         if deploy.get("startCommand") != "./start_hosting.sh":
             failures.append("startCommand")
-        if deploy.get("healthcheckPath") != "/api/health":
+        if deploy.get("healthcheckPath") != "/api/ready":
             failures.append("healthcheckPath")
         if deploy.get("restartPolicyType") != "ON_FAILURE":
             failures.append("restartPolicyType")
@@ -1188,8 +1348,8 @@ def main() -> int:
     skipped = [item for item in RESULTS if item["status"] == "SKIP"]
     summary = {
         "root": ROOT.name,
-        "version": "2.6.0-salud-nutricion-postgresql",
-        "generated_at": "2026-08-05",
+        "version": "2.7.0-centro-planeacion-psicosocial",
+        "generated_at": "2026-08-06",
         "checks": len(RESULTS),
         "passed": sum(item["status"] == "PASS" for item in RESULTS),
         "failed": len(failures),

@@ -15,7 +15,25 @@ if [[ "$(id -u)" -eq 0 ]]; then
   exec gosu appuser "$0" "$@"
 fi
 
-mkdir -p "$DATA_DIR"
+mkdir -p "$DATA_DIR" "$DATA_DIR/integrity" "$DATA_DIR/migration_reports"
+
+if [[ "${APP_ENV}" == "production" ]]; then
+  if [[ -z "${DATABASE_URL:-}" ]]; then
+    echo "[ERROR] DATABASE_URL PostgreSQL es obligatoria en producción." >&2
+    exit 20
+  fi
+  python backend/tools/postgresql_preflight.py \
+    --postgres "$DATABASE_URL" \
+    --report "$DATA_DIR/integrity/postgresql_preflight.json"
+fi
+
+# Gate rápido y no destructivo: bloquea despliegues con capacidades críticas ausentes.
+python backend/tools/integrity_gate.py \
+  --root /app \
+  --report "$DATA_DIR/integrity/integrity_gate_startup.json" \
+  --skip-tests \
+  --skip-manifest
+
 python backend/init_hosting.py
 
 # PostgreSQL elimina la contención del archivo SQLite. Se conserva un worker por

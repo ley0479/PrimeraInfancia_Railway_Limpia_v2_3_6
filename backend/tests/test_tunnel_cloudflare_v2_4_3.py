@@ -38,7 +38,7 @@ def main() -> None:
     tunnel = read("scripts_windows/iniciar_tunel_cloudflare.ps1")
     require(
         tunnel,
-        "PRIMERA INFANCIA v2.6.0 - TUNEL CLOUDFLARE Y POSTGRESQL",
+        "PRIMERA INFANCIA v2.7.0 - TUNEL CLOUDFLARE Y POSTGRESQL",
         "[Net.ServicePointManager]::SecurityProtocol",
         "Tls12",
         "cloudflared_home_aislado",
@@ -82,8 +82,8 @@ def main() -> None:
     launcher = read("scripts_windows/iniciar_plataforma.ps1")
     require(
         launcher,
-        "PRIMERA INFANCIA 2.6.0",
-        "$env:APP_VERSION = '2.6.0-salud-nutricion-postgresql'",
+        "PRIMERA INFANCIA 2.7.0",
+        "$env:APP_VERSION = '2.7.0-centro-planeacion-psicosocial'",
         "/api/health",
         "PROJECT_INSTANCE_ID",
     )
@@ -107,7 +107,7 @@ def main() -> None:
     require(read("DIAGNOSTICAR_TUNEL_CLOUDFLARE.bat"), "diagnosticar_login_tunel.ps1")
 
     env = read(".env.example")
-    require(env, "APP_VERSION=2.6.0-salud-nutricion-postgresql")
+    require(env, "APP_VERSION=2.7.0-centro-planeacion-psicosocial")
 
     print("PASS test_tunnel_cloudflare_v2_4_3")
 

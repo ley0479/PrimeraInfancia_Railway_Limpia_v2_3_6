@@ -86,7 +86,7 @@ def password_policy_errors(password: str, minimum: int = 12) -> list[str]:
 
 class BaseConfig:
     APP_ENV = os.getenv("APP_ENV", os.getenv("FLASK_ENV", "development")).lower()
-    APP_VERSION = os.getenv("APP_VERSION", "2.6.0-salud-nutricion-postgresql")
+    APP_VERSION = os.getenv("APP_VERSION", "2.7.0-centro-planeacion-psicosocial")
     BIBLIOTECA_REMOTE_CHECKS_ENABLED = os.getenv("BIBLIOTECA_REMOTE_CHECKS_ENABLED", "false").lower() in {"1", "true", "si", "sí"}
     BIBLIOTECA_ALLOWED_DOMAINS = os.getenv("BIBLIOTECA_ALLOWED_DOMAINS", "icbf.gov.co,www.icbf.gov.co")
     MOTOR_GESTION_ENABLED = os.getenv("MOTOR_GESTION_ENABLED", "true").lower() in {"1", "true", "si", "sí"}
@@ -103,6 +103,12 @@ class BaseConfig:
     DATABASE_PATH = resolve_path("DATABASE_PATH", Path(DATA_DIR) / "database.sqlite3")
     DATABASE_URL = normalize_database_url(os.getenv("DATABASE_URL", _sqlite_url(DATABASE_PATH)))
     ENABLE_POSTGRESQL_RUNTIME = env_bool("ENABLE_POSTGRESQL_RUNTIME", True)
+    REQUIRE_POSTGRESQL_IN_PRODUCTION = env_bool("REQUIRE_POSTGRESQL_IN_PRODUCTION", True)
+    INTEGRITY_ENGINE_ENABLED = env_bool("INTEGRITY_ENGINE_ENABLED", True)
+    METRICS_ENABLED = env_bool("METRICS_ENABLED", True)
+    METRICS_TOKEN = os.getenv("METRICS_TOKEN", "").strip()
+    READINESS_MAX_DB_LATENCY_MS = env_int("READINESS_MAX_DB_LATENCY_MS", 2000)
+    OBSERVABILITY_SLOW_REQUEST_MS = env_int("OBSERVABILITY_SLOW_REQUEST_MS", 2000)
     SQLITE_TIMEOUT_SECONDS = env_int("SQLITE_TIMEOUT_SECONDS", 30)
     DB_POOL_SIZE = env_int("DB_POOL_SIZE", 8)
     DB_MAX_OVERFLOW = env_int("DB_MAX_OVERFLOW", 12)
@@ -304,7 +310,10 @@ def validate_runtime_config(config: dict[str, Any]) -> None:
     if database_url.startswith("postgresql"):
         if not database_url.startswith("postgresql+psycopg://"):
             errors.append("DATABASE_URL de PostgreSQL debe usar el driver psycopg normalizado.")
-    elif not database_url.startswith("sqlite"):
+    elif database_url.startswith("sqlite"):
+        if config.get("REQUIRE_POSTGRESQL_IN_PRODUCTION", True):
+            errors.append("PostgreSQL es obligatorio en producción; SQLite queda reservado para recuperación local y pruebas.")
+    else:
         errors.append("DATABASE_URL debe usar PostgreSQL o SQLite.")
     if not config.get("SINGLE_TENANT_MODE", True):
         if not config.get("ALLOW_EXPERIMENTAL_MULTI_TENANT", False):

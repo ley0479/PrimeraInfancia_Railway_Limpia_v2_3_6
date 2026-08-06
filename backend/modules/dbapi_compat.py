@@ -153,6 +153,33 @@ def _translate_group_concat(sql: str) -> str:
     return pattern.sub(r"STRING_AGG(CAST(\1 AS TEXT), \2)", sql)
 
 
+def _translate_julianday(sql: str) -> str:
+    """Traduce el subconjunto de ``julianday`` usado por el runtime.
+
+    SQLite devuelve días como número real. PostgreSQL no ofrece esa función,
+    por lo que se normaliza a epoch/86400. Los casos operativos actuales usan
+    ``'now'`` o una columna/expresión de fecha sin llamadas anidadas.
+    """
+    out = re.sub(
+        r"julianday\s*\(\s*(['\"]now['\"])\s*\)",
+        "(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP) / 86400.0)",
+        sql,
+        flags=re.I,
+    )
+    pattern = re.compile(r"julianday\s*\(\s*([^()]+?)\s*\)", re.I)
+
+    def repl(match: re.Match[str]) -> str:
+        expression = match.group(1).strip()
+        return f"(EXTRACT(EPOCH FROM CAST({expression} AS TIMESTAMP)) / 86400.0)"
+
+    return pattern.sub(repl, out)
+
+
+def _sql_like(value: str, pattern: str) -> bool:
+    escaped = re.escape(pattern).replace(r"%", ".*").replace(r"_", ".")
+    return re.fullmatch(escaped, value, flags=re.I) is not None
+
+
 def _translate_sqlite_sql(sql: str) -> str:
     out = str(sql or "").strip()
     out = _replace_sqlite_double_quoted_literals(out)
@@ -160,6 +187,7 @@ def _translate_sqlite_sql(sql: str) -> str:
     out = re.sub(r"\bIFNULL\s*\(", "COALESCE(", out, flags=re.I)
     out = re.sub(r"\s+COLLATE\s+NOCASE\b", "", out, flags=re.I)
     out = _translate_group_concat(out)
+    out = _translate_julianday(out)
     out = re.sub(r"\bdate\s*\(\s*'now'\s*\)", "CURRENT_DATE", out, flags=re.I)
     out = re.sub(r"\bdatetime\s*\(\s*'now'\s*\)", "CURRENT_TIMESTAMP", out, flags=re.I)
     out = re.sub(r"\bdatetime\s*\(\s*\"now\"\s*\)", "CURRENT_TIMESTAMP", out, flags=re.I)
@@ -285,11 +313,18 @@ class CompatCursor:
         lower = sql.lower()
         wanted = None
         values = list(params.values()) if isinstance(params, Mapping) else list(params or [])
-        if "name=?" in lower and values:
+        if re.search(r"name\s*=\s*\?", lower) and values:
             wanted = str(values[0])
             names = [n for n in names if n == wanted]
-        if "name not like 'sqlite_%'" in lower:
-            names = [n for n in names if not n.startswith('sqlite_')]
+        positive_patterns = re.findall(r"name\s+like\s+['\"]([^'\"]+)['\"]", sql, flags=re.I)
+        negative_patterns = re.findall(r"name\s+not\s+like\s+['\"]([^'\"]+)['\"]", sql, flags=re.I)
+        # Quitar los patrones NOT LIKE de la lista positiva porque el regex de
+        # LIKE también los captura como subcadena.
+        positive_patterns = [p for p in positive_patterns if p not in negative_patterns]
+        if positive_patterns:
+            names = [name for name in names if any(_sql_like(name, pattern) for pattern in positive_patterns)]
+        if negative_patterns:
+            names = [name for name in names if all(not _sql_like(name, pattern) for pattern in negative_patterns)]
         rows: list[CompatRow] = []
         if re.search(r"select\s+sql\s+from\s+sqlite_master", lower):
             for name in names:

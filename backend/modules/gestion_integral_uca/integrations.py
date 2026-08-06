@@ -74,6 +74,8 @@ COMPONENTS: tuple[ComponentDefinition, ...] = (
     ComponentDefinition("talento_humano", "Talento Humano", "talento", "Personas, asignaciones y cobertura del equipo por UCA."),
     ComponentDefinition("familias_redes", "Familia, Comunidad y Redes Sociales", "familias-redes", "Acompañamiento familiar, actividades, compromisos, alertas y redes territoriales."),
     ComponentDefinition("supervision_calidad", "Supervisión, Auditoría y Calidad", "supervision-calidad", "Verificaciones, hallazgos, planes de mejora, seguimientos y productos de supervisión."),
+    ComponentDefinition("planeacion_operativa", "Planeación y Calendario Operativo", "centro-planeacion", "Agenda transversal, dependencias, recordatorios y productos operativos sin duplicación."),
+    ComponentDefinition("psicosocial", "Componente Psicosocial", "componente-psicosocial", "Caracterización, planes, acciones y seguimiento profesional sobre expedientes familiares referenciales."),
     ComponentDefinition("documentos_evidencias", "Documentos y evidencias", "expediente-operativo-uca", "Índice único de referencias documentales sin copiar archivos."),
     ComponentDefinition("cronograma", "Cronograma y calendario", "calendario-inteligente", "Actividades, entregables, vencimientos y próximos compromisos."),
     ComponentDefinition("reportes_indicadores", "Reportes e indicadores", "reportes-gerenciales", "Productos de seguimiento, paquetes e indicadores derivados."),
@@ -393,6 +395,66 @@ class UCAIntegrationEngine:
             "fuentes": ["csc_supervisiones", "csc_hallazgos", "csc_planes_mejora", "csc_acciones_mejora"],
         }
 
+    def _planning_center(self, conn: sqlite3.Connection, fundacion_id: int, unit_name: str, unit_code: str | None) -> dict[str, Any]:
+        rows = self._scoped_rows(
+            conn, "cpo_actividad_metadata", fundacion_id=fundacion_id,
+            unit_name=unit_name, unit_code=unit_code,
+            unit_columns=("unidad_nombre", "unidad_clave"),
+            fields=("id", "unidad_nombre", "unidad_clave", "estado_flujo", "bloqueada", "requiere_evidencias"),
+            limit=10000,
+        )
+        total = len(rows)
+        completed = sum(1 for row in rows if _state(row.get("estado_flujo")) in _COMPLETE_STATES)
+        blocked = sum(1 for row in rows if int(row.get("bloqueada") or 0) == 1)
+        pending = max(0, total - completed)
+        score = round((completed / total) * 100, 2) if total else 100.0
+        score = max(0.0, score - min(40.0, blocked * 10.0))
+        return {
+            "actividades": total, "completas": completed, "pendientes": pending,
+            "bloqueadas": blocked, "cumplimiento_porcentaje": score,
+            "semaforo": self._semaphore(score),
+            "fuentes": ["cpo_actividad_metadata", "calendario_entregables", "cpo_dependencias", "cpo_notificaciones"],
+        }
+
+    def _psychosocial(self, conn: sqlite3.Connection, fundacion_id: int, unit_name: str, unit_code: str | None) -> dict[str, Any]:
+        cases = self._scoped_rows(
+            conn, "ps_expedientes", fundacion_id=fundacion_id,
+            unit_name=unit_name, unit_code=unit_code,
+            unit_columns=("unidad_nombre", "unidad_clave"),
+            fields=("id", "unidad_nombre", "unidad_clave", "estado"), limit=10000,
+        )
+        case_ids = [int(row["id"]) for row in cases if row.get("id")]
+        plans: list[dict[str, Any]] = []
+        actions: list[dict[str, Any]] = []
+        characterized = 0
+        if case_ids:
+            marks = ",".join("?" for _ in case_ids)
+            plans = [dict(row) for row in conn.execute(
+                f"SELECT id,expediente_id,estado,porcentaje FROM ps_planes_acompanamiento WHERE fundacion_id=? AND expediente_id IN ({marks})",
+                [fundacion_id] + case_ids,
+            ).fetchall()] if self.table_exists(conn, "ps_planes_acompanamiento") else []
+            characterized = int(conn.execute(
+                f"SELECT COUNT(DISTINCT expediente_id) FROM ps_caracterizaciones WHERE fundacion_id=? AND activo=1 AND expediente_id IN ({marks})",
+                [fundacion_id] + case_ids,
+            ).fetchone()[0] or 0) if self.table_exists(conn, "ps_caracterizaciones") else 0
+            plan_ids = [int(row["id"]) for row in plans if row.get("id")]
+            if plan_ids and self.table_exists(conn, "ps_acciones_plan"):
+                pmarks = ",".join("?" for _ in plan_ids)
+                actions = [dict(row) for row in conn.execute(
+                    f"SELECT id,plan_id,estado,porcentaje,fecha_limite FROM ps_acciones_plan WHERE fundacion_id=? AND plan_id IN ({pmarks})",
+                    [fundacion_id] + plan_ids,
+                ).fetchall()]
+        open_plans = sum(1 for row in plans if _state(row.get("estado")) not in {"CERRADO", "CANCELADO"})
+        pending_actions = sum(1 for row in actions if _state(row.get("estado")) not in _COMPLETE_STATES)
+        coverage = round((characterized / len(cases)) * 100, 2) if cases else 100.0
+        score = max(0.0, coverage - min(40.0, pending_actions * 4.0))
+        return {
+            "expedientes": len(cases), "caracterizados": characterized,
+            "planes_abiertos": open_plans, "acciones_pendientes": pending_actions,
+            "cumplimiento_porcentaje": score, "semaforo": self._semaphore(score),
+            "fuentes": ["ps_expedientes", "ps_caracterizaciones", "ps_planes_acompanamiento", "ps_acciones_plan", "ps_seguimientos"],
+        }
+
     def schedule(self, conn: sqlite3.Connection, fundacion_id: int, unit_name: str, unit_code: str | None, limit: int = 100) -> list[dict[str, Any]]:
         today = date.today().isoformat()
         items: list[dict[str, Any]] = []
@@ -659,6 +721,8 @@ class UCAIntegrationEngine:
             "rg_reportes", "plantillas_oficiales_versiones", "fcr_expedientes_familiares", "fcr_actividades",
             "fcr_compromisos", "fcr_alertas", "fcr_redes_apoyo", "csc_supervisiones", "csc_hallazgos",
             "csc_planes_mejora", "csc_acciones_mejora", "csc_productos",
+            "cpo_actividad_metadata", "cpo_dependencias", "cpo_documentos_preparados",
+            "ps_expedientes", "ps_caracterizaciones", "ps_planes_acompanamiento", "ps_acciones_plan",
         ]
         result = []
         for table in tables:
@@ -688,6 +752,8 @@ class UCAIntegrationEngine:
             talent = self._talent(conn, fundacion_id, unit_name, unit_code)
             families = self._families_networks(conn, fundacion_id, unit_name, unit_code)
             supervision = self._supervision_quality(conn, fundacion_id, unit_name, unit_code)
+            planning = self._planning_center(conn, fundacion_id, unit_name, unit_code)
+            psychosocial = self._psychosocial(conn, fundacion_id, unit_name, unit_code)
             schedule = self.schedule(conn, fundacion_id, unit_name, unit_code)
             documents = self.documents(conn, fundacion_id, unit_name, unit_code)
             alerts = self.alerts(conn, fundacion_id, unit_name, unit_code, schedule)
@@ -708,6 +774,8 @@ class UCAIntegrationEngine:
             "talento_humano": talent,
             "familias_redes": families,
             "supervision_calidad": supervision,
+            "planeacion_operativa": planning,
+            "psicosocial": psychosocial,
             "documentos_evidencias": {"documentos_vinculados": len(documents), "semaforo": self._semaphore(document_score) if documents else "AMARILLO", "fuentes": sorted({doc["source_table"] for doc in documents})},
             "cronograma": {"actividades": schedule_total, "vencidas": schedule_overdue, "cumplimiento_porcentaje": schedule_score, "semaforo": self._semaphore(schedule_score), "fuentes": sorted({str(item.get("source_table")) for item in schedule})},
             "reportes_indicadores": {**reporting, "semaforo": "VERDE" if reporting["reportes_gerenciales"] or reporting["paquetes_mensuales"] else "AMARILLO"},
@@ -726,6 +794,8 @@ class UCAIntegrationEngine:
             {"codigo": "UCA_TALENTO_ACTIVO", "nombre": "Talento humano activo", "valor": talent["personas_activas"], "unidad": "personas", "semaforo": talent["semaforo"], "fuente": "th_personas"},
             {"codigo": "UCA_FAMILIAS_ACOMPANADAS", "nombre": "Expedientes familiares activos", "valor": families["expedientes_familiares"], "unidad": "familias", "semaforo": families["semaforo"], "fuente": "fcr_expedientes_familiares"},
             {"codigo": "UCA_HALLAZGOS_SUPERVISION", "nombre": "Hallazgos de supervisión abiertos", "valor": supervision["hallazgos_abiertos"], "unidad": "hallazgos", "semaforo": supervision["semaforo"], "fuente": "csc_hallazgos"},
+            {"codigo": "UCA_PLANEACION_OPERATIVA", "nombre": "Cumplimiento de planeación operativa", "valor": planning["cumplimiento_porcentaje"], "unidad": "%", "semaforo": planning["semaforo"], "fuente": "cpo_actividad_metadata"},
+            {"codigo": "UCA_COBERTURA_PSICOSOCIAL", "nombre": "Cobertura de caracterización psicosocial", "valor": psychosocial["cumplimiento_porcentaje"], "unidad": "%", "semaforo": psychosocial["semaforo"], "fuente": "ps_caracterizaciones"},
             {"codigo": "UCA_ALERTAS_ABIERTAS", "nombre": "Alertas abiertas", "valor": len(alerts), "unidad": "alertas", "semaforo": "VERDE" if not alerts else ("AMARILLO" if len(alerts) <= 3 else "ROJO"), "fuente": "agregación transversal"},
             {"codigo": "UCA_CRONOGRAMA", "nombre": "Cumplimiento del cronograma", "valor": schedule_score, "unidad": "%", "semaforo": self._semaphore(schedule_score), "fuente": "calendario"},
         ]
@@ -742,6 +812,10 @@ class UCAIntegrationEngine:
             blockers.append(f"Existen {families['alertas_abiertas']} alertas de Familia, Comunidad y Redes abiertas.")
         if supervision["hallazgos_abiertos"]:
             blockers.append(f"Existen {supervision['hallazgos_abiertos']} hallazgos de supervisión abiertos.")
+        if planning["bloqueadas"]:
+            blockers.append(f"Existen {planning['bloqueadas']} actividades de planeación bloqueadas por dependencias.")
+        if psychosocial["acciones_pendientes"]:
+            blockers.append(f"Existen {psychosocial['acciones_pendientes']} acciones psicosociales pendientes.")
         if not documents:
             blockers.append("No se encontraron documentos o evidencias vinculables a esta UCA.")
         readiness_scores = [
@@ -751,6 +825,8 @@ class UCAIntegrationEngine:
             100.0 if talent["personas_activas"] else 0.0,
             families["cumplimiento_porcentaje"],
             supervision["cumplimiento_porcentaje"],
+            planning["cumplimiento_porcentaje"],
+            psychosocial["cumplimiento_porcentaje"],
             schedule_score,
             100.0 if documents else 50.0,
         ]

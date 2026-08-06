@@ -32,6 +32,9 @@ PUBLIC_PATHS = {
     '/api/auth/recuperar',
     '/api/auth/restablecer',
     '/api/health',
+    '/api/ready',
+    '/api/integrity/health',
+    '/api/integrity/metrics',
 }
 PASSWORD_CHANGE_ALLOWED_PATHS = {
     '/api/auth/me',
@@ -40,9 +43,9 @@ PASSWORD_CHANGE_ALLOWED_PATHS = {
 }
 
 ROLE_MENU_PERMISSIONS = {
-    'SUPERADMIN': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'manual-operativo', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes'],
-    'GERENTE': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'manual-operativo', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes'],
-    'COORDINADOR': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'manual-operativo', 'ajustes', 'calidad-datos', 'base-maestra', 'paquete-mensual', 'reportes-gerenciales', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'formatos', 'relacion-mes', 'cumplimiento', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes'],
+    'SUPERADMIN': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'manual-operativo', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes', 'integrity-stability'],
+    'GERENTE': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'manual-operativo', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes', 'integrity-stability'],
+    'COORDINADOR': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'manual-operativo', 'ajustes', 'calidad-datos', 'base-maestra', 'paquete-mensual', 'reportes-gerenciales', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'formatos', 'relacion-mes', 'cumplimiento', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes', 'integrity-stability'],
     'DOCENTE': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'manual-operativo', 'ajustes', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'formatos', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad'],
     'NUTRICIONISTA': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'manual-operativo', 'ajustes', 'calidad-datos', 'base-maestra', 'salud-nutricion', 'nutricion', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad'],
     'PSICOSOCIAL': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'manual-operativo', 'ajustes', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes'],
@@ -102,6 +105,9 @@ PATH_ROLE_RULES = sorted([
     ('/api/motor-gestion-proyecto', ALL_ROLES),
     ('/api/supervision-calidad', ALL_ROLES),
     ('/api/familias-redes', FAMILY_SOCIAL),
+    ('/api/centro-planeacion', ALL_ROLES),
+    ('/api/psicosocial', FAMILY_SOCIAL),
+    ('/api/integrity', frozenset({'SUPERADMIN', 'GERENTE', 'COORDINADOR'})),
     ('/api/asistente-icbf', ALL_ROLES),
     ('/api/corporaciones', ALL_ROLES),
     ('/api/beneficiarios', ALL_ROLES),
@@ -1047,7 +1053,7 @@ def activate_security_guard(app, database_path: str) -> None:
         forwarded_proto = request.headers.get('X-Forwarded-Proto', '').split(',')[0].strip().lower()
         if (
             current_app.config.get('FORCE_HTTPS', False)
-            and normalized_path != '/api/health'
+            and normalized_path not in {'/api/health', '/api/ready'}
             and not request.is_secure
             and forwarded_proto != 'https'
         ):

@@ -30,7 +30,7 @@ $HealthUrl = "$LocalBase/api/health"
 $TunnelMode = $Mode -in @('Tunnel','TunnelBackend')
 
 Write-Host '============================================================'
-Write-Host ' PRIMERA INFANCIA 2.6.0 - INICIO ROBUSTO WINDOWS'
+Write-Host ' PRIMERA INFANCIA 2.7.0 - INICIO ROBUSTO WINDOWS'
 Write-Host " Modo: $Mode"
 Write-Host '============================================================'
 Write-Host ''
@@ -136,7 +136,7 @@ Write-Host "Base seleccionada: $DatabaseBackend ($SafeDb)"
 # Variables de aplicación. El proceso backend hereda este entorno; no se escriben secretos en el script hijo.
 $env:APP_ENV = 'development'
 $env:FLASK_ENV = 'development'
-$env:APP_VERSION = '2.6.0-salud-nutricion-postgresql'
+$env:APP_VERSION = '2.7.0-centro-planeacion-psicosocial'
 $env:SERVER_MODE = if ($TunnelMode) { 'TUNEL_ONLINE' } else { 'LOCAL' }
 $env:PUBLIC_TUNNEL_MODE = if ($TunnelMode) { 'true' } else { 'false' }
 $env:PROJECT_INSTANCE_ID = $ProjectInstanceId
@@ -182,7 +182,7 @@ $env:DB_POOL_TIMEOUT_SECONDS = '15'
 $env:DB_POOL_RECYCLE_SECONDS = '1200'
 $env:DB_CONNECT_TIMEOUT_SECONDS = '10'
 $env:DB_STATEMENT_TIMEOUT_MS = '30000'
-$env:DB_APPLICATION_NAME = 'primera-infancia-2.6.0'
+$env:DB_APPLICATION_NAME = 'primera-infancia-2.7.0'
 $env:PYTHONUTF8 = '1'
 $env:PYTHONIOENCODING = 'utf-8'
 
@@ -274,7 +274,7 @@ $RunScript = Join-Path $RuntimeDir 'run_backend.ps1'
 $runContent = @"
 `$ErrorActionPreference = 'Continue'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-`$host.UI.RawUI.WindowTitle = 'Primera Infancia - Backend 2.6.0 ($Mode)'
+`$host.UI.RawUI.WindowTitle = 'Primera Infancia - Backend 2.7.0 ($Mode)'
 Set-Location -LiteralPath '$($BackendDir.Replace("'","''"))'
 Write-Host 'Plataforma: $LocalFrontend' -ForegroundColor Cyan
 Write-Host 'Instancia: $ProjectInstanceId' -ForegroundColor DarkGray

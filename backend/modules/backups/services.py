@@ -166,7 +166,7 @@ class BackupService:
                 raise RuntimeError(f'La base actual no pasó validación antes de backup: {integrity}')
             payload_hash = self.sha256_file(payload)
             manifest = {
-                'app': 'PrimeraInfancia', 'version': '2.6.0', 'tipo': payload_type,
+                'app': 'PrimeraInfancia', 'version': '2.7.0', 'tipo': payload_type,
                 'backend': backend, 'motivo': motivo, 'descripcion': descripcion,
                 'fecha_creacion': now_iso(), 'database_file': payload_name,
                 'database_sha256': payload_hash, 'database_size': os.path.getsize(payload),
@@ -327,5 +327,5 @@ class BackupService:
             'ultimo': dict(ultimo) if ultimo else None,
             'backup_diario_hoy': dict(diario) if diario else None,
             'carpeta': self.backups_folder,
-            'database': self.database_path,
+            'database': ('postgresql://***' if self.backend_name == 'postgresql' else self.database_path),
         }

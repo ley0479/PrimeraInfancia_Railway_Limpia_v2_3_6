@@ -1,0 +1,44 @@
+{
+  "version": "2.7.0-centro-planeacion-psicosocial",
+  "generated_at": "2026-08-06",
+  "status": "PASS",
+  "integrity_gate": {
+    "status": "PASS",
+    "blocking_failures": 0,
+    "checks": 13,
+    "critical_tests": 19,
+    "duration_seconds": 52.96
+  },
+  "static_analysis": {
+    "python_files": 210,
+    "javascript_files": 39,
+    "api_routes": 439,
+    "authorization_families": 62,
+    "sql_literals_scanned": 1602,
+    "supported_legacy_sql_constructs": 181,
+    "unsupported_sql_constructs": 0,
+    "direct_sqlite_imports": 0
+  },
+  "functional_scenarios": [
+    {"name": "sincronización psicosocial idempotente", "status": "PASS"},
+    {"name": "aislamiento entre dos fundaciones", "status": "PASS"},
+    {"name": "versionado de caracterizaciones", "status": "PASS"},
+    {"name": "validación humana de caracterizaciones", "status": "PASS"},
+    {"name": "bloqueo de acción sin evidencia", "status": "PASS"},
+    {"name": "cierre controlado de plan", "status": "PASS"},
+    {"name": "informe psicosocial con integridad", "status": "PASS"},
+    {"name": "sincronización de planeación sin duplicados", "status": "PASS"},
+    {"name": "dependencias y desbloqueo", "status": "PASS"},
+    {"name": "documentos en borrador", "status": "PASS"},
+    {"name": "protección contra elevación de vista", "status": "PASS"},
+    {"name": "paquete mensual ZIP", "status": "PASS"},
+    {"name": "integración al Expediente UCA", "status": "PASS"}
+  ],
+  "not_executed_in_build_environment": [
+    "PowerShell real en Windows",
+    "Cloudflare Tunnel real",
+    "Railway con tráfico real",
+    "navegador integral con todos los roles",
+    "PostgreSQL productivo con datos reales"
+  ]
+}

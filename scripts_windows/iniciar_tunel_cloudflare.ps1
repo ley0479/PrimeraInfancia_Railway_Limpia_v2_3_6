@@ -6,7 +6,7 @@ try {
 } catch { }
 
 Write-Host '============================================================'
-Write-Host '  PRIMERA INFANCIA v2.6.0 - TUNEL CLOUDFLARE Y POSTGRESQL'
+Write-Host '  PRIMERA INFANCIA v2.7.0 - TUNEL CLOUDFLARE Y POSTGRESQL'
 Write-Host '  Genera un enlace temporal HTTPS en trycloudflare.com'
 Write-Host '============================================================'
 Write-Host ''

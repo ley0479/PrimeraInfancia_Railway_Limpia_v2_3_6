@@ -1,3 +1,17 @@
+# Validación y cambios — PrimeraInfancia 2.6.1
+
+## Alcance
+
+- Continuación no destructiva de la transición SQLite → PostgreSQL.
+- Preflight, snapshot consistente, copia por lotes, secuencias, conteos, huellas y FK.
+- Motor de Integridad basado en línea estable 2.6.0.
+- Regresión crítica y bloqueo de despliegue.
+- CI con PostgreSQL 16 y evidencia descargable.
+- Readiness, métricas, correlación HTTP y pool de conexiones.
+- Autorreparación restringida a caché, temporales y logs.
+
+La migración productiva real queda pendiente de ejecutar con las credenciales y el volumen del operador. El paquete entrega el procedimiento y los controles; no simula que el corte ya ocurrió.
+
 # Validación y cambios — PrimeraInfancia 2.6.0
 
 ## Salud y Nutrición Integral, PostgreSQL y scripts Windows
@@ -354,3 +368,14 @@ El catálogo UDS se considera información operativa, no personal. No se reincor
 La validación local comprueba código, manifiestos, hojas Office y comportamiento de servicios con datos sintéticos. No reemplaza la prueba integral del contenedor en Railway ni una auditoría legal de tratamiento de datos.
 
 Hasta completar la lista anterior, la versión debe usarse solamente para ensayos controlados con información ficticia.
+
+## Versión 2.7.0 — Centro de Planeación y Componente Psicosocial
+
+- Se agregó un Centro Inteligente de Planeación sobre el calendario existente, sin crear una segunda fuente de fechas.
+- Se integraron fuentes misionales con sincronización idempotente y supresión de tareas espejo del Motor de Gestión.
+- Se añadieron reglas configurables, dependencias, semáforos, notificaciones y documentos borrador.
+- Se incorporó el Componente Psicosocial referencial sobre Gestión de Familias y Redes.
+- Las caracterizaciones son versionadas y los planes/acciones requieren validación humana.
+- Se añadieron dos dominios e indicadores al Expediente Operativo por UCA.
+- El baseline 2.7.0 y la regresión crítica protegen los nuevos módulos.
+- No se eliminaron módulos ni se cambió la lógica de negocio de RAM, RAN, RPP, Bienestarina, Salud, Pedagogía, autenticación o PostgreSQL.

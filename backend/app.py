@@ -31,6 +31,7 @@ from motor_alertas import MotorAlertas
 from config import get_config, validate_runtime_config
 from extensions import init_extensions
 from database import configure_database, get_db_connection as database_connection, database
+from services.observability import configure_observability
 from modules.print_master import aplicar_configuracion_impresion_libro, infer_print_format
 from modules.plantillas_oficiales import iter_plantillas_oficiales_para_generacion
 from modules.operational_jobs import configure as configure_operational_jobs, start_job, get_job, list_jobs
@@ -103,6 +104,7 @@ def create_app(config_name=None):
             )
         init_extensions(app, origins=parse_allowed_origins())
         configure_database(app)
+        configure_observability(app, database)
         _APP_CONFIGURED = True
     return app
 
@@ -349,6 +351,37 @@ except Exception as exc:
         app.logger.exception('Gestión Integral de Familias, Comunidad y Redes no pudo registrarse')
     else:
         print(f'Gestión Integral de Familias, Comunidad y Redes no pudo registrarse: {exc}')
+
+
+# V2.7.0: Centro Inteligente de Planeación y Calendario Operativo.
+# Consume referencias de los módulos existentes y conserva un único calendario.
+try:
+    from modules.centro_planeacion import register_centro_planeacion
+    register_centro_planeacion(app, DATABASE_PATH, app.config['DATA_DIR'], OUTPUT_FOLDER)
+except Exception as exc:
+    if str(app.config.get('APP_ENV', '')).lower() == 'production':
+        app.logger.exception('Centro Inteligente de Planeación no pudo registrarse')
+    else:
+        print(f'Centro Inteligente de Planeación no pudo registrarse: {exc}')
+
+# V2.7.0: Componente Psicosocial especializado sobre Familias y Redes.
+try:
+    from modules.componente_psicosocial import register_componente_psicosocial
+    register_componente_psicosocial(app, DATABASE_PATH, app.config['DATA_DIR'], OUTPUT_FOLDER)
+except Exception as exc:
+    if str(app.config.get('APP_ENV', '')).lower() == 'production':
+        app.logger.exception('Componente Psicosocial no pudo registrarse')
+    else:
+        print(f'Componente Psicosocial no pudo registrarse: {exc}')
+
+# V2.7.0: conserva Integridad y agrega Planeación Operativa/Psicosocial.
+try:
+    from modules.integrity_stability import register_integrity_stability
+    register_integrity_stability(app, app.config['PROJECT_DIR'], app.config['DATA_DIR'])
+except Exception as exc:
+    if str(app.config.get('APP_ENV', '')).lower() == 'production':
+        raise RuntimeError('El Motor de Integridad no pudo registrarse; se bloquea el arranque productivo.') from exc
+    print(f'Motor de Integridad no pudo registrarse: {exc}')
 
 
 KNOWN_UNITS = uds_canonical_units()
