@@ -5,6 +5,7 @@ import os
 import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 try:
     from dotenv import load_dotenv
@@ -69,6 +70,33 @@ def normalize_database_url(raw: str) -> str:
     return value
 
 
+def resolve_postgresql_url_from_environment() -> str:
+    """Resuelve PostgreSQL sin exponer credenciales ni aceptar localhost.
+
+    Railway normalmente inyecta ``DATABASE_URL`` mediante una referencia. Como
+    respaldo admite nombres de URL equivalentes y las variables PG* del plugin.
+    """
+    for name in ("DATABASE_URL", "DATABASE_PRIVATE_URL", "POSTGRES_URL", "POSTGRESQL_URL"):
+        value = str(os.getenv(name, "") or "").strip()
+        if value:
+            return normalize_database_url(value)
+
+    parts = {
+        "host": str(os.getenv("PGHOST", "") or "").strip(),
+        "port": str(os.getenv("PGPORT", "") or "").strip(),
+        "user": str(os.getenv("PGUSER", "") or "").strip(),
+        "password": str(os.getenv("PGPASSWORD", "") or ""),
+        "database": str(os.getenv("PGDATABASE", "") or "").strip(),
+    }
+    if all(parts.values()):
+        return (
+            "postgresql+psycopg://"
+            f"{quote(parts['user'], safe='')}:{quote(parts['password'], safe='')}@"
+            f"{parts['host']}:{parts['port']}/{quote(parts['database'], safe='')}"
+        )
+    return ""
+
+
 def password_policy_errors(password: str, minimum: int = 12) -> list[str]:
     errors: list[str] = []
     if len(password or "") < minimum:
@@ -101,7 +129,7 @@ class BaseConfig:
     SEED_TEMPLATES_FOLDER = str(BACKEND_DIR / "seed_data" / "templates_originales")
 
     DATABASE_PATH = resolve_path("DATABASE_PATH", Path(DATA_DIR) / "database.sqlite3")
-    DATABASE_URL = normalize_database_url(os.getenv("DATABASE_URL", _sqlite_url(DATABASE_PATH)))
+    DATABASE_URL = resolve_postgresql_url_from_environment() or _sqlite_url(DATABASE_PATH)
     ENABLE_POSTGRESQL_RUNTIME = env_bool("ENABLE_POSTGRESQL_RUNTIME", True)
     REQUIRE_POSTGRESQL_IN_PRODUCTION = env_bool("REQUIRE_POSTGRESQL_IN_PRODUCTION", True)
     INTEGRITY_ENGINE_ENABLED = env_bool("INTEGRITY_ENGINE_ENABLED", True)

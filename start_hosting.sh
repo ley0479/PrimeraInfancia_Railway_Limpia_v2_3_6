@@ -18,10 +18,16 @@ fi
 mkdir -p "$DATA_DIR" "$DATA_DIR/integrity" "$DATA_DIR/migration_reports"
 
 if [[ "${APP_ENV}" == "production" ]]; then
-  if [[ -z "${DATABASE_URL:-}" ]]; then
-    echo "[ERROR] DATABASE_URL PostgreSQL es obligatoria en producción." >&2
+  # Railway recomienda DATABASE_URL como referencia al servicio PostgreSQL.
+  # También admitimos las variables PG* inyectadas por el plugin y codificamos
+  # usuario/contraseña correctamente cuando contienen caracteres especiales.
+  if ! RESOLVED_DATABASE_URL="$(python backend/tools/resolve_postgresql_env.py)"; then
+    echo "[ERROR] No se recibió una conexión PostgreSQL de Railway." >&2
+    echo "[ERROR] Agregue DATABASE_URL como referencia al servicio PostgreSQL o referencie PGHOST, PGPORT, PGUSER, PGPASSWORD y PGDATABASE." >&2
     exit 20
   fi
+  export DATABASE_URL="$RESOLVED_DATABASE_URL"
+  unset RESOLVED_DATABASE_URL
   python backend/tools/postgresql_preflight.py \
     --postgres "$DATABASE_URL" \
     --report "$DATA_DIR/integrity/postgresql_preflight.json"
