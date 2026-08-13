@@ -226,7 +226,14 @@
         renderNutricion(data.nutricion_riesgo || data.casos_nutricionales_detalle || []);
         renderTendencia('gg-tendencia-ingresos', data.tendencias?.ingresos || [], 'ingresos', money);
         renderTendencia('gg-tendencia-creditos', data.tendencias?.creditos || [], 'creditos', number);
+        renderInteligencia(data.inteligencia_negocio || {});
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    function renderInteligencia(bi = {}) {
+        const indicators=$('gg-bi-indicadores'), lights=$('gg-bi-semaforos');
+        if(indicators) indicators.innerHTML=Object.entries(bi.indicadores||{}).map(([key,value])=>`<div class="gg-card"><span class="gg-label">${escapeHtml(key.replaceAll('_',' '))}</span><strong class="gg-card-value">${escapeHtml(number(value))}</strong></div>`).join('');
+        if(lights) lights.innerHTML=(bi.semaforos||[]).map(item=>`<div class="gg-alert"><div class="flex justify-between"><strong>${escapeHtml(item.componente)}</strong>${badge(item.estado)}</div><div class="gg-alert-text">${escapeHtml(item.valor)} ${escapeHtml(item.unidad)} · ${escapeHtml(item.explicacion)}</div></div>`).join('')||'<div class="gg-empty">Sin indicadores para los filtros.</div>';
     }
 
     async function cargarDashboard() {
@@ -234,7 +241,8 @@
         const [anio, mes] = periodo.split('-');
         message('Cargando Gerencia General...', 'info');
         try {
-            const data = await apiGet(`/api/gerencia-general/dashboard?anio=${encodeURIComponent(anio)}&mes=${encodeURIComponent(mes)}`);
+            const extra=[['contrato','gg-filtro-contrato'],['unidad','gg-filtro-unidad'],['coordinador','gg-filtro-coordinador'],['componente','gg-filtro-componente']].map(([k,id])=>[$(id)?.value,k]).filter(x=>x[0]).map(([v,k])=>`&${k}=${encodeURIComponent(v)}`).join('');
+            const data = await apiGet(`/api/gerencia-general/dashboard?anio=${encodeURIComponent(anio)}&mes=${encodeURIComponent(mes)}${extra}`);
             state.data = data;
             state.loaded = true;
             render(data);

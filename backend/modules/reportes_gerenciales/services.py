@@ -115,22 +115,29 @@ class ReportesGerencialesService:
     def get_beneficiarios(self, fundacion_id: int | None = None) -> list[dict[str, Any]]:
         conn = self.connect()
         cur = conn.cursor()
-        if not self.table_exists(cur, 'beneficiarios'):
+        if not self.table_exists(cur, 'master_ninos'):
             conn.close()
             return []
-        where, params = self._where_fundacion(cur, 'beneficiarios', fundacion_id)
-        rows = [dict(r) for r in cur.execute(f'SELECT * FROM beneficiarios WHERE {where}', tuple(params)).fetchall()]
+        where, params = self._where_fundacion(cur, 'master_ninos', fundacion_id)
+        rows = [dict(r) for r in cur.execute(
+            f'''SELECT *, unidad_servicio AS unidad, documento AS nui
+                FROM master_ninos WHERE activo=1 AND {where}''', tuple(params)
+        ).fetchall()]
         conn.close()
         return rows
 
     def get_talento(self, fundacion_id: int | None = None) -> list[dict[str, Any]]:
         conn = self.connect()
         cur = conn.cursor()
-        if not self.table_exists(cur, 'coordinadores'):
+        if not self.table_exists(cur, 'master_talento_humano'):
             conn.close()
             return []
-        where, params = self._where_fundacion(cur, 'coordinadores', fundacion_id)
-        rows = [dict(r) for r in cur.execute(f'SELECT * FROM coordinadores WHERE {where} ORDER BY unidad, cargo, nombre', tuple(params)).fetchall()]
+        where, params = self._where_fundacion(cur, 'master_talento_humano', fundacion_id)
+        rows = [dict(r) for r in cur.execute(
+            f'''SELECT *, nombre_completo AS nombre, unidad_servicio AS unidad
+                FROM master_talento_humano WHERE activo=1 AND {where}
+                ORDER BY unidad_servicio, cargo, nombre_completo''', tuple(params)
+        ).fetchall()]
         conn.close()
         return rows
 
@@ -344,15 +351,20 @@ class ReportesGerencialesService:
         cur = conn.cursor()
         valoraciones: list[dict[str, Any]] = []
         alertas: list[dict[str, Any]] = []
-        if self.table_exists(cur, 'sn_valoraciones'):
-            cols = self.table_columns(cur, 'sn_valoraciones')
+        if self.table_exists(cur, 'master_salud_nutricion'):
+            cols = self.table_columns(cur, 'master_salud_nutricion')
             where = '1=1'
             params: list[Any] = []
             if fundacion_id and 'fundacion_id' in cols:
                 where += ' AND COALESCE(fundacion_id, ?) = ?'
                 params.extend([fundacion_id, fundacion_id])
             try:
-                valoraciones = [dict(r) for r in cur.execute(f'SELECT * FROM sn_valoraciones WHERE {where} ORDER BY fecha_valoracion DESC LIMIT 5000', tuple(params)).fetchall()]
+                valoraciones = [dict(r) for r in cur.execute(
+                    f'''SELECT *, diagnostico_nutricional AS diagnostico_global,
+                               fecha_toma AS fecha_valoracion
+                        FROM master_salud_nutricion
+                        WHERE activo=1 AND {where} ORDER BY fecha_toma DESC LIMIT 5000''', tuple(params)
+                ).fetchall()]
             except Exception:
                 valoraciones = []
         if self.table_exists(cur, 'sn_alertas'):

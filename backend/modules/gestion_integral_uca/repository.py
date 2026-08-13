@@ -220,36 +220,6 @@ class GestionIntegralRepository:
                             "fuente": "master_unidades", "unidad_clave": key,
                         }
 
-            if not units and self._table_exists(conn, "unidades"):
-                cols = self._columns(conn, "unidades")
-                if "nombre" in cols:
-                    where = []
-                    params = []
-                    if "fundacion_id" in cols:
-                        where.append("fundacion_id=?")
-                        params.append(fundacion_id)
-                    if "activo" in cols:
-                        where.append("COALESCE(activo,1)=1")
-                    select = [expression(cols, "id", default="NULL"), expression(cols, "nombre")]
-                    for name, default in (("codigo_unidad", "NULL"), ("coordinador_id", "NULL"), ("total_usuarios", "0"), ("total_gestantes", "0")):
-                        select.append(expression(cols, name, default=default))
-                    sql = f"SELECT {','.join(select)} FROM unidades"
-                    if where:
-                        sql += " WHERE " + " AND ".join(where)
-                    sql += " ORDER BY nombre"
-                    rows = conn.execute(sql, params).fetchall()
-                    for row in rows:
-                        data = dict(row)
-                        key = unit_key(data.get("nombre"))
-                        if not key or (allowed_keys is not None and key not in allowed_keys):
-                            continue
-                        units[key] = {
-                            "id": data.get("id"), "nombre": data.get("nombre"), "codigo": data.get("codigo_unidad"),
-                            "coordinador": data.get("coordinador_id"),
-                            "total_participantes": int(data.get("total_usuarios") or 0) + int(data.get("total_gestantes") or 0),
-                            "total_talento": 0, "modalidad": None, "fuente": "unidades", "unidad_clave": key,
-                        }
-
             if not units and self._table_exists(conn, "master_ninos"):
                 cols = self._columns(conn, "master_ninos")
                 unit_column = "unidad_servicio" if "unidad_servicio" in cols else ("unidad" if "unidad" in cols else None)

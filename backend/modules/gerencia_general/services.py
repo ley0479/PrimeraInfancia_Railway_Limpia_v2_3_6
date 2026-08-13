@@ -182,8 +182,9 @@ class GerenciaGeneralService:
         except Exception:
             pass
 
-    def dashboard(self, anio: int | None = None, mes: int | None = None) -> dict[str, Any]:
+    def dashboard(self, anio: int | None = None, mes: int | None = None, filtros: dict[str, Any] | None = None) -> dict[str, Any]:
         inicio, fin, periodo = month_bounds(anio, mes)
+        filtros = {k: str(v).strip() for k,v in (filtros or {}).items() if str(v).strip()}
         conn = self.connect()
         cur = conn.cursor()
         data = {
@@ -201,6 +202,8 @@ class GerenciaGeneralService:
             'tickets_soporte': [],
             'tendencias': {},
             'resumen_ejecutivo': '',
+            'filtros_aplicados': filtros,
+            'inteligencia_negocio': {},
         }
 
         data['licencias'] = self.licencias_fundaciones(cur)
@@ -233,10 +236,52 @@ class GerenciaGeneralService:
             'tickets_abiertos': len([t for t in data['tickets_soporte'] if str(t.get('estado') or '').upper() not in {'CERRADO', 'RESUELTO', 'ANULADO'}]),
             'alertas_pago': len(data['alertas_pago']),
         }
+        data['inteligencia_negocio'] = self.inteligencia_negocio(cur, periodo, filtros)
         data['resumen_ejecutivo'] = self.resumen_ejecutivo(data)
         conn.close()
         self.log('CONSULTAR_DASHBOARD_GERENCIA', 'Consulta de tablero de gerencia general', {'periodo': periodo})
         return data
+
+    def inteligencia_negocio(self, cur: Any, periodo: str, filtros: dict[str, Any]) -> dict[str, Any]:
+        """Lectura transversal; nunca escribe ni infiere decisiones profesionales."""
+        fid=self.current_fundacion_id(); superadmin=self.is_superadmin(); unidad=filtros.get('unidad','')
+        def aggregate(table: str, expression: str='COUNT(*)', extra: str='', params: tuple=()) -> float:
+            if not self.table_exists(cur,table): return 0
+            cols=self.columns(cur,table); where=[]; values=[]
+            if not superadmin and 'fundacion_id' in cols: where.append('fundacion_id=?');values.append(fid)
+            if unidad:
+                col='unidad_nombre' if 'unidad_nombre' in cols else 'unidad' if 'unidad' in cols else None
+                if col: where.append(f'UPPER(COALESCE({col},\'\'))=UPPER(?)');values.append(unidad)
+            contrato=filtros.get('contrato','')
+            if contrato:
+                col='contrato' if 'contrato' in cols else 'contrato_id' if 'contrato_id' in cols and contrato.isdigit() else None
+                if col: where.append(f'CAST({col} AS TEXT)=?');values.append(contrato)
+            coordinador=filtros.get('coordinador','')
+            if coordinador:
+                col='coordinador_nombre' if 'coordinador_nombre' in cols else 'coordinador' if 'coordinador' in cols else None
+                if col: where.append(f'UPPER(COALESCE({col},\'\'))=UPPER(?)');values.append(coordinador)
+            if extra: where.append(extra);values.extend(params)
+            sql=f"SELECT {expression} valor FROM {table}"+(' WHERE '+' AND '.join(where) if where else '')
+            return self.sum_value(cur,sql,tuple(values))
+        presupuesto=aggregate('af_presupuestos','COALESCE(SUM(valor_aprobado+valor_modificado),0)','vigencia=?',(periodo[:4],))
+        ejecutado=aggregate('af_movimientos','COALESCE(SUM(valor),0)',"tipo IN ('COMPROMISO','OBLIGACION','PAGO') AND substr(fecha,1,7)<=?",(periodo,))
+        th_activos=aggregate('master_talento_humano','COUNT(DISTINCT documento)','activo=1')
+        docs_vencidos=aggregate('th_documentos','COUNT(*)',"fecha_vencimiento IS NOT NULL AND fecha_vencimiento < ? AND estado<>'RENOVADO'",(date.today().isoformat(),))
+        ambientes_criticos=aggregate('aep_activos','COUNT(*)',"activo=1 AND estado IN ('MALO','FUERA_DE_SERVICIO')")
+        mantenimientos_vencidos=aggregate('aep_mantenimientos','COUNT(*)',"estado<>'EJECUTADO' AND fecha_programada < ?",(date.today().isoformat(),))
+        hallazgos=aggregate('csc_hallazgos','COUNT(*)',"activa=1 AND estado<>'CERRADO'")
+        ps_abiertos=aggregate('ps_expedientes','COUNT(*)',"activo=1") if self.table_exists(cur,'ps_expedientes') else 0
+        ejec_pct=round((ejecutado/presupuesto*100),1) if presupuesto else 0
+        semaforos=[
+            {'componente':'Administrativo y Financiero','valor':ejec_pct,'unidad':'% ejecución','estado':'ROJO' if ejec_pct>100 else 'AMARILLO' if ejec_pct>90 else 'VERDE','explicacion':'Ejecución acumulada frente al presupuesto aprobado.'},
+            {'componente':'Talento Humano','valor':int(docs_vencidos),'unidad':'documentos vencidos','estado':'ROJO' if docs_vencidos>5 else 'AMARILLO' if docs_vencidos else 'VERDE','explicacion':'Conteo documental; no evalúa desempeño laboral.'},
+            {'componente':'Ambientes Protectores','valor':int(ambientes_criticos+mantenimientos_vencidos),'unidad':'condiciones críticas','estado':'ROJO' if ambientes_criticos else 'AMARILLO' if mantenimientos_vencidos else 'VERDE','explicacion':'Activos críticos y mantenimientos vencidos.'},
+            {'componente':'Supervisión y Calidad','valor':int(hallazgos),'unidad':'hallazgos abiertos','estado':'ROJO' if hallazgos>10 else 'AMARILLO' if hallazgos else 'VERDE','explicacion':'Hallazgos abiertos en la fuente canónica de Supervisión.'},
+        ]
+        component=filtros.get('componente')
+        if component: semaforos=[x for x in semaforos if component.upper() in x['componente'].upper()]
+        alerts=[{'nivel':x['estado'],'tipo':x['componente'],'mensaje':f"{x['valor']} {x['unidad']}. {x['explicacion']}"} for x in semaforos if x['estado']!='VERDE']
+        return {'indicadores':{'presupuesto':presupuesto,'ejecutado':ejecutado,'disponible':presupuesto-ejecutado,'ejecucion_porcentaje':ejec_pct,'talento_activo':int(th_activos),'documentos_th_vencidos':int(docs_vencidos),'ambientes_criticos':int(ambientes_criticos),'mantenimientos_vencidos':int(mantenimientos_vencidos),'hallazgos_abiertos':int(hallazgos),'expedientes_psicosociales':int(ps_abiertos)},'semaforos':semaforos,'alertas':alerts,'interpretacion':'Análisis descriptivo basado en fuentes existentes. No modifica registros ni sustituye decisiones profesionales o gerenciales.'}
 
     def fundaciones_activas(self, cur: Any) -> int:
         if not self.table_exists(cur, 'fundaciones'):
@@ -571,24 +616,24 @@ class GerenciaGeneralService:
         return items[:limit]
 
     def casos_nutricion_riesgo(self, cur: Any, limit: int = 25) -> list[dict[str, Any]]:
-        if not self.table_exists(cur, 'sn_valoraciones'):
+        if not self.table_exists(cur, 'master_salud_nutricion'):
             return []
-        scope, params = self.scope_sql('v') if 'fundacion_id' in self.columns(cur, 'sn_valoraciones') else ('', ())
-        levels = tuple(NIVELES_RIESGO_NUTRICION)
+        scope, params = self.scope_sql('v') if 'fundacion_id' in self.columns(cur, 'master_salud_nutricion') else ('', ())
         rows = cur.execute(
             f"""
-            SELECT v.id, v.fundacion_id, f.nombre AS fundacion, v.documento, v.nombre_completo,
-                   v.unidad, v.docente, v.edad_texto, v.sexo, v.peso_kg, v.talla_cm,
-                   v.diagnostico_global, v.nivel_alerta, v.fecha_valoracion, v.proximo_control
-            FROM sn_valoraciones v
-            LEFT JOIN fundaciones f ON f.id=v.fundacion_id
-            WHERE (UPPER(COALESCE(v.nivel_alerta,'')) IN ({','.join(['?'] * len(levels))})
-               OR UPPER(COALESCE(v.diagnostico_global,'')) LIKE '%RIESGO%'
-               OR UPPER(COALESCE(v.diagnostico_global,'')) LIKE '%DESNUTRIC%') {scope}
-            ORDER BY COALESCE(v.fecha_valoracion, v.fecha_carga) DESC
+            SELECT v.id, v.fundacion_id, NULL AS fundacion, v.documento,
+                   NULL AS nombre_completo, NULL AS unidad, NULL AS docente,
+                   NULL AS edad_meses, NULL AS sexo, v.peso AS peso_kg, v.talla AS talla_cm,
+                   v.diagnostico_nutricional AS diagnostico_global,
+                   v.estado_nutricional AS nivel_alerta, v.fecha_toma AS fecha_valoracion
+            FROM master_salud_nutricion v
+            WHERE v.activo=1 AND (UPPER(COALESCE(v.estado_nutricional,'')) LIKE '%RIESGO%'
+               OR UPPER(COALESCE(v.diagnostico_nutricional,'')) LIKE '%RIESGO%'
+               OR UPPER(COALESCE(v.diagnostico_nutricional,'')) LIKE '%DESNUTRIC%') {scope}
+            ORDER BY v.fecha_toma DESC
             LIMIT ?
             """,
-            levels + params + (limit,),
+            params + (limit,),
         ).fetchall()
         return [row_to_dict(r) for r in rows]
 
@@ -666,33 +711,33 @@ class GerenciaGeneralService:
 
     def unidades_cobertura_incompleta(self, cur: Any, limit: int = 50) -> list[dict[str, Any]]:
         result = []
-        if self.table_exists(cur, 'unidades'):
-            scope, params = self.scope_sql('u') if 'fundacion_id' in self.columns(cur, 'unidades') else ('', ())
+        if self.table_exists(cur, 'master_unidades'):
+            scope, params = self.scope_sql('u') if 'fundacion_id' in self.columns(cur, 'master_unidades') else ('', ())
             rows = cur.execute(
                 f"""
                 SELECT u.id, u.fundacion_id, f.nombre AS fundacion, u.nombre AS unidad,
-                       COALESCE(u.total_usuarios, 0) AS total_usuarios, COALESCE(u.total_gestantes, 0) AS total_gestantes,
-                       u.fecha_actualizacion
-                FROM unidades u
+                       COALESCE(u.total_ninos, 0) AS total_usuarios, 0 AS total_gestantes,
+                       u.fecha_consolidacion AS fecha_actualizacion
+                FROM master_unidades u
                 LEFT JOIN fundaciones f ON f.id=u.fundacion_id
-                WHERE COALESCE(u.total_usuarios,0) > 0 AND COALESCE(u.total_usuarios,0) < 20 {scope}
-                ORDER BY COALESCE(u.total_usuarios,0) ASC, u.nombre
+                WHERE u.activo=1 AND COALESCE(u.total_ninos,0) > 0 AND COALESCE(u.total_ninos,0) < 20 {scope}
+                ORDER BY COALESCE(u.total_ninos,0) ASC, u.nombre
                 LIMIT ?
                 """,
                 params + (limit,),
             ).fetchall()
             result.extend([row_to_dict(r) for r in rows])
-        if not result and self.table_exists(cur, 'beneficiarios'):
-            scope, params = self.scope_sql('b') if 'fundacion_id' in self.columns(cur, 'beneficiarios') else ('', ())
+        if not result and self.table_exists(cur, 'master_ninos'):
+            scope, params = self.scope_sql('b') if 'fundacion_id' in self.columns(cur, 'master_ninos') else ('', ())
             rows = cur.execute(
                 f"""
-                SELECT b.unidad, b.fundacion_id, f.nombre AS fundacion, COUNT(*) AS total_usuarios
-                FROM beneficiarios b
+                SELECT b.unidad_servicio AS unidad, b.fundacion_id, f.nombre AS fundacion, COUNT(*) AS total_usuarios
+                FROM master_ninos b
                 LEFT JOIN fundaciones f ON f.id=b.fundacion_id
-                WHERE UPPER(COALESCE(b.estado,'ACTIVO'))='ACTIVO' {scope}
-                GROUP BY b.unidad, b.fundacion_id, f.nombre
-                HAVING total_usuarios > 0 AND total_usuarios < 20
-                ORDER BY total_usuarios ASC, b.unidad
+                WHERE b.activo=1 {scope}
+                GROUP BY b.unidad_servicio, b.fundacion_id, f.nombre
+                HAVING COUNT(*) > 0 AND COUNT(*) < 20
+                ORDER BY total_usuarios ASC, b.unidad_servicio
                 LIMIT ?
                 """,
                 params + (limit,),

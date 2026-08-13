@@ -39,8 +39,46 @@ class BaseMaestraRepository:
     def init_schema(self) -> None:
         with self.connect() as conn:
             conn.executescript(SCHEMA_SQL)
+            self._repair_active_version_index(conn)
             self._seed_corporaciones(conn)
             conn.commit()
+
+    @staticmethod
+    def _repair_active_version_index(conn) -> None:
+        """Repara el índice legado que también hacía únicos los borradores.
+
+        Algunas bases PostgreSQL fueron creadas con un índice único sobre
+        ``(fundacion_id, activa)`` sin predicado. ``IF NOT EXISTS`` no cambia
+        esa definición y, por tanto, impedía conservar más de una versión con
+        ``activa = 0``. Solo la fila activa debe ser única por fundación.
+        """
+        if hasattr(conn, '_connection'):
+            row = conn.execute(
+                """
+                SELECT pg_get_indexdef(i.indexrelid) AS indexdef
+                FROM pg_index i
+                JOIN pg_class idx ON idx.oid = i.indexrelid
+                WHERE i.indrelid = 'master_versiones'::regclass
+                  AND idx.relname = ?
+                """,
+                ('idx_master_version_activa',),
+            ).fetchone()
+            definition = str(row['indexdef'] or '') if row else ''
+        else:
+            row = conn.execute(
+                "SELECT sql AS indexdef FROM sqlite_master WHERE type = 'index' AND name = ?",
+                ('idx_master_version_activa',),
+            ).fetchone()
+            definition = str(row['indexdef'] or '') if row else ''
+
+        if definition and 'where' not in definition.lower():
+            conn.execute('DROP INDEX IF EXISTS idx_master_version_activa')
+            conn.execute(
+                """
+                CREATE UNIQUE INDEX idx_master_version_activa
+                ON master_versiones(fundacion_id, activa) WHERE activa = 1
+                """
+            )
 
     def _seed_corporaciones(self, conn: sqlite3.Connection) -> None:
         """Crea una corporación operativa por fundación sin cruces entre tenants.

@@ -1,6 +1,6 @@
 /*
  * Tabla maestra de impresión — PrimeraInfancia v2.3.0-alpha.13
- * Mantiene una sola fuente de verdad para imprimir RPP, Bienestarina y RAM/RAN.
+ * Mantiene una sola fuente de verdad para imprimir RPP, Bienestarina y RAM.
  */
 const PRINT_MASTER_CONFIG = Object.freeze({
     rpp: Object.freeze({
@@ -41,8 +41,8 @@ const PRINT_MASTER_CONFIG = Object.freeze({
         })
     }),
 
-    ram_ran: Object.freeze({
-        label: 'Formato RAM/RAN/Asistencia',
+    ram: Object.freeze({
+        label: 'Formato RAM / Asistencia',
         pageSize: '8.5x13',
         cssPageSize: '13in 8.5in',
         excelPaperSize: 'FOLIO',

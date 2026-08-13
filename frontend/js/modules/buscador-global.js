@@ -180,7 +180,7 @@
         <button class="a70-btn" data-go="base-maestra">Ver en Base Maestra</button>
         <button class="a70-btn" data-go="salud-nutricion">Ver Salud/Nutrición</button>
         <button class="a70-btn" data-url="${backend()}/api/rpp/descargar?unidad=${encodeURIComponent(unidad)}&grupo=${encodeURIComponent(grupoRpp(b.grupo_etario))}">Ver RPP</button>
-        <button class="a70-btn" data-url="${backend()}/api/descargar/${encodeURIComponent(unidad)}/ram">Ver RAM/RAN</button>
+        <button class="a70-btn" data-url="${backend()}/api/descargar/${encodeURIComponent(unidad)}/ram">Ver RAM</button>
         <button class="a70-btn" data-url="${backend()}/api/bienestarina/descargar?unidad=${encodeURIComponent(unidad)}">Ver Bienestarina</button>
         <button class="a70-btn" onclick="window.print()">Exportar ficha</button>
       </div>

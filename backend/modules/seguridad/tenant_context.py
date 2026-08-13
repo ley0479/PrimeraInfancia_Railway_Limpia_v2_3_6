@@ -133,10 +133,12 @@ def resolve_tenant_path(
     if shared or not strict_tenant_mode() or not tid:
         result = base.joinpath(*parts)
     else:
-        data_dir = None
-        if has_request_context():
-            data_dir = current_app.config.get("DATA_DIR")
-        data_root = Path(os.fspath(data_dir or os.environ.get("DATA_DIR") or base.parent)).resolve()
+        data_dir = current_app.config.get("DATA_DIR") if has_request_context() else None
+        # En trabajos en segundo plano ``base`` ya contiene la ruta absoluta
+        # configurada por Flask. No se debe volver a resolver DATA_DIR desde el
+        # entorno: un valor relativo (por ejemplo ``data``) dependería del cwd
+        # del proceso y desviaría los archivos a ``backend/data``.
+        data_root = Path(os.fspath(data_dir or base.parent)).resolve()
         category = base.name
         if category in _SHARED_CATEGORIES:
             result = base.joinpath(*parts)

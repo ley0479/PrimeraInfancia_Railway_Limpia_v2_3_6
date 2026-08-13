@@ -76,8 +76,11 @@ def audit_runtime_sql(root: Path) -> dict[str, Any]:
     unsupported_hits: list[dict[str, Any]] = []
     sql_literals = 0
 
+    excluded_parts = {".venv", "venv", "site-packages", "__pycache__"}
     for path in sorted(backend.rglob("*.py")):
         rel = path.relative_to(backend).as_posix()
+        if excluded_parts.intersection(path.relative_to(backend).parts):
+            continue
         if rel.startswith(("tests/", "tools/", "migrations/")):
             continue
         source = path.read_text(encoding="utf-8", errors="ignore")

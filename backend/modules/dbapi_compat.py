@@ -11,6 +11,7 @@ producción.
 """
 from __future__ import annotations
 
+import os
 import re
 import sqlite3 as _sqlite3
 from collections.abc import Iterable, Iterator, Mapping, Sequence
@@ -25,6 +26,9 @@ from sqlalchemy.schema import CreateTable
 from database import database
 from modules.seguridad.tenant_context import current_tenant_context, strict_tenant_mode
 from modules.seguridad.tenant_sql_guard import TenantIsolationError, rewrite_tenant_sql, tenant_script_is_schema_only
+
+_POSTGRES_SCHEMA_COLUMNS: dict[str, list[CompatRow]] | None = None
+_POSTGRES_PRIMARY_KEYS: dict[str, str | None] | None = None
 
 
 class CompatRow(Mapping[str, Any]):
@@ -255,6 +259,28 @@ def _table_pk_name(table_name: str) -> str | None:
     if not database.engine or not _TABLE_NAME_RE.fullmatch(table_name or ""):
         return None
     try:
+        if os.getenv('SKIP_RUNTIME_SCHEMA_DDL', '').strip().lower() in {'1', 'true', 'yes', 'si', 'sí', 'on'}:
+            global _POSTGRES_PRIMARY_KEYS
+            if _POSTGRES_PRIMARY_KEYS is None:
+                keys: dict[str, list[str]] = {}
+                with database.engine.connect() as connection:
+                    result = connection.execute(text("""
+                        SELECT tc.table_name, kcu.column_name
+                          FROM information_schema.table_constraints tc
+                          JOIN information_schema.key_column_usage kcu
+                            ON tc.constraint_name = kcu.constraint_name
+                           AND tc.constraint_schema = kcu.constraint_schema
+                         WHERE tc.constraint_schema = current_schema()
+                           AND tc.constraint_type = 'PRIMARY KEY'
+                         ORDER BY tc.table_name, kcu.ordinal_position
+                    """))
+                    for item in result:
+                        keys.setdefault(item[0], []).append(item[1])
+                _POSTGRES_PRIMARY_KEYS = {
+                    name: columns[0] if len(columns) == 1 else None
+                    for name, columns in keys.items()
+                }
+            return _POSTGRES_PRIMARY_KEYS.get(table_name)
         pk = inspect(database.engine).get_pk_constraint(table_name).get("constrained_columns") or []
         return str(pk[0]) if len(pk) == 1 else None
     except Exception:
@@ -287,6 +313,29 @@ class CompatCursor:
         m = re.match(r'PRAGMA\s+table_info\s*\(\s*["\']?([A-Za-z_][A-Za-z0-9_]*)["\']?\s*\)', raw, re.I)
         if m:
             table = m.group(1)
+            cached = self._owner._table_info_cache.get(table)
+            if cached is not None:
+                return self._set_rows(list(cached))
+            if os.getenv('SKIP_RUNTIME_SCHEMA_DDL', '').strip().lower() in {'1', 'true', 'yes', 'si', 'sí', 'on'}:
+                global _POSTGRES_SCHEMA_COLUMNS
+                if _POSTGRES_SCHEMA_COLUMNS is None:
+                    grouped: dict[str, list[CompatRow]] = {}
+                    with database.engine.connect() as connection:
+                        result = connection.execute(text("""
+                            SELECT table_name, column_name, data_type, is_nullable, column_default, ordinal_position
+                              FROM information_schema.columns
+                             WHERE table_schema = current_schema()
+                             ORDER BY table_name, ordinal_position
+                        """))
+                        for item in result:
+                            grouped.setdefault(item[0], []).append(CompatRow(
+                                ['cid', 'name', 'type', 'notnull', 'dflt_value', 'pk'],
+                                [int(item[5]) - 1, item[1], item[2], 0 if item[3] == 'YES' else 1, item[4], 0],
+                            ))
+                    _POSTGRES_SCHEMA_COLUMNS = grouped
+                rows = list(_POSTGRES_SCHEMA_COLUMNS.get(table, []))
+                self._owner._table_info_cache[table] = rows
+                return self._set_rows(rows)
             inspector = inspect(database.engine)
             cols = inspector.get_columns(table) if inspector.has_table(table) else []
             pk_cols = set((inspector.get_pk_constraint(table) or {}).get('constrained_columns') or []) if cols else set()
@@ -298,6 +347,7 @@ class CompatCursor:
                      str(col.get('default')) if col.get('default') is not None else None,
                      1 if col['name'] in pk_cols else 0],
                 ))
+            self._owner._table_info_cache[table] = list(rows)
             return self._set_rows(rows)
         if re.match(r'PRAGMA\s+integrity_check', raw, re.I):
             return self._set_rows([CompatRow(['integrity_check'], ['ok'])])
@@ -308,13 +358,18 @@ class CompatCursor:
         return self._set_rows([])
 
     def _sqlite_master(self, sql: str, params):
-        inspector = inspect(database.engine)
-        names = inspector.get_table_names()
         lower = sql.lower()
         wanted = None
         values = list(params.values()) if isinstance(params, Mapping) else list(params or [])
         if re.search(r"name\s*=\s*\?", lower) and values:
             wanted = str(values[0])
+            if os.getenv('SKIP_RUNTIME_SCHEMA_DDL', '').strip().lower() in {'1', 'true', 'yes', 'si', 'sí', 'on'}:
+                return self._set_rows([CompatRow(['name'], [wanted])])
+        inspector = inspect(database.engine)
+        if self._owner._table_names_cache is None:
+            self._owner._table_names_cache = inspector.get_table_names()
+        names = list(self._owner._table_names_cache)
+        if wanted:
             names = [n for n in names if n == wanted]
         positive_patterns = re.findall(r"name\s+like\s+['\"]([^'\"]+)['\"]", sql, flags=re.I)
         negative_patterns = re.findall(r"name\s+not\s+like\s+['\"]([^'\"]+)['\"]", sql, flags=re.I)
@@ -351,6 +406,11 @@ class CompatCursor:
     def execute(self, sql: str, params: Sequence[Any] | Mapping[str, Any] | None = None):
         raw = _guard_sql(str(sql or '').strip(), params)
         upper = raw.upper()
+        if (
+            os.getenv('SKIP_RUNTIME_SCHEMA_DDL', '').strip().lower() in {'1', 'true', 'yes', 'si', 'sí', 'on'}
+            and re.match(r'^\s*(CREATE|ALTER|DROP)\b', raw, re.I)
+        ):
+            return self._set_rows([], 0)
         if upper.startswith('PRAGMA'):
             return self._pragma(raw)
         if 'SQLITE_MASTER' in upper:
@@ -461,6 +521,8 @@ class CompatConnection:
         self._connection: SAConnection = database.engine.connect()
         self._transaction = None
         self._lastrowid = 0
+        self._table_names_cache: list[str] | None = None
+        self._table_info_cache: dict[str, list[CompatRow]] = {}
         self.row_factory = CompatRow
         self.isolation_level = None
         self.total_changes = 0

@@ -33,7 +33,7 @@
     .print-target-active,
     .formato-rpp,
     .formato-bienestarina,
-    .formato-ram-ran {
+    .formato-ram {
         margin: 0 auto !important;
         page-break-inside: avoid;
     }

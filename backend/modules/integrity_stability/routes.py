@@ -15,8 +15,8 @@ READ_ROLES = ("SUPERADMIN", "GERENTE", "COORDINADOR")
 ADMIN_ROLES = ("SUPERADMIN", "GERENTE")
 
 
-def register_routes(app, project_root: str, data_dir: str) -> None:
-    service = IntegrityStabilityService(project_root, data_dir)
+def register_routes(app, project_root: str, data_dir: str, database_path: str | None = None) -> None:
+    service = IntegrityStabilityService(project_root, data_dir, database_path)
     bp = Blueprint("integrity_stability", __name__, url_prefix="/api/integrity")
 
     @bp.get("/health")
@@ -32,7 +32,23 @@ def register_routes(app, project_root: str, data_dir: str) -> None:
             "architecture": service.architecture_inventory(),
             "database": database.healthcheck(),
             "runtime": runtime_metrics.snapshot(database.healthcheck()),
+            "monitor": service.runtime_monitor_status(),
         })
+
+    @bp.post("/diagnostic")
+    @require_roles(*READ_ROLES)
+    def diagnostic():
+        payload = request.get_json(silent=True) or {}
+        mode = str(payload.get("mode") or "MANUAL").upper()
+        if mode not in {"MANUAL", "QUICK", "FULL"}:
+            return jsonify({"error": "Modo inválido. Usa MANUAL, QUICK o FULL."}), 400
+        report = service.central_diagnostic(dict(current_app.config), mode=mode)
+        return jsonify(report), 200
+
+    @bp.get("/monitor")
+    @require_roles(*READ_ROLES)
+    def monitor():
+        return jsonify(service.runtime_monitor_status()), 200
 
     @bp.get("/architecture")
     @require_roles(*READ_ROLES)

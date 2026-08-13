@@ -153,18 +153,6 @@ class SaludNutricionIntegralService:
                 where.append("unidad_servicio=?")
                 params.append(unit)
             rows.extend(self.repo.fetch_all(f"SELECT * FROM master_ninos WHERE {' AND '.join(where)} ORDER BY documento", params))
-        elif self.repo.table_exists("beneficiarios"):
-            cols = self._columns("beneficiarios")
-            where = ["COALESCE(estado,'ACTIVO')<>'RETIRADO'"] if "estado" in cols else ["1=1"]
-            params = []
-            if "fundacion_id" in cols:
-                where.append("fundacion_id=?")
-                params.append(fundacion_id)
-            if unit and "unidad" in cols:
-                where.append("unidad=?")
-                params.append(unit)
-            rows.extend(self.repo.fetch_all(f"SELECT * FROM beneficiarios WHERE {' AND '.join(where)} ORDER BY documento", params))
-
         if self.repo.table_exists("gestantes"):
             cols = self._columns("gestantes")
             where = ["COALESCE(estado,'ACTIVO')='ACTIVO'"] if "estado" in cols else ["1=1"]

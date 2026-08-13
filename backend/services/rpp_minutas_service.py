@@ -695,31 +695,34 @@ def obtener_minuta_vigente(
 ) -> dict | None:
     """Obtiene la minuta vigente aplicable al periodo solicitado.
 
-    Por seguridad operativa, cuando se suministra mes o año no se reutiliza
-    silenciosamente una minuta de otro periodo. El fallback a la última versión
-    solo puede activarse de forma explícita para diagnósticos históricos.
+    La vigencia comienza en ``anio/mes`` y continúa hasta que exista otra minuta
+    oficial posterior. Para periodos históricos se elige siempre la última minuta
+    cuyo inicio sea anterior o igual al periodo consultado; nunca una futura.
+
+    ``permitir_fallback`` se conserva por compatibilidad con llamadas antiguas,
+    pero ya no habilita la reutilización de minutas futuras.
     """
     init_schema(database_path)
     conn = connect(database_path)
     params = [fundacion_id, corporacion_id]
     where = ['v.estado=\'vigente\'', 'v.fundacion_id=?', 'v.corporacion_id=?']
-    if mes:
-        where.append('v.mes=?')
-        params.append(int(mes))
-    if anio:
-        where.append('v.anio=?')
+    if mes is not None and anio is not None:
+        mes_consulta = max(1, min(12, int(mes)))
+        anio_consulta = int(anio)
+        where.append('(v.anio < ? OR (v.anio = ? AND v.mes <= ?))')
+        params.extend([anio_consulta, anio_consulta, mes_consulta])
+    elif anio is not None:
+        where.append('v.anio <= ?')
         params.append(int(anio))
+    elif mes is not None:
+        where.append('v.mes <= ?')
+        params.append(max(1, min(12, int(mes))))
     row = conn.execute(
-        f'''SELECT v.* FROM rpp_minutas_versiones v WHERE {' AND '.join(where)} ORDER BY v.created_at DESC LIMIT 1''',
+        f'''SELECT v.* FROM rpp_minutas_versiones v
+            WHERE {' AND '.join(where)}
+            ORDER BY v.anio DESC, v.mes DESC, v.created_at DESC LIMIT 1''',
         params,
     ).fetchone()
-    if not row and (permitir_fallback or not (mes or anio)):
-        row = conn.execute(
-            '''SELECT v.* FROM rpp_minutas_versiones v
-               WHERE v.estado='vigente' AND v.fundacion_id=? AND v.corporacion_id=?
-               ORDER BY v.anio DESC, v.mes DESC, v.created_at DESC LIMIT 1''',
-            [fundacion_id, corporacion_id],
-        ).fetchone()
     if not row:
         conn.close()
         return None

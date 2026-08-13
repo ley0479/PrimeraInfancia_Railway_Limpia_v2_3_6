@@ -53,9 +53,14 @@ def run():
         first = seed_minuta_sanitizada_desde_json(str(db), seed_file)
         second = seed_minuta_sanitizada_desde_json(str(db), seed_file)
         minute = obtener_minuta_vigente(str(db), mes=5, anio=2026)
+        minute_june = obtener_minuta_vigente(str(db), mes=6, anio=2026)
         assert_true(
-            obtener_minuta_vigente(str(db), mes=6, anio=2026) is None,
-            "Una minuta de otro periodo no debe reutilizarse silenciosamente",
+            minute_june is not None and minute_june.get('id') == minute.get('id'),
+            "La minuta de mayo debe continuar vigente en junio si no existe otra posterior",
+        )
+        assert_true(
+            obtener_minuta_vigente(str(db), mes=4, anio=2026) is None,
+            "Una minuta futura nunca debe reutilizarse para un periodo anterior",
         )
         conn = sqlite3.connect(db)
         equivalence_count = conn.execute("SELECT COUNT(*) FROM rpp_minutas_equivalencias WHERE activo=1").fetchone()[0]
@@ -100,8 +105,14 @@ def run():
         )
         assert_true(out2.exists() and out2.stat().st_size > 0, "RAM V2 no se generó")
         assert_true(out3.exists() and out3.stat().st_size > 0, "RAM V3 no se generó")
-        assert_true("FORMATO RAM V2 HISTORICO" in load_workbook(out2, read_only=True).sheetnames, "Hoja RAM V2 ausente")
-        assert_true("FORMATO RAM" in load_workbook(out3, read_only=True).sheetnames, "Hoja RAM V3 ausente")
+        wb2 = load_workbook(out2, read_only=True)
+        wb3 = load_workbook(out3, read_only=True)
+        try:
+            assert_true("FORMATO RAM V2 HISTORICO" in wb2.sheetnames, "Hoja RAM V2 ausente")
+            assert_true("FORMATO RAM" in wb3.sheetnames, "Hoja RAM V3 ausente")
+        finally:
+            wb2.close()
+            wb3.close()
 
     historical = seed_root / "oficiales" / "plantilla_ram_oficial_v2_historica.xlsx"
     historical_wb = load_workbook(historical, data_only=False)

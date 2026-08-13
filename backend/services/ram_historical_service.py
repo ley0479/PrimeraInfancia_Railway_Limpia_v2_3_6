@@ -12,7 +12,7 @@ import hashlib
 import re
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Iterable
 
 from openpyxl import load_workbook
 
@@ -21,6 +21,8 @@ DATA_START_ROW = 15
 DATA_END_ROW = 34
 CAPACITY = DATA_END_ROW - DATA_START_ROW + 1
 DATA_COLUMNS = list(range(1, 38))  # A:AK
+ATTENDANCE_COLUMNS = tuple(range(10, 35))  # J:AH
+MONTHS_ES = {1: "ENERO", 2: "FEBRERO", 3: "MARZO", 4: "ABRIL", 5: "MAYO", 6: "JUNIO", 7: "JULIO", 8: "AGOSTO", 9: "SEPTIEMBRE", 10: "OCTUBRE", 11: "NOVIEMBRE", 12: "DICIEMBRE"}
 
 
 def sha256_file(path: str | Path) -> str:
@@ -100,10 +102,12 @@ def _clear_rows(ws) -> None:
         for col in DATA_COLUMNS:
             ws.cell(row=row, column=col).value = None
         ws.cell(row=row, column=1).value = row - DATA_START_ROW + 1
+    for coord in ("AI35", "AJ35", "E36", "E37", "E38"):
+        ws[coord].value = None
 
 
 def _set_headers(ws, metadata: dict[str, Any], year: int, month: int, page: int, pages: int) -> None:
-    month_name = calendar.month_name[month].upper()
+    month_name = MONTHS_ES[month]
     values = {
         "A4": f"ENTIDAD ADMINISTRADORA DEL SERVICIO: {_value(metadata, 'entidad', 'fundacion', 'fundacion_nombre', default='')}",
         "A5": f"NIT: {_value(metadata, 'nit', 'nit_eas', default='')}",
@@ -116,7 +120,7 @@ def _set_headers(ws, metadata: dict[str, Any], year: int, month: int, page: int,
         "F6": f"Nombre Agente Educativo(a): {_value(metadata, 'agente_educativo', 'responsable_grupo', default='')}",
         "I6": f"CC: {_value(metadata, 'documento_agente', 'cc_agente', default='')}",
         "A7": f"MODALIDAD DE ATENCIÓN: {_value(metadata, 'modalidad', default='')}",
-        "F7": f"Código CUÉNTAME UDS: {_value(metadata, 'codigo_uds', 'codigo_unidad', default='')}",
+        "F7": f"Código CUÉNTAME UDS: {_value(metadata, 'codigo_cuentame', 'nui_uds', 'codigo_uds', 'codigo_unidad', default='')}",
         "K7": f"Nombre Unidad de Servicio / Unidad de Atención: {_value(metadata, 'unidad', 'nombre_uds', default='')}",
         "A8": f"SERVICIO DE ATENCIÓN: {_value(metadata, 'servicio_atencion', 'servicio', default='')}",
         "F8": f"Dirección UDS: {_value(metadata, 'direccion_uds', 'direccion', default='')}",
@@ -127,18 +131,93 @@ def _set_headers(ws, metadata: dict[str, Any], year: int, month: int, page: int,
         ws[cell] = value
 
 
-def _write_user(ws, row: int, index: int, user: dict[str, Any], year: int, month: int) -> None:
+def _write_user(
+    ws, row: int, index: int, user: dict[str, Any], year: int, month: int,
+    attendance_provider: Callable[[dict[str, Any]], set[str]] | None = None,
+    non_service_dates: set[str] | None = None,
+) -> int:
+    from services.ram_v3_service import normalize_document_type, participant_document_number, normalize_withdrawal_code
     first, second, surname1, surname2 = _split_name(user)
     age_years, age_months = _age_on_first_day(user, year, month)
     ws.cell(row=row, column=1).value = index
-    ws.cell(row=row, column=2).value = _value(user, "tipo_documento", "TipoDocumento", "tipo_doc")
-    ws.cell(row=row, column=3).value = _value(user, "NUI", "numero_documento", "documento", "Documento")
+    ws.cell(row=row, column=2).value = normalize_document_type(_value(user, "tipo_documento", "TipoDocumento", "tipo_doc"))
+    document, _ = participant_document_number(user)
+    document_cell = ws.cell(row=row, column=3)
+    document_cell.value = str(document or "")
+    if document:
+        document_cell.data_type = "s"
     ws.cell(row=row, column=4).value = first
     ws.cell(row=row, column=5).value = second
     ws.cell(row=row, column=6).value = surname1
     ws.cell(row=row, column=7).value = surname2
     ws.cell(row=row, column=8).value = age_years
     ws.cell(row=row, column=9).value = age_months
+
+    allowed = {str(v).strip().lower() for v in (attendance_provider(user) or set())} if attendance_provider else set()
+    excluded = non_service_dates or set()
+    total = 0
+    model = ws.cell(row=row, column=ATTENDANCE_COLUMNS[0])
+    for day in range(1, calendar.monthrange(year, month)[1] + 1):
+        current = date(year, month, day)
+        if current.weekday() > 4:
+            continue
+        occurrence = ((day - 1) // 7)
+        col = 10 + occurrence * 5 + current.weekday()
+        if col not in ATTENDANCE_COLUMNS:
+            continue
+        cell = ws.cell(row=row, column=col)
+        weekday = ("lunes", "martes", "miercoles", "jueves", "viernes")[current.weekday()]
+        # A = asistencia. La marca histórica H no corresponde a la convención
+        # solicitada para RAN/RAM y hacía ambiguo el control semanal.
+        mark = "A" if weekday in allowed and current.isoformat() not in excluded else ""
+        cell.value = mark
+        if mark:
+            cell.font = copy.copy(model.font)
+            cell.alignment = copy.copy(model.alignment)
+            total += 1
+    ws.cell(row=row, column=35).value = total
+    ws.cell(row=row, column=37).value = normalize_withdrawal_code(user)
+    return total
+
+
+def _restore_authorized_layout(ws) -> None:
+    """Restaura únicamente alineaciones señaladas, sin cambiar dimensiones."""
+    for coord in ("H14", "I14"):
+        alignment = copy.copy(ws[coord].alignment)
+        alignment.horizontal = "center"
+        alignment.vertical = "center"
+        ws[coord].alignment = alignment
+    for coord in [*(ws.cell(14, col).coordinate for col in ATTENDANCE_COLUMNS), "AI12", "AJ12", "AK9"]:
+        alignment = copy.copy(ws[coord].alignment)
+        alignment.textRotation = 90
+        alignment.horizontal = "center"
+        alignment.vertical = "center"
+        ws[coord].alignment = alignment
+
+
+def _write_totals(ws, users: list[dict[str, Any]], attended: dict[int, int], year: int, month: int) -> None:
+    from services.ram_v3_service import ram_age_group
+    under_six = over_six = gestants = 0
+    for index, user in enumerate(users):
+        if attended.get(index, 0) <= 0:
+            continue
+        group = ram_age_group(user, year, month)
+        if group == 0:
+            under_six += 1
+        elif group == 4:
+            gestants += 1
+        elif group in {1, 2, 3}:
+            over_six += 1
+    for coord, value in (("E36", under_six), ("E37", over_six), ("E38", gestants)):
+        cell = ws[coord]
+        cell.value = value
+        font = copy.copy(cell.font)
+        font.color = "000000"
+        cell.font = font
+        alignment = copy.copy(cell.alignment)
+        alignment.horizontal = "center"
+        alignment.vertical = "center"
+        cell.alignment = alignment
 
 
 def _copy_sheet_with_images(wb, source, title: str):
@@ -163,6 +242,8 @@ def generate_ram_historical(
     *,
     metadata: dict[str, Any] | None = None,
     expected_sha256: str | None = None,
+    attendance_provider: Callable[[dict[str, Any]], set[str]] | None = None,
+    non_service_dates: Iterable[str] | None = None,
 ) -> dict[str, Any]:
     template_path = Path(template_path)
     output_path = Path(output_path)
@@ -173,7 +254,9 @@ def generate_ram_historical(
 
     wb = load_workbook(template_path, data_only=False)
     source = wb[wb.sheetnames[0]]
-    users = list(users or [])
+    from services.ram_v3_service import deduplicate_users, sort_users_for_ram
+    users, warnings = deduplicate_users(users or [])
+    users = sort_users_for_ram(users, int(year), int(month))
     pages = max(1, (len(users) + CAPACITY - 1) // CAPACITY)
     worksheets = [source]
     source.title = "FORMATO RAM V2 HISTORICO"
@@ -183,9 +266,16 @@ def generate_ram_historical(
     for page, ws in enumerate(worksheets, start=1):
         _clear_rows(ws)
         _set_headers(ws, dict(metadata or {}), int(year), int(month), page, pages)
+        _restore_authorized_layout(ws)
         block = users[(page - 1) * CAPACITY: page * CAPACITY]
+        attended: dict[int, int] = {}
         for offset, user in enumerate(block):
-            _write_user(ws, DATA_START_ROW + offset, (page - 1) * CAPACITY + offset + 1, user, int(year), int(month))
+            attended[offset] = _write_user(
+                ws, DATA_START_ROW + offset, (page - 1) * CAPACITY + offset + 1,
+                user, int(year), int(month), attendance_provider,
+                {str(value).strip() for value in (non_service_dates or []) if str(value).strip()},
+            )
+        _write_totals(ws, block, attended, int(year), int(month))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(output_path)
@@ -194,5 +284,5 @@ def generate_ram_historical(
         "version": "2",
         "total_participantes": len(users),
         "paginas_ram": pages,
-        "warnings": [],
+        "warnings": warnings,
     }

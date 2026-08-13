@@ -15,6 +15,7 @@
     <link rel="stylesheet" href="./css/estilos.css">
     <link rel="stylesheet" href="./css/current-date-time.css?v=2.1.14">
     <link rel="stylesheet" href="./css/gestion-pedagogica.css?v=2.1.2">
+    <link rel="stylesheet" href="./css/asistente-capacitacion.css?v=2.7.0-1">
     <link rel="stylesheet" href="./css/planeacion-pedagogica.css?v=2.1.7">
     <link rel="stylesheet" href="./css/gestion-coordinador.css?v=2.1.6">
     <link rel="stylesheet" href="./css/salud-nutricion.css?v=2.6.0-integral-postgresql">
@@ -40,6 +41,7 @@
     <link rel="stylesheet" href="./css/gestion-integral-uca.css?v=2.5.3">
     <link rel="stylesheet" href="./css/motor-gestion-proyecto.css?v=2.5.3">
     <link rel="stylesheet" href="./css/supervision-calidad.css?v=2.6.0">
+    <link rel="stylesheet" href="./css/ambientes-protectores.css?v=2.7.0">
     <link rel="stylesheet" href="./css/familias-redes.css?v=2.6.0">
     <link rel="stylesheet" href="./css/centro-planeacion.css?v=2.7.0">
     <link rel="stylesheet" href="./css/componente-psicosocial.css?v=2.7.0">
@@ -213,7 +215,7 @@
     <div class="pi-menu-group" data-menu-group="ambientes-protectores">
         <button type="button" class="pi-menu-group-toggle" data-menu-toggle="ambientes-protectores" aria-expanded="false"><span><i data-lucide="shield-check"></i> Ambientes Protectores</span><i data-lucide="chevron-down" class="pi-menu-chevron"></i></button>
         <div class="pi-menu-group-items">
-            <div class="pi-menu-placeholder" data-menu-placeholder><i data-lucide="shield"></i><span>Ambientes Protectores</span><small>pendiente</small></div>
+            <button id="nav-ambientes-protectores" data-menu-item data-menu-group="ambientes-protectores" onclick="mostrarSeccion('ambientes-protectores')" class="pi-menu-item"><i data-lucide="shield"></i><span>Ambientes Protectores</span><small>integral</small></button>
         </div>
     </div>
 
@@ -221,6 +223,8 @@
         <button type="button" class="pi-menu-group-toggle" data-menu-toggle="administrativo-gestion" aria-expanded="false"><span><i data-lucide="settings"></i> Administrativo y Gestión</span><i data-lucide="chevron-down" class="pi-menu-chevron"></i></button>
         <div class="pi-menu-group-items">
             <button id="nav-administracion" data-menu-item data-menu-group="administrativo-gestion" onclick="mostrarSeccion('administracion')" class="pi-menu-item"><i data-lucide="lock-keyhole"></i><span>Administración</span></button>
+            <button id="nav-integraciones-configuracion" data-menu-item data-menu-group="administrativo-gestion" onclick="mostrarSeccion('integraciones-configuracion')" class="pi-menu-item"><i data-lucide="plug-zap"></i><span>Integraciones y Configuración</span><small>maestro</small></button>
+            <button id="nav-administrativo-financiero" data-menu-item data-menu-group="administrativo-gestion" onclick="mostrarSeccion('administrativo-financiero')" class="pi-menu-item"><i data-lucide="landmark"></i><span>Administrativo y Financiero</span><small>operativo</small></button>
             <button id="nav-panel-comercial" data-menu-item data-menu-group="administrativo-gestion" onclick="mostrarSeccion('panel-comercial')" class="pi-menu-item"><i data-lucide="briefcase-business"></i><span>Panel Comercial</span></button>
             <button id="nav-gerencia-general" data-menu-item data-menu-group="administrativo-gestion" onclick="mostrarSeccion('gerencia-general')" class="pi-menu-item"><i data-lucide="bar-chart-3"></i><span>Gerencia General</span></button>
             <button id="nav-facturacion" data-menu-item data-menu-group="administrativo-gestion" onclick="mostrarSeccion('facturacion')" class="pi-menu-item"><i data-lucide="credit-card"></i><span>Facturación / Suscripción</span></button>
@@ -616,7 +620,7 @@
                         <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                             <div>
                                 <h2 class="text-lg font-medium flex items-center gap-2"><i data-lucide="package-check" class="text-emerald-400"></i> Paquete mensual completo</h2>
-                                <p class="mt-2 text-sm text-slate-400">Genera en un solo ZIP: Bienestarina, RPP, RAM/RAN/RRAN, Relación del Mes, Cuentas de Cobro, Informe Nutricional, Novedades, Talento Humano, Reporte Gerencial y Auditoría Mensual.</p>
+                                <p class="mt-2 text-sm text-slate-400">Genera en un solo ZIP: Bienestarina, RPP, RAM, Relación del Mes, Cuentas de Cobro, Informe Nutricional, Novedades, Talento Humano, Reporte Gerencial y Auditoría Mensual.</p>
                             </div>
                             <button onclick="pmGenerarDesdePanel()" class="rounded-xl bg-emerald-600 hover:bg-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-600/20 transition flex items-center gap-2">
                                 <i data-lucide="archive" class="w-4 h-4"></i> Generar paquete mensual completo
@@ -679,8 +683,6 @@
                                 <label class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"><input type="checkbox" data-alpha68-formato value="rpp" class="h-4 w-4 rounded border-slate-600 bg-slate-950 text-cyan-500" /> RPP</label>
                                 <label class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"><input type="checkbox" data-alpha68-formato value="bienestarina" class="h-4 w-4 rounded border-slate-600 bg-slate-950 text-cyan-500" /> Bienestarina</label>
                                 <label class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"><input type="checkbox" data-alpha68-formato value="ram" class="h-4 w-4 rounded border-slate-600 bg-slate-950 text-cyan-500" /> RAM</label>
-                                <label class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"><input type="checkbox" data-alpha68-formato value="ran" class="h-4 w-4 rounded border-slate-600 bg-slate-950 text-cyan-500" /> RAN</label>
-                                <label class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"><input type="checkbox" data-alpha68-formato value="rran" class="h-4 w-4 rounded border-slate-600 bg-slate-950 text-cyan-500" /> RRAN</label>
                                 <label class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"><input type="checkbox" data-alpha68-formato value="relacion_mensual" class="h-4 w-4 rounded border-slate-600 bg-slate-950 text-cyan-500" /> Relación mensual</label>
                                 <label class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"><input type="checkbox" data-alpha68-formato value="listado_usuarios" class="h-4 w-4 rounded border-slate-600 bg-slate-950 text-cyan-500" /> Listado usuarios</label>
                                 <label class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"><input type="checkbox" data-alpha68-formato value="distribucion_alimentos" class="h-4 w-4 rounded border-slate-600 bg-slate-950 text-cyan-500" /> Distribución alimentos</label>
@@ -730,6 +732,16 @@
                             </button>
                         </div>
                         <div id="formatos-preflight-result" class="mt-4 hidden rounded-2xl border border-cyan-500/20 bg-slate-950/70 p-4" aria-live="polite"></div>
+                    </div>
+
+                    <div class="bg-slate-950 border border-indigo-500/30 rounded-2xl overflow-hidden">
+                        <div class="p-6 border-b border-slate-800 flex flex-col lg:flex-row lg:justify-between gap-3"><div><h2 class="text-lg font-medium">Sistema Integral de Talento Humano</h2><p class="mt-1 text-sm text-slate-400">Expedientes, documentos, vencimientos, formación, acompañamiento y mapa de capacidades sobre la fuente maestra existente.</p><p id="th-integral-estado" class="mt-2 text-xs text-slate-500" aria-live="polite"></p></div><button id="th-integral-actualizar" type="button" onclick="actualizarTalentoIntegral()" class="rounded-xl bg-indigo-600 px-4 py-2 text-sm text-white disabled:cursor-wait disabled:opacity-60">Actualizar tablero</button></div>
+                        <div id="th-integral-resumen" class="p-6 grid gap-3 md:grid-cols-5"></div>
+                        <div class="px-6 pb-6 grid gap-4 lg:grid-cols-2">
+                            <form id="th-documento-form" class="rounded-xl border border-slate-800 p-4 grid gap-2"><h3 class="font-medium text-slate-200">Documento y vencimiento</h3><select name="persona_id" class="th-persona rounded-lg bg-slate-900 p-2" required></select><input name="tipo" placeholder="Tipo de documento" class="rounded-lg bg-slate-900 p-2" required><input name="nombre" placeholder="Nombre / referencia" class="rounded-lg bg-slate-900 p-2" required><input name="fecha_vencimiento" type="date" class="rounded-lg bg-slate-900 p-2"><button class="rounded-lg bg-cyan-700 p-2" type="submit">Agregar al expediente</button></form>
+                            <form id="th-formacion-form" class="rounded-xl border border-slate-800 p-4 grid gap-2"><h3 class="font-medium text-slate-200">Formación y cualificación</h3><select name="persona_id" class="th-persona rounded-lg bg-slate-900 p-2" required></select><input name="nombre" placeholder="Formación" class="rounded-lg bg-slate-900 p-2" required><input name="entidad" placeholder="Entidad" class="rounded-lg bg-slate-900 p-2"><input name="fecha_inicio" type="date" class="rounded-lg bg-slate-900 p-2"><button class="rounded-lg bg-emerald-700 p-2" type="submit">Programar formación</button></form>
+                        </div>
+                        <div class="px-6 pb-6 grid gap-4 lg:grid-cols-2"><div><h3 class="font-medium">Alertas documentales</h3><div id="th-integral-documentos" class="mt-2 text-sm text-slate-400"></div></div><div><h3 class="font-medium">Mapa de capacidades</h3><div id="th-integral-capacidades" class="mt-2 text-sm text-slate-400"></div></div></div>
                     </div>
 
                     <div class="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden">
@@ -807,12 +819,12 @@
                         <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
                             <div>
                                 <h3 class="text-lg font-medium text-slate-100 mb-2">Motor maestro de impresión</h3>
-                                <p class="text-sm text-slate-400 max-w-4xl">Configura RPP, Bienestarina y RAM/RAN para que Excel/PDF/HTML salgan listos con tamaño de hoja, orientación, escala y márgenes oficiales.</p>
+                                <p class="text-sm text-slate-400 max-w-4xl">Configura RPP, Bienestarina y RAM para que Excel/PDF/HTML salgan listos con tamaño de hoja, orientación, escala y márgenes oficiales.</p>
                             </div>
                             <div class="flex flex-wrap gap-2">
                                 <button onclick="imprimirFormato('rpp')" class="rounded-xl bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-sm font-medium text-white">Imprimir RPP</button>
                                 <button onclick="imprimirFormato('bienestarina')" class="rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2 text-sm font-medium text-white">Imprimir Bienestarina</button>
-                                <button onclick="imprimirFormato('ram_ran')" class="rounded-xl bg-cyan-600 hover:bg-cyan-500 px-4 py-2 text-sm font-medium text-white">Imprimir RAM/RAN</button>
+                                <button onclick="imprimirFormato('ram')" class="rounded-xl bg-cyan-600 hover:bg-cyan-500 px-4 py-2 text-sm font-medium text-white">Imprimir RAM</button>
                             </div>
                         </div>
                         <div class="mt-4 overflow-x-auto mp-panel">
@@ -821,7 +833,7 @@
                                 <tbody>
                                     <tr><td>RPP</td><td>Plantilla oficial activa</td><td>Según plantilla</td><td>Preservada</td><td>Se conserva configuración de la planilla oficial; print area A1:AA42</td><td>No recrear formato, solo diligenciar valores</td></tr>
                                     <tr><td>Bienestarina</td><td>Plantilla oficial activa</td><td>Según plantilla</td><td>Preservada</td><td>Se conserva configuración de la planilla oficial; si falta área, usa A1:T50</td><td>No recrear formato, solo diligenciar valores</td></tr>
-                                    <tr><td>RAM/RAN/Asistencia</td><td>8.5 x 13</td><td>Horizontal</td><td>60%</td><td>Conservar márgenes originales de plantilla</td><td>No inventar márgenes</td></tr>
+                                    <tr><td>RAM / Asistencia</td><td>8.5 x 13</td><td>Horizontal</td><td>60%</td><td>Conservar márgenes originales de plantilla</td><td>No inventar márgenes</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -834,7 +846,7 @@
                             <select id="mp-tipo" class="mp-input">
                                 <option value="BIENESTARINA">Bienestarina</option>
                                 <option value="RPP">RPP</option>
-                                <option value="RAM">RAM / RAN / RRAN</option>
+                                <option value="RAM">RAM</option>
                                 <option value="ASISTENCIA">Asistencia</option>
                                 <option value="RELACION_MES">Relación del mes</option>
                                 <option value="OTROS">Otros formatos oficiales</option>
@@ -1161,7 +1173,6 @@
                                     <option value="RAM">RAM / Registro de Asistencia Mensual</option>
                                     <option value="Bienestarina">Bienestarina</option>
                                     <option value="RPP">RPP</option>
-                                    <option value="RAN">RAN</option>
                                     <option value="Otros">Otros formatos oficiales</option>
                                 </select>
                             </div>
@@ -1962,6 +1973,19 @@
                 </section>
 
 
+                <section id="integraciones-configuracion" class="hidden space-y-6">
+                    <div class="bg-slate-950 border border-violet-500/30 rounded-2xl p-6"><div class="flex justify-between gap-4"><div><p class="text-xs uppercase tracking-widest text-violet-300">Administración técnica</p><h2 class="text-2xl font-semibold">Integraciones, Configuración y Administración General</h2><p class="mt-2 text-sm text-slate-400">Estado transversal, parámetros no sensibles y conectores autorizados. Las credenciales nunca se guardan aquí.</p></div><button onclick="IntegracionesConfiguracion.load()" class="rounded-xl bg-violet-700 px-4 py-2 h-fit">Actualizar</button></div><div id="ic-resumen" class="grid gap-3 md:grid-cols-3 xl:grid-cols-6 mt-5"></div></div>
+                    <div id="ic-zona-limpieza" class="hidden bg-slate-950 border border-rose-500/40 rounded-2xl p-6"><p class="text-xs uppercase tracking-widest text-rose-300">Zona de limpieza controlada · Solo SUPERADMIN</p><h3 class="mt-2 text-xl font-semibold">Limpiar datos operativos</h3><p class="mt-2 text-sm text-slate-400">Elimina únicamente niños/Base Maestra, Talento Humano y Salud y Nutrición de la fundación activa. Conserva usuarios, roles, fundación, configuración, plantillas y catálogos.</p><div id="ic-limpieza-resumen" class="mt-4 text-sm text-slate-300">Consulta el alcance antes de continuar.</div><div class="mt-4 flex flex-wrap gap-3"><button type="button" onclick="IntegracionesConfiguracion.previewCleanup()" class="rounded-xl border border-slate-600 px-4 py-2 text-sm">Revisar datos</button><button id="ic-limpiar-datos" type="button" onclick="IntegracionesConfiguracion.cleanup()" class="rounded-xl bg-rose-700 hover:bg-rose-600 px-4 py-2 text-sm font-semibold text-white">Limpiar datos</button></div></div>
+                    <div class="grid gap-5 lg:grid-cols-2"><form id="ic-parametro-form" class="bg-slate-950 border border-slate-800 rounded-2xl p-5 grid gap-2"><h3>Parámetro no sensible</h3><input name="modulo" placeholder="Módulo" required><input name="clave" placeholder="Clave" required><input name="valor" placeholder="Valor"><input name="descripcion" placeholder="Descripción"><button class="rounded-lg bg-indigo-700 p-2">Guardar parámetro</button></form><form id="ic-integracion-form" class="bg-slate-950 border border-slate-800 rounded-2xl p-5 grid gap-2"><h3>Registrar conector en borrador</h3><input name="codigo" placeholder="Código" required><input name="nombre" placeholder="Nombre" required><select name="tipo"><option>API</option><option>REPOSITORIO</option><option>WEBHOOK</option><option>ALMACENAMIENTO</option></select><input name="base_url" placeholder="URL base"><input name="credential_ref" placeholder="ENV:NOMBRE_VARIABLE"><button class="rounded-lg bg-cyan-700 p-2">Registrar sin conectar</button></form></div>
+                    <div class="grid gap-5 xl:grid-cols-2"><div class="bg-slate-950 border border-slate-800 rounded-2xl p-5"><h3>Estado de capacidades</h3><div id="ic-modulos" class="mt-3"></div></div><div class="bg-slate-950 border border-slate-800 rounded-2xl p-5"><h3>Integraciones registradas</h3><div id="ic-integraciones" class="mt-3"></div></div></div>
+                </section>
+
+                <section id="administrativo-financiero" class="hidden space-y-6">
+                    <div class="bg-slate-950 border border-emerald-500/30 rounded-2xl p-6"><div class="flex justify-between gap-4"><div><p class="text-xs uppercase tracking-widest text-emerald-300">Gestión transversal</p><h2 class="text-2xl font-semibold">Sistema Administrativo y Financiero</h2><p class="text-sm text-slate-400 mt-2">Presupuesto, ejecución, proveedores, compras, legalizaciones y cuentas de cobro.</p></div><button onclick="AdministrativoFinanciero.load()" class="rounded-xl bg-emerald-700 px-4 py-2 h-fit">Actualizar</button></div><div id="af-resumen" class="grid gap-3 md:grid-cols-4 xl:grid-cols-7 mt-5"></div></div>
+                    <div class="grid gap-5 lg:grid-cols-3"><form id="af-presupuesto-form" class="bg-slate-950 border border-slate-800 rounded-2xl p-5 grid gap-2"><h3>Crear rubro</h3><input name="vigencia" placeholder="Vigencia" required><input name="codigo_rubro" placeholder="Código" required><input name="nombre_rubro" placeholder="Nombre" required><input name="valor_aprobado" type="number" min="0" placeholder="Valor aprobado"><button class="bg-indigo-700 rounded-lg p-2">Guardar</button></form><form id="af-proveedor-form" class="bg-slate-950 border border-slate-800 rounded-2xl p-5 grid gap-2"><h3>Registrar proveedor</h3><input name="documento" placeholder="NIT / documento" required><input name="razon_social" placeholder="Razón social" required><input name="contacto" placeholder="Contacto"><input name="email" type="email" placeholder="Correo"><button class="bg-cyan-700 rounded-lg p-2">Guardar</button></form><form id="af-compra-form" class="bg-slate-950 border border-slate-800 rounded-2xl p-5 grid gap-2"><h3>Solicitar compra</h3><input name="numero" placeholder="Número" required><input name="objeto" placeholder="Objeto" required><input name="unidad" placeholder="UCA"><input name="valor" type="number" min="0" placeholder="Valor"><button class="bg-amber-700 rounded-lg p-2">Registrar solicitud</button></form></div>
+                    <div class="grid gap-5 xl:grid-cols-2"><div class="bg-slate-950 border border-slate-800 rounded-2xl p-5"><h3>Compras</h3><div id="af-compras" class="overflow-auto mt-3"></div></div><div class="bg-slate-950 border border-slate-800 rounded-2xl p-5"><h3>Legalizaciones y alertas</h3><div id="af-legalizaciones" class="overflow-auto mt-3"></div></div></div>
+                </section>
+
                 <section id="gerencia-general" class="hidden space-y-8">
                     <div class="gg-hero">
                         <div>
@@ -1981,6 +2005,8 @@
                         <span class="gg-label">Resumen ejecutivo</span>
                         <div id="gg-resumen-ejecutivo" class="gg-summary-body"><p class="gg-summary-text">Cargando resumen ejecutivo...</p></div>
                     </div>
+
+                    <div class="gg-panel"><div class="gg-panel-title">Inteligencia de negocio transversal</div><div class="grid gap-3 md:grid-cols-4 mt-3"><input id="gg-filtro-contrato" class="gg-input" placeholder="Contrato"><input id="gg-filtro-unidad" class="gg-input" placeholder="UCA"><input id="gg-filtro-coordinador" class="gg-input" placeholder="Coordinador"><select id="gg-filtro-componente" class="gg-input"><option value="">Todos los componentes</option><option>Administrativo y Financiero</option><option>Talento Humano</option><option>Ambientes Protectores</option><option>Supervisión y Calidad</option></select></div><div id="gg-bi-indicadores" class="gg-grid-cards mt-4"></div><div id="gg-bi-semaforos" class="grid gap-3 lg:grid-cols-2 mt-4"></div><p class="mt-3 text-xs text-slate-500">Los análisis son descriptivos: no modifican datos ni sustituyen decisiones profesionales.</p></div>
 
                     <div class="gg-grid-cards">
                         <div class="gg-card"><span class="gg-label">Fundaciones activas</span><strong id="gg-stat-fundaciones-activas" class="gg-card-value">0</strong></div>
@@ -2403,7 +2429,7 @@
 <section id="talento" class="hidden space-y-8">
                     <div class="bg-slate-950 border border-slate-800 p-6 rounded-2xl">
                         <h2 class="text-lg font-medium mb-4 flex items-center gap-2"><i data-lucide="briefcase" class="text-indigo-400"></i> Talento Humano</h2>
-                        <p class="text-sm text-slate-400 mb-4">Sube el listado de agentes educativos y equipo interdisciplinario o registra cambios manuales. Esta información alimenta RAM/RAN/asistencia sin modificar la estructura oficial de los formatos.</p>
+                        <p class="text-sm text-slate-400 mb-4">Sube el listado de agentes educativos y equipo interdisciplinario o registra cambios manuales. Esta información alimenta RAM/asistencia sin modificar la estructura oficial del formato.</p>
                         <div class="grid gap-4 lg:grid-cols-3">
                             <div>
                                 <label class="block text-sm font-medium text-slate-300 mb-2">Archivo talento humano</label>
@@ -2694,7 +2720,7 @@
                                 <option>Informe mensual</option>
                                 <option>Soporte nutricional</option>
                                 <option>RAM / Asistencia mensual</option>
-                                <option>RPP / RAN</option>
+                                <option>RPP</option>
                             </select>
                             <input id="entregable-periodo" type="month" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200" />
                             <input id="entregable-unidad" type="text" placeholder="Unidad (opcional)" class="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200" />
@@ -2752,6 +2778,7 @@
                             <div class="flex flex-wrap gap-2">
                                 <input id="pp-periodo-global" type="month" class="pp-input w-40" />
                                 <button data-view="dashboard" onclick="ppMostrarVista('dashboard')" class="pp-tab activa rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-300">Dashboard</button>
+                                <button data-view="proyectos" onclick="ppMostrarVista('proyectos')" class="pp-tab rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-300">Proyecto por UCA</button>
                                 <button data-view="cargar" onclick="ppMostrarVista('cargar')" class="pp-tab rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-300">Cargar</button>
                                 <button data-view="planeaciones" onclick="ppMostrarVista('planeaciones')" class="pp-tab rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-300">Planeaciones</button>
                                 <button data-view="plantillas" onclick="ppMostrarVista('plantillas')" class="pp-tab rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-300">Plantillas</button>
@@ -2765,6 +2792,27 @@
                                 <div id="pp-dashboard-cards" class="grid gap-4 md:grid-cols-4"></div>
                                 <div id="pp-dashboard-resumen" class="pp-card text-sm text-slate-300">Cargando resumen pedagógico...</div>
                                 <div class="pp-card text-sm text-slate-400">Flujo operativo: subir planeación → validar → crear calendario → generar documentos → cargar evidencias → aprobar o devolver.</div>
+                            </div>
+
+                            <div id="pp-view-proyectos" class="pp-view hidden grid gap-6 xl:grid-cols-2">
+                                <div class="pp-card space-y-3">
+                                    <div><h3 class="font-semibold text-slate-100">Proyecto pedagógico por UCA</h3><p class="text-xs text-slate-400">Cada actualización crea una versión trazable. La ejecución solo genera borradores; la docente conserva la validación final.</p></div>
+                                    <div class="grid gap-3 md:grid-cols-2">
+                                        <input id="pp-proyecto-unidad" class="pp-input" placeholder="UCA / unidad" />
+                                        <input id="pp-proyecto-vigencia" type="number" min="2020" max="2100" class="pp-input" placeholder="Vigencia" />
+                                        <select id="pp-proyecto-docente" class="pp-input"><option value="">Docente responsable</option></select>
+                                        <select id="pp-proyecto-coordinador" class="pp-input"><option value="">Coordinador</option></select>
+                                    </div>
+                                    <input id="pp-proyecto-nombre" class="pp-input" placeholder="Nombre del proyecto pedagógico" />
+                                    <textarea id="pp-proyecto-diagnostico" class="pp-input min-h-[80px]" placeholder="Diagnóstico y contexto de la UCA"></textarea>
+                                    <textarea id="pp-proyecto-objetivos" class="pp-input min-h-[80px]" placeholder="Objetivos pedagógicos"></textarea>
+                                    <textarea id="pp-proyecto-estrategias" class="pp-input min-h-[80px]" placeholder="Estrategias y experiencias pedagógicas"></textarea>
+                                    <textarea id="pp-proyecto-familias" class="pp-input min-h-[70px]" placeholder="Participación de familias y comunidad"></textarea>
+                                    <textarea id="pp-proyecto-diferencial" class="pp-input min-h-[70px]" placeholder="Enfoque diferencial e intercultural"></textarea>
+                                    <button onclick="ppCrearProyecto()" class="rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 px-4 py-2 text-sm font-medium text-white">Crear proyecto versionado</button>
+                                    <p id="pp-proyecto-message" class="text-sm text-slate-400"></p>
+                                </div>
+                                <div class="pp-panel"><div class="p-4 border-b border-slate-800 font-medium">Proyectos y versiones</div><div id="pp-proyectos-list"></div></div>
                             </div>
 
                             <div id="pp-view-cargar" class="pp-view hidden space-y-6">
@@ -3365,12 +3413,24 @@
                     <div class="ies-card p-6">
                         <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
                             <div><p class="text-xs uppercase tracking-[.22em] text-indigo-300">Control técnico transversal</p><h2 class="mt-2 text-2xl font-semibold text-white flex items-center gap-2"><i data-lucide="shield-check" class="w-6 h-6 text-indigo-300"></i> Motor de Integridad, Supervisión y Estabilidad</h2><p class="mt-2 max-w-4xl text-sm text-slate-400">Compara capacidades con la versión estable, ejecuta regresiones, verifica PostgreSQL y bloquea despliegues cuando falla una condición crítica. Nunca altera reglas de negocio.</p></div>
-                            <div class="flex flex-wrap gap-2"><button class="ies-btn secondary" onclick="IntegrityStability.load()"><i data-lucide="refresh-cw"></i> Actualizar</button><div id="ies-run-actions" class="flex gap-2"><button class="ies-btn primary" onclick="IntegrityStability.run(true)"><i data-lucide="play"></i> Gate completo</button><button class="ies-btn secondary" onclick="IntegrityStability.run(false)">Gate rápido</button></div></div>
+                            <div class="flex flex-wrap gap-2"><button class="ies-btn secondary" onclick="IntegrityStability.load()"><i data-lucide="refresh-cw"></i> Actualizar</button><button class="ies-btn secondary" onclick="IntegrityStability.diagnostic('MANUAL')"><i data-lucide="stethoscope"></i> Diagnóstico manual</button><div id="ies-run-actions" class="flex gap-2"><button class="ies-btn primary" onclick="IntegrityStability.run(true)"><i data-lucide="play"></i> Gate completo</button><button class="ies-btn secondary" onclick="IntegrityStability.run(false)">Gate rápido</button></div></div>
                         </div>
                         <div id="ies-message" class="hidden mt-4"></div><div id="ies-summary" class="mt-5 grid gap-3 grid-cols-2 lg:grid-cols-5"></div>
                     </div>
                     <div class="grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,.7fr)]"><div class="ies-card p-5"><h3 class="font-semibold text-white">Comprobaciones de la última ejecución</h3><div id="ies-checks" class="mt-4"></div></div><div class="space-y-5"><div class="ies-card p-5"><h3 class="font-semibold text-white">Runtime y PostgreSQL</h3><pre id="ies-runtime" class="ies-code mt-3"></pre></div><div id="ies-repair-actions" class="ies-card p-5"><h3 class="font-semibold text-white">Reparaciones seguras</h3><p class="mt-2 text-xs text-slate-400">Solo caché, temporales, PID obsoletos y rotación de logs. Nunca datos ni reglas.</p><div class="mt-3 flex gap-2"><button class="ies-btn secondary" onclick="IntegrityStability.repair(false)">Preparar plan</button><button class="ies-btn primary" onclick="IntegrityStability.repair(true)">Aplicar permitidas</button></div></div></div></div>
-                    <div class="ies-card p-5"><h3 class="font-semibold text-white">Inventario de arquitectura estable</h3><pre id="ies-architecture" class="ies-code mt-3"></pre></div>
+                    <div class="grid gap-5 xl:grid-cols-2"><div class="ies-card p-5"><h3 class="font-semibold text-white">Inventario de arquitectura estable</h3><pre id="ies-architecture" class="ies-code mt-3"></pre></div><div class="ies-card p-5"><h3 class="font-semibold text-white">Reporte de diagnóstico central</h3><p class="mt-1 text-xs text-slate-400">Autenticación, permisos, estructura de base, logs sanitizados y monitor permanente.</p><pre id="ies-diagnostic" class="ies-code mt-3">Ejecuta un diagnóstico manual.</pre></div></div>
+                </section>
+
+                <section id="ambientes-protectores" class="hidden space-y-6 aep-shell">
+                    <div class="aep-hero"><div><p class="aep-eyebrow">Componente de calidad</p><h2>Ambientes Educativos y Protectores</h2><p>Infraestructura, dotación, saneamiento, riesgo y mantenimiento por UCA.</p></div><button class="btn-primary" onclick="ambientesProtectoresRecargar()">Actualizar</button></div>
+                    <div id="aep-metricas" class="aep-metrics"></div>
+                    <div class="aep-grid">
+                        <form id="aep-activo-form" class="aep-card"><h3>Registrar dotación o infraestructura</h3><input name="unidad_nombre" placeholder="UCA" required><input name="nombre" placeholder="Elemento" required><select name="categoria"><option>DOTACION</option><option>INFRAESTRUCTURA</option><option>SANEAMIENTO</option><option>GESTION_RIESGO</option></select><input name="cantidad" type="number" min="1" value="1"><select name="estado"><option>BUENO</option><option>REGULAR</option><option>MALO</option><option>FUERA_DE_SERVICIO</option></select><input name="ubicacion" placeholder="Ubicación"><button class="btn-primary" type="submit">Guardar</button></form>
+                        <form id="aep-mantenimiento-form" class="aep-card"><h3>Programar mantenimiento</h3><input name="unidad_nombre" placeholder="UCA" required><input name="titulo" placeholder="Actividad" required><select name="tipo"><option>PREVENTIVO</option><option>CORRECTIVO</option><option>INSPECCION</option><option>SANEAMIENTO</option></select><input name="fecha_programada" type="date" required><select name="prioridad"><option>MEDIA</option><option>ALTA</option><option>CRITICA</option></select><button class="btn-primary" type="submit">Programar</button></form>
+                    </div>
+                    <div class="aep-card"><h3>Condiciones e inventario</h3><div id="aep-activos" class="aep-table-wrap"></div></div>
+                    <div class="aep-card"><h3>Mantenimientos y seguimiento</h3><div id="aep-mantenimientos" class="aep-table-wrap"></div></div>
+                    <div class="aep-card"><h3>Inspecciones y planes de mejora</h3><p>Las inspecciones, evidencias y hallazgos utilizan Supervisión y Calidad como fuente única.</p><div id="aep-hallazgos"></div><button class="btn-secondary" onclick="mostrarSeccion('supervision-calidad')">Abrir Supervisión y Calidad</button></div>
                 </section>
 
                 <section id="supervision-calidad" class="hidden space-y-6 sac-shell">
@@ -3529,22 +3589,25 @@
         </main>
     </div>
 
-    <script src="./js/config.js?v=2.3.0-release-local-scripts-ok"></script>
+    <script src="./js/config.js?v=2.7.0-postgresql-local-1"></script>
     <script src="./js/components/current-date-time.js?v=2.1.10"></script>
     <script src="./js/modules/ajustes-ui.js?v=2.2.3"></script>
     <script src="./js/print-master-config.js?v=2.3.0-alpha.13"></script>
     <script src="./js/print-manager.js?v=2.3.0-alpha.13"></script>
     <script src="./js/modules/menu-lateral-institucional.js?v=2.3.0-alpha.51-entregables-sn"></script>
-    <script src="./js/app.js?v=2.7.0-centro-planeacion-psicosocial"></script>
+    <script src="./js/app.js?v=2.7.0-auth-correlation-2"></script>
     <script src="./js/modules/calendario-inteligente.js?v=2.3.0-alpha.24"></script>
     <script src="./js/modules/acceso-compartido.js?v=2.4.1-tunnel-fix"></script>
     <script src="./js/modules/cruce-bases.js?v=2.1.14"></script>
-    <script src="./js/modules/planeacion-pedagogica.js?v=2.1.7"></script>
+    <script src="./js/modules/planeacion-pedagogica.js?v=2.7.0-proyecto-uca-1"></script>
+    <script src="./js/modules/asistente-capacitacion.js?v=2.7.0-1"></script>
     <script src="./js/modules/gestion-pedagogica.js?v=2.1.3"></script>
     <script src="./js/modules/gestion-coordinador.js?v=2.1.6"></script>
     <script src="./js/modules/salud-nutricion.js?v=2.6.0-integral-postgresql"></script>
     <script src="./js/modules/entregables-salud-nutricion.js?v=2.3.0-alpha.51-entregables-sn"></script>
     <script src="./js/modules/facturacion.js?v=2.1.8"></script>
+    <script src="./js/modules/administrativo-financiero.js?v=2.7.0"></script>
+    <script src="./js/modules/integraciones-configuracion.js?v=2.7.0"></script>
     <script src="./js/modules/backups.js?v=2.2.1"></script>
     <script src="./js/modules/calidad-datos.js?v=2.2.2"></script>
     <script src="./js/modules/base-maestra.js?v=2.3.0-alpha75-base-maestra-unidades"></script>
@@ -3560,6 +3623,7 @@
     <script src="./js/modules/gestion-integral-uca.js?v=2.5.3"></script>
     <script src="./js/modules/motor-gestion-proyecto.js?v=2.5.3"></script>
     <script src="./js/modules/supervision-calidad.js?v=2.6.0"></script>
+    <script src="./js/modules/ambientes-protectores.js?v=2.7.0"></script>
     <script src="./js/modules/familias-redes.js?v=2.6.0"></script>
     <script src="./js/modules/centro-planeacion.js?v=2.7.0"></script>
     <script src="./js/modules/componente-psicosocial.js?v=2.7.0"></script>

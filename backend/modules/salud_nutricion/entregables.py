@@ -382,7 +382,7 @@ class EntregablesSaludNutricionService:
         }
 
     def obtener_usuarios_base(self, uds: str | None = None, limit: int = 2000) -> list[dict[str, Any]]:
-        # Prioridad: master_ninos activa; fallback Pack35: usuarios; fallback: beneficiarios; último: sn_valoraciones.
+        # Fuente poblacional única: Base Maestra publicada.
         try:
             if self.repo.table_exists('master_ninos'):
                 count = self.repo.fetch_one('SELECT COUNT(*) AS total FROM master_ninos') or {'total': 0}
@@ -407,45 +407,6 @@ class EntregablesSaludNutricionService:
                     )
         except Exception:
             pass
-        if self.repo.table_exists('usuarios'):
-            where = ['1=1']
-            params = []
-            if uds and uds != 'TODAS':
-                where.append('unidad = ?')
-                params.append(uds)
-            params.append(limit)
-            return self.repo.fetch_all(
-                f"""
-                SELECT documento, nombre AS nombre_completo, unidad, docente AS coordinador, grupo_edad AS grupo_etario,
-                       estado, NULL AS peso, NULL AS talla, NULL AS perimetro_braquial, NULL AS diagnostico_nutricional,
-                       NULL AS vacunas, NULL AS carne_salud, peso_talla_al_dia AS control_crecimiento, fecha_carga AS fecha_valoracion
-                FROM usuarios
-                WHERE {' AND '.join(where)}
-                ORDER BY unidad, nombre
-                LIMIT ?
-                """,
-                params,
-            )
-        if self.repo.table_exists('beneficiarios'):
-            where = ['1=1']
-            params = []
-            if uds and uds != 'TODAS':
-                where.append('unidad = ?')
-                params.append(uds)
-            params.append(limit)
-            return self.repo.fetch_all(
-                f"""
-                SELECT documento, (nombres || ' ' || apellidos) AS nombre_completo, unidad, '' AS coordinador,
-                       grupo_edad AS grupo_etario, estado, NULL AS peso, NULL AS talla, NULL AS perimetro_braquial,
-                       NULL AS diagnostico_nutricional, NULL AS vacunas, NULL AS carne_salud, NULL AS control_crecimiento,
-                       fecha_carga AS fecha_valoracion
-                FROM beneficiarios
-                WHERE {' AND '.join(where)}
-                ORDER BY unidad, nombres
-                LIMIT ?
-                """,
-                params,
-            )
         return []
 
     def subir_evidencia(self, entregable_id: int, file, meta: dict[str, Any]) -> dict[str, Any]:

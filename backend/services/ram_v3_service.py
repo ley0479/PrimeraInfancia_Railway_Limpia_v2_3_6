@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from openpyxl import load_workbook
-from openpyxl.styles import PatternFill
+from openpyxl.styles import Alignment
 
 RAM_SHEET = "FORMATO RAM"
 INSTRUCTIONS_SHEET = "INSTRUCCIONES DILIGENCIAMIENTO"
@@ -25,11 +25,10 @@ RAM_CODE = "F27.MT1.PP"
 RAM_VERSION = "3"
 DATA_ROWS = tuple(range(15, 35))
 ATTENDANCE_COLUMNS = tuple(range(10, 35))  # J:AH, cinco semanas x lunes-viernes.
-ALLOWED_DOCUMENT_TYPES = {"RC", "TI", "CC", "CE", "PA", "SD"}
+ALLOWED_DOCUMENT_TYPES = {"RC", "TI", "CC", "CE", "PA", "SD", "PPT", "PEP"}
 ALLOWED_WITHDRAWAL_CODES = {"D", "V", "T", "S", "I", "M", "O"}
 WEEKDAY_NAMES = {0: "lunes", 1: "martes", 2: "miercoles", 3: "jueves", 4: "viernes"}
 MONTHS_ES = {1: "ENERO", 2: "FEBRERO", 3: "MARZO", 4: "ABRIL", 5: "MAYO", 6: "JUNIO", 7: "JULIO", 8: "AGOSTO", 9: "SEPTIEMBRE", 10: "OCTUBRE", 11: "NOVIEMBRE", 12: "DICIEMBRE"}
-NON_SERVICE_FILL = PatternFill(fill_type="solid", fgColor="D9D9D9")
 
 
 class RamV3Error(ValueError):
@@ -105,6 +104,11 @@ def age_at_period_start(user: dict[str, Any], year: int, month: int) -> tuple[in
 
 
 def normalize_document_type(value: Any) -> str:
+    """Normaliza únicamente el tipo documental realmente suministrado.
+
+    Un valor ausente permanece vacío. No se deduce el tipo a partir del número,
+    edad, nombre ni ningún otro atributo del participante.
+    """
     raw = _norm(value)
     aliases = {
         "rc": "RC", "registro civil": "RC",
@@ -113,6 +117,8 @@ def normalize_document_type(value: Any) -> str:
         "ce": "CE", "cedula de extranjeria": "CE",
         "pa": "PA", "pasaporte": "PA",
         "sd": "SD", "sin documento": "SD",
+        "ppt": "PPT", "permiso por proteccion temporal": "PPT",
+        "pep": "PEP", "permiso especial de permanencia": "PEP",
     }
     return aliases.get(raw, str(value or "").strip().upper())
 
@@ -145,7 +151,10 @@ def participant_document_number(user: dict[str, Any]) -> tuple[str, str | None]:
         }:
             rejected.append(raw)
             continue
-        return raw, None
+        # El RAM debe conservar identificaciones largas y ceros iniciales. Una
+        # cadena fuerza a Excel a almacenar el contenido como texto, sin notación
+        # científica ni conversión numérica automática.
+        return str(raw), None
     if rejected:
         return "", "El valor disponible corresponde al tipo de documento, no al número."
     return "", "Falta el número de documento del participante."
@@ -225,6 +234,40 @@ def deduplicate_users(users: Iterable[dict[str, Any]]) -> tuple[list[dict[str, A
     return result, warnings
 
 
+def ram_age_group(user: dict[str, Any], year: int, month: int) -> int:
+    """Orden oficial RAM calculado al inicio del período solicitado."""
+    if _is_gestant(user):
+        return 4
+    years, months, _ = age_at_period_start(user, year, month)
+    if not isinstance(years, int) or not isinstance(months, int):
+        return 5
+    total_months = years * 12 + months
+    if 0 <= total_months <= 5:
+        return 0
+    if 6 <= total_months <= 11:
+        return 1
+    if 12 <= total_months <= 35:
+        return 2
+    if 36 <= total_months <= 71:
+        return 3
+    return 5
+
+
+def sort_users_for_ram(users: Iterable[dict[str, Any]], year: int, month: int) -> list[dict[str, Any]]:
+    """Agrupa por edad y ordena establemente por apellido/nombre."""
+    indexed = list(enumerate(users or []))
+
+    def key(item: tuple[int, dict[str, Any]]) -> tuple[Any, ...]:
+        index, user = item
+        first, second, surname1, surname2 = participant_names(user)
+        return (
+            ram_age_group(user, year, month),
+            _norm(surname1), _norm(surname2), _norm(first), _norm(second), index,
+        )
+
+    return [user for _, user in sorted(indexed, key=key)]
+
+
 def attendance_cell_for_date(day: date) -> tuple[int, int] | None:
     """Devuelve (semana 1..5, columna J..AH) para lunes-viernes."""
     if day.weekday() > 4:
@@ -278,9 +321,13 @@ def _validate_template(wb) -> None:
 
 def _clear_data_rows(ws, page_number: int = 1) -> None:
     for row in DATA_ROWS:
-        for col in range(1, 38):
+        # A15:A34 pertenece a la numeración oficial. En la primera página se
+        # conservan exactamente sus valores y fórmulas; solo las páginas
+        # adicionales necesitan una numeración dinámica distinta.
+        for col in range(2, 38):
             ws.cell(row=row, column=col).value = ""
-        ws.cell(row=row, column=1).value = (page_number - 1) * 20 + row - DATA_ROWS[0] + 1
+        if page_number > 1:
+            ws.cell(row=row, column=1).value = (page_number - 1) * 20 + row - DATA_ROWS[0] + 1
     for coord in ("AI35", "AJ35", "E36", "E37", "E38"):
         ws[coord].value = ""
 
@@ -306,7 +353,10 @@ def _fill_header(ws, metadata: dict[str, Any]) -> None:
         "F6": label("Nombre Agente Educativo (a)", metadata.get("agente_educativo")),
         "I6": label("CC", metadata.get("documento_agente")),
         "A7": label("MODALIDAD DE ATENCIÓN", metadata.get("modalidad")),
-        "F7": label("Código CUENTAME UDS", metadata.get("codigo_uds")),
+        "F7": label(
+            "Código CUENTAME UDS",
+            metadata.get("codigo_cuentame") or metadata.get("nui_uds") or metadata.get("codigo_uds"),
+        ),
         "K7": label("Nombre Unidad de Servicio/ Unidad de Atención", metadata.get("unidad")),
         "A8": label("SERVICIO DE ATENCIÓN", metadata.get("servicio_atencion")),
         "F8": label("Dirección UDS", metadata.get("direccion_uds")),
@@ -384,7 +434,10 @@ def _fill_user_row(
         warnings.append(f"Fila {row}: {age_warning}")
 
     ws.cell(row=row, column=2).value = doc_type
-    ws.cell(row=row, column=3).value = document
+    document_cell = ws.cell(row=row, column=3)
+    document_cell.value = str(document) if document not in (None, "") else ""
+    if document not in (None, ""):
+        document_cell.data_type = "s"
     ws.cell(row=row, column=4).value = first
     ws.cell(row=row, column=5).value = second
     ws.cell(row=row, column=6).value = surname1
@@ -415,6 +468,9 @@ def _fill_user_row(
             continue
         if withdrawal and current >= withdrawal:
             cell.value = "/"
+            model = ws.cell(row=row, column=ATTENDANCE_COLUMNS[0])
+            cell.font = copy(model.font)
+            cell.alignment = copy(model.alignment)
             continue
         explicit_mark = attendance_records.get(iso, "")
         if explicit_mark:
@@ -423,6 +479,11 @@ def _fill_user_row(
                 cell.value = ""
             else:
                 cell.value = explicit_mark
+                # Todas las marcas reutilizan la tipografía y alineación de la
+                # primera celda oficial de asistencia de la misma fila.
+                model = ws.cell(row=row, column=ATTENDANCE_COLUMNS[0])
+                cell.font = copy(model.font)
+                cell.alignment = copy(model.alignment)
                 if explicit_mark == "A":
                     total_a += 1
                 elif explicit_mark == "I":
@@ -436,6 +497,9 @@ def _fill_user_row(
             # se proyectan únicamente los días programados como asistencia. Nunca se
             # inventa una inasistencia.
             cell.value = "A"
+            model = ws.cell(row=row, column=ATTENDANCE_COLUMNS[0])
+            cell.font = copy(model.font)
+            cell.alignment = copy(model.alignment)
             total_a += 1
         else:
             cell.value = ""
@@ -448,16 +512,25 @@ def _fill_user_row(
 
 
 def _fill_non_service_columns(ws, year: int, month: int, dates: set[str]) -> None:
+    """Valida las fechas sin reestilizar el formato oficial.
+
+    Las fechas no laborables ya se representan dejando vacía la celda dinámica
+    de asistencia en ``_fill_user_row``. Nunca se aplican rellenos, bordes ni
+    estilos a columnas o encabezados de la plantilla.
+    """
     for iso in dates:
         parsed = parse_date(iso)
-        if not parsed or parsed.year != year or parsed.month != month:
-            continue
-        position = attendance_cell_for_date(parsed)
-        if not position:
-            continue
-        _, col = position
-        for row in range(9, 36):
-            ws.cell(row=row, column=col).fill = copy(NON_SERVICE_FILL)
+        if parsed and parsed.year == year and parsed.month == month:
+            attendance_cell_for_date(parsed)
+
+
+def _center_age_headers(ws) -> None:
+    """Ajuste puntual autorizado para AÑOS/MESES, sin tocar dimensiones."""
+    for coord in ("H14", "I14"):
+        alignment = copy(ws[coord].alignment)
+        alignment.horizontal = "center"
+        alignment.vertical = "center"
+        ws[coord].alignment = alignment
 
 
 def _is_gestant(user: dict[str, Any]) -> bool:
@@ -488,9 +561,18 @@ def _fill_page_totals(ws, page_users: list[dict[str, Any]], attendance_counts: d
                 under_six += 1
             else:
                 over_six += 1
-    ws["E36"] = under_six
-    ws["E37"] = over_six
-    ws["E38"] = gestants
+    for coord, value in (("E36", under_six), ("E37", over_six), ("E38", gestants)):
+        cell = ws[coord]
+        cell.value = value
+        # Única excepción visual autorizada: hacer visibles y centrar los tres
+        # totales, preservando el resto de propiedades de fuente y alineación.
+        font = copy(cell.font)
+        font.color = "000000"
+        cell.font = font
+        alignment = copy(cell.alignment)
+        alignment.horizontal = "center"
+        alignment.vertical = "center"
+        cell.alignment = alignment
 
 
 def generate_ram_v3(
@@ -516,6 +598,7 @@ def generate_ram_v3(
     workbook = load_workbook(source, data_only=False, keep_links=True)
     _validate_template(workbook)
     participants, warnings = deduplicate_users(users)
+    participants = sort_users_for_ram(participants, year, month)
     metadata = dict(metadata or {})
     required_header_fields = {
         "eas_pds": "EAS o PDS",
@@ -523,6 +606,10 @@ def generate_ram_v3(
         "unidad": "Nombre de la UDS",
         "mes_nombre": "Mes",
         "anio": "Año",
+        "agente_educativo": "Nombre del agente educativo",
+        "documento_agente": "Documento del agente educativo",
+        "codigo_uds": "Código CUÉNTAME/NUI de la UDS",
+        "telefono_uds": "Teléfono del agente educativo",
     }
     for key, label in required_header_fields.items():
         if not str(metadata.get(key) or metadata.get("eas" if key == "eas_pds" else key) or "").strip():
@@ -556,6 +643,7 @@ def generate_ram_v3(
         _clear_data_rows(ws, page_index)
         _fill_header(ws, metadata)
         _set_page_header(ws, page_index, total_pages)
+        _center_age_headers(ws)
         _fill_non_service_columns(ws, year, month, non_service)
         page_users = participants[(page_index - 1) * 20: page_index * 20]
         for offset, user in enumerate(page_users):

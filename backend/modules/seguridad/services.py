@@ -3,14 +3,16 @@ from __future__ import annotations
 import hashlib
 import html
 import json
+import os
 import re
 import secrets
+import smtplib
+import ssl
+from email.message import EmailMessage
 from modules.dbapi_compat import sqlite3
 import threading
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
 from datetime import datetime, timedelta
 from functools import wraps
 from pathlib import Path
@@ -43,14 +45,23 @@ PASSWORD_CHANGE_ALLOWED_PATHS = {
 }
 
 ROLE_MENU_PERMISSIONS = {
-    'SUPERADMIN': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'manual-operativo', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes', 'integrity-stability'],
-    'GERENTE': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'manual-operativo', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes', 'integrity-stability'],
-    'COORDINADOR': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'manual-operativo', 'ajustes', 'calidad-datos', 'base-maestra', 'paquete-mensual', 'reportes-gerenciales', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'formatos', 'relacion-mes', 'cumplimiento', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes', 'integrity-stability'],
+    'SUPERADMIN': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'manual-operativo', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes', 'ambientes-protectores', 'integrity-stability'],
+    'GERENTE': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'manual-operativo', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes', 'ambientes-protectores', 'integrity-stability'],
+    'COORDINADOR': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'manual-operativo', 'ajustes', 'calidad-datos', 'base-maestra', 'paquete-mensual', 'reportes-gerenciales', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'formatos', 'relacion-mes', 'cumplimiento', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes', 'ambientes-protectores', 'integrity-stability'],
     'DOCENTE': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'manual-operativo', 'ajustes', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'formatos', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad'],
     'NUTRICIONISTA': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'manual-operativo', 'ajustes', 'calidad-datos', 'base-maestra', 'salud-nutricion', 'nutricion', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad'],
     'PSICOSOCIAL': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'manual-operativo', 'ajustes', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'familias-redes'],
-    'AUXILIAR_ADMINISTRATIVO': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'manual-operativo', 'ajustes', 'calidad-datos', 'base-maestra', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'formatos', 'talento', 'cumplimiento', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad'],
+    'AUXILIAR_ADMINISTRATIVO': ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'manual-operativo', 'ajustes', 'calidad-datos', 'base-maestra', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'formatos', 'talento', 'cumplimiento', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'supervision-calidad', 'ambientes-protectores'],
 }
+
+if 'talento' not in ROLE_MENU_PERMISSIONS['COORDINADOR']:
+    ROLE_MENU_PERMISSIONS['COORDINADOR'].append('talento')
+for _role in ('SUPERADMIN','GERENTE','COORDINADOR','AUXILIAR_ADMINISTRATIVO'):
+    if 'administrativo-financiero' not in ROLE_MENU_PERMISSIONS[_role]:
+        ROLE_MENU_PERMISSIONS[_role].append('administrativo-financiero')
+for _role in ('SUPERADMIN','GERENTE'):
+    if 'integraciones-configuracion' not in ROLE_MENU_PERMISSIONS[_role]:
+        ROLE_MENU_PERMISSIONS[_role].append('integraciones-configuracion')
 
 ALL_ROLES = frozenset(ROLES_SISTEMA)
 MANAGEMENT = frozenset({'SUPERADMIN', 'GERENTE'})
@@ -68,6 +79,7 @@ PATH_ROLE_RULES = sorted([
     ('/api/acceso', MANAGEMENT),
     ('/api/backups', frozenset({'SUPERADMIN'})),
     ('/api/configuracion-institucional', MANAGEMENT),
+    ('/api/integraciones-configuracion', MANAGEMENT),
     ('/api/institucional-archivos', ALL_ROLES),
     ('/api/identidad-visual', MANAGEMENT),
     ('/api/fundaciones', MANAGEMENT),
@@ -76,7 +88,8 @@ PATH_ROLE_RULES = sorted([
     ('/api/seguridad', MANAGEMENT),
     ('/api/facturacion', frozenset({'SUPERADMIN', 'GERENTE', 'AUXILIAR_ADMINISTRATIVO'})),
     ('/api/cuentas-cobro', frozenset({'SUPERADMIN', 'GERENTE', 'AUXILIAR_ADMINISTRATIVO'})),
-    ('/api/talento-core', frozenset({'SUPERADMIN', 'GERENTE', 'AUXILIAR_ADMINISTRATIVO'})),
+    ('/api/administrativo-financiero', ADMIN_OPERATIONS),
+    ('/api/talento-core', ADMIN_OPERATIONS),
     ('/api/talento', frozenset({'SUPERADMIN', 'GERENTE', 'AUXILIAR_ADMINISTRATIVO'})),
     ('/api/motor-plantillas', frozenset({'SUPERADMIN', 'GERENTE', 'AUXILIAR_ADMINISTRATIVO'})),
     ('/api/plantillas-oficiales', frozenset({'SUPERADMIN', 'GERENTE', 'AUXILIAR_ADMINISTRATIVO'})),
@@ -104,11 +117,13 @@ PATH_ROLE_RULES = sorted([
     ('/api/gestion-integral-uca', ALL_ROLES),
     ('/api/motor-gestion-proyecto', ALL_ROLES),
     ('/api/supervision-calidad', ALL_ROLES),
+    ('/api/ambientes-protectores', ALL_ROLES),
     ('/api/familias-redes', FAMILY_SOCIAL),
     ('/api/centro-planeacion', ALL_ROLES),
     ('/api/psicosocial', FAMILY_SOCIAL),
     ('/api/integrity', frozenset({'SUPERADMIN', 'GERENTE', 'COORDINADOR'})),
     ('/api/asistente-icbf', ALL_ROLES),
+    ('/api/asistente-capacitacion', ALL_ROLES),
     ('/api/corporaciones', ALL_ROLES),
     ('/api/beneficiarios', ALL_ROLES),
     ('/api/buscador', ALL_ROLES),
@@ -349,6 +364,11 @@ def table_columns(cursor: sqlite3.Cursor, table: str) -> set[str]:
 
 
 def ensure_column(cursor: sqlite3.Cursor, table: str, col: str, definition: str) -> None:
+    # El lanzador local simple se usa únicamente después del provisionamiento
+    # verificado del esquema PostgreSQL. Evita cientos de introspecciones
+    # remotas durante cada arranque; no afecta las operaciones funcionales.
+    if os.getenv('SKIP_RUNTIME_SCHEMA_DDL', '').strip().lower() in {'1', 'true', 'yes', 'si', 'sí', 'on'}:
+        return
     if table_exists(cursor, table) and col not in table_columns(cursor, table):
         cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col} {definition}")
 
@@ -356,7 +376,9 @@ def ensure_column(cursor: sqlite3.Cursor, table: str, col: str, definition: str)
 def ensure_security_schema(database_path: str) -> None:
     conn = connect(database_path)
     cur = conn.cursor()
-    cur.executescript(SEGURIDAD_SCHEMA_SQL)
+    # PostgreSQL valida las referencias al crear cada tabla. ``usuarios_app``
+    # debe existir antes de ejecutar el resto del esquema, que contiene claves
+    # foráneas desde sesiones y recuperación de contraseña.
     cur.execute("""
         CREATE TABLE IF NOT EXISTS usuarios_app (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -370,6 +392,7 @@ def ensure_security_schema(database_path: str) -> None:
             fecha_ultima_conexion TEXT
         )
     """)
+    cur.executescript(SEGURIDAD_SCHEMA_SQL)
     for col, definition in {
         'fundacion_id': 'INTEGER',
         'nombre_completo': 'TEXT',
@@ -1017,30 +1040,43 @@ def build_password_reset_url(token: str) -> str:
 
 
 def send_password_reset_email(recipient: str, reset_url: str) -> bool:
-    api_key = str(current_app.config.get('RESEND_API_KEY') or '').strip()
+    host = str(current_app.config.get('SMTP_HOST') or 'smtp.gmail.com').strip()
+    port = int(current_app.config.get('SMTP_PORT') or 587)
+    username = str(current_app.config.get('SMTP_USERNAME') or '').strip()
+    password = str(current_app.config.get('SMTP_PASSWORD') or '')
     from_email = str(current_app.config.get('PASSWORD_RESET_FROM_EMAIL') or '').strip()
-    if not api_key or not from_email or not recipient or not reset_url:
+    use_tls = bool(current_app.config.get('SMTP_USE_TLS', True))
+    use_ssl = bool(current_app.config.get('SMTP_USE_SSL', False))
+    timeout = max(5, int(current_app.config.get('SMTP_TIMEOUT_SECONDS') or 15))
+    if not host or not username or not password or not from_email or not recipient or not reset_url:
         return False
-    body = {
-        'from': from_email,
-        'to': [recipient],
-        'subject': 'Restablecimiento de contraseña - PrimeraInfancia',
-        'html': (
-            '<p>Se solicitó restablecer tu contraseña.</p>'
-            f'<p><a href="{html.escape(reset_url, quote=True)}">Crear una nueva contraseña</a></p>'
-            '<p>El enlace es de un solo uso y vence pronto. Si no hiciste la solicitud, ignora este mensaje.</p>'
-        ),
-    }
-    req = urllib.request.Request(
-        'https://api.resend.com/emails',
-        data=json.dumps(body).encode('utf-8'),
-        headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
-        method='POST',
+    message = EmailMessage()
+    message['From'] = from_email
+    message['To'] = recipient
+    message['Subject'] = 'Restablecimiento de contraseña - PrimeraInfancia'
+    message.set_content(
+        'Se solicitó restablecer tu contraseña. Abre este enlace de un solo uso: '
+        f'{reset_url}\n\nSi no hiciste la solicitud, ignora este mensaje.'
+    )
+    message.add_alternative(
+        '<p>Se solicitó restablecer tu contraseña.</p>'
+        f'<p><a href="{html.escape(reset_url, quote=True)}">Crear una nueva contraseña</a></p>'
+        '<p>El enlace es de un solo uso y vence pronto. Si no hiciste la solicitud, ignora este mensaje.</p>',
+        subtype='html',
     )
     try:
-        with urllib.request.urlopen(req, timeout=15) as response:
-            return 200 <= int(response.status) < 300
-    except (urllib.error.URLError, TimeoutError, ValueError):
+        context = ssl.create_default_context()
+        smtp_class = smtplib.SMTP_SSL if use_ssl else smtplib.SMTP
+        with smtp_class(host, port, timeout=timeout, context=context) if use_ssl else smtp_class(host, port, timeout=timeout) as server:
+            if use_tls and not use_ssl:
+                server.ehlo()
+                server.starttls(context=context)
+                server.ehlo()
+            server.login(username, password)
+            server.send_message(message)
+        return True
+    except (smtplib.SMTPException, OSError, TimeoutError, ValueError) as exc:
+        current_app.logger.warning('No fue posible enviar correo de recuperación por SMTP (%s).', type(exc).__name__)
         return False
 
 

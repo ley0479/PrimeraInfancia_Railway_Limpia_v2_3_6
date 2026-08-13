@@ -180,6 +180,13 @@ try:
 except Exception as exc:
     print(f'Panel Comercial no pudo registrarse: {exc}')
 
+# Sistema Integral Administrativo y Financiero.
+try:
+    from modules.administrativo_financiero import register_administrativo_financiero
+    register_administrativo_financiero(app, DATABASE_PATH, app.config['DATA_DIR'], OUTPUT_FOLDER)
+except Exception as exc:
+    print(f'Administrativo y Financiero no pudo registrarse: {exc}')
+
 # Gerencia General: tablero ejecutivo comercial, operativo y de licencias.
 try:
     from modules.gerencia_general import register_gerencia_general
@@ -374,10 +381,39 @@ except Exception as exc:
     else:
         print(f'Componente Psicosocial no pudo registrarse: {exc}')
 
+# V2.7.0: Sistema Integral de Ambientes Educativos y Protectores.
+try:
+    from modules.ambientes_protectores import register_ambientes_protectores
+    register_ambientes_protectores(app, DATABASE_PATH, app.config['DATA_DIR'], OUTPUT_FOLDER)
+except Exception as exc:
+    if str(app.config.get('APP_ENV', '')).lower() == 'production':
+        app.logger.exception('Ambientes Educativos y Protectores no pudo registrarse')
+    else:
+        print(f'Ambientes Educativos y Protectores no pudo registrarse: {exc}')
+
 # V2.7.0: conserva Integridad y agrega Planeación Operativa/Psicosocial.
 try:
+    from modules.integraciones_configuracion import register_integraciones_configuracion
+    register_integraciones_configuracion(app, DATABASE_PATH, app.config['PROJECT_DIR'], app.config['DATA_DIR'])
+except Exception as exc:
+    if str(app.config.get('APP_ENV', '')).lower() == 'production':
+        app.logger.exception('Integraciones y Configuración no pudo registrarse')
+    else:
+        print(f'Integraciones y Configuración no pudo registrarse: {exc}')
+
+# V2.7.0: conserva Integridad y agrega Planeación Operativa/Psicosocial.
+try:
+    from modules.asistente_capacitacion import register_asistente_capacitacion
+    register_asistente_capacitacion(app, DATABASE_PATH)
+except Exception as exc:
+    if str(app.config.get('APP_ENV', '')).lower() == 'production':
+        app.logger.exception('Asistente de ayuda y capacitación no pudo registrarse')
+    else:
+        print(f'Asistente de ayuda y capacitación no pudo registrarse: {exc}')
+
+try:
     from modules.integrity_stability import register_integrity_stability
-    register_integrity_stability(app, app.config['PROJECT_DIR'], app.config['DATA_DIR'])
+    register_integrity_stability(app, app.config['PROJECT_DIR'], app.config['DATA_DIR'], DATABASE_PATH)
 except Exception as exc:
     if str(app.config.get('APP_ENV', '')).lower() == 'production':
         raise RuntimeError('El Motor de Integridad no pudo registrarse; se bloquea el arranque productivo.') from exc
@@ -539,7 +575,14 @@ def aplicar_metadatos_tenant(datos=None):
 
 
 def table_columns(cursor, table_name):
-    cursor.execute(f"PRAGMA table_info({table_name})")
+    cursor.execute(
+        """
+        SELECT column_name AS name
+        FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = ?
+        """,
+        (str(table_name),),
+    )
     return {row['name'] for row in cursor.fetchall()}
 
 
@@ -3028,7 +3071,7 @@ def dividir_nombre(nombre):
 
 
 def guardar_beneficiarios_actuales(df):
-    conn = get_db_connection()
+    conn = database_connection()
     cursor = conn.cursor()
     cursor.execute("UPDATE beneficiarios SET estado = ? WHERE estado = ? AND COALESCE(fundacion_id, 1) = ?", (EstadoUsuario.RETIRADO, EstadoUsuario.ACTIVO, fundacion_actual_id()))
     ahora = datetime.now().isoformat()
@@ -3214,9 +3257,9 @@ def periodo_actual():
 def contar_edad_retiro(cursor):
     cursor.execute("""
         SELECT fecha_nacimiento
-        FROM beneficiarios
-        WHERE estado = ?
-    """, (EstadoUsuario.ACTIVO,))
+        FROM master_ninos
+        WHERE activo = 1 AND COALESCE(fundacion_id, 1) = ?
+    """, (fundacion_actual_id(),))
     return sum(1 for row in cursor.fetchall() if calcular_edad_meses(row['fecha_nacimiento']) >= 71)
 
 
@@ -3225,16 +3268,16 @@ def contar_peso_talla_vencido(cursor):
     fid = fundacion_actual_id()
     cursor.execute("""
         SELECT COUNT(*) as total
-        FROM beneficiarios b
-        WHERE b.estado = ?
+        FROM master_ninos b
+        WHERE b.activo = 1
           AND COALESCE(b.fundacion_id, 1) = ?
           AND NOT EXISTS (
-              SELECT 1 FROM peso_talla pt
-              WHERE pt.beneficiario_id = b.id
-                AND COALESCE(pt.fundacion_id, 1) = ?
-                AND date(COALESCE(pt.fecha_medicion, pt.fecha_toma)) >= date(?)
+              SELECT 1 FROM master_salud_nutricion s
+              WHERE s.version_id = b.version_id AND s.documento = b.documento
+                AND s.activo = 1 AND COALESCE(s.fundacion_id, 1) = ?
+                AND date(s.fecha_toma) >= date(?)
           )
-    """, (EstadoUsuario.ACTIVO, fid, fid, limite))
+    """, (fid, fid, limite))
     return cursor.fetchone()['total']
 
 
@@ -3346,14 +3389,14 @@ def evaluar_operacion(periodo=None, usuario='sistema', guardar=True):
     cursor = conn.cursor()
 
     total_beneficiarios = cursor.execute(
-        "SELECT COUNT(*) as total FROM beneficiarios WHERE estado = ?",
-        (EstadoUsuario.ACTIVO,)
+        "SELECT COUNT(*) as total FROM master_ninos WHERE activo = 1 AND COALESCE(fundacion_id,1) = ?",
+        (fundacion_actual_id(),)
     ).fetchone()['total']
     edad_retiro = contar_edad_retiro(cursor)
     peso_talla_vencido = contar_peso_talla_vencido(cursor)
     informes = cursor.execute("SELECT COUNT(*) as total FROM informes_pedagogicos").fetchone()['total']
     evidencias = cursor.execute("SELECT COUNT(*) as total FROM evidencias").fetchone()['total']
-    talento = cursor.execute("SELECT COUNT(*) as total FROM coordinadores").fetchone()['total']
+    talento = cursor.execute("SELECT COUNT(DISTINCT documento) as total FROM master_talento_humano WHERE activo=1 AND COALESCE(fundacion_id,1)=?", (fundacion_actual_id(),)).fetchone()['total']
     formatos = len([n for n in os.listdir(OUTPUT_FOLDER) if n.lower().endswith(('.xlsx', '.xls', '.pdf'))])
     documentos = cursor.execute("SELECT COUNT(*) as total FROM documentos_institucionales WHERE estado = 'vigente'").fetchone()['total']
     entregables = listar_entregables_periodo(cursor, periodo)
@@ -3523,7 +3566,9 @@ def generar_informe_supervision_excel(resultado):
 
 
 def consultar_usuarios_anteriores():
-    conn = get_db_connection()
+    # Este flujo se ejecuta dentro de un job y necesita conservar el resultado
+    # mientras inspecciona columnas y consulta la base anterior en PostgreSQL.
+    conn = database_connection()
     cursor = conn.cursor()
     columnas = table_columns(cursor, 'usuarios')
     columnas_base = [
@@ -3553,7 +3598,7 @@ def consultar_usuarios_anteriores():
 
 
 def guardar_usuarios_actuales(df):
-    conn = get_db_connection()
+    conn = database_connection()
     cursor = conn.cursor()
     columnas_db = table_columns(cursor, 'usuarios')
     cursor.execute('DELETE FROM usuarios WHERE COALESCE(fundacion_id, 1) = ?', (fundacion_actual_id(),))
@@ -3614,7 +3659,7 @@ def guardar_usuarios_actuales(df):
             pass
 
 def guardar_auditoria(usuario, archivo, total_registros, cambios_detectados):
-    conn = get_db_connection()
+    conn = database_connection()
     conn.execute('''
         INSERT INTO auditoria
         (fecha, usuario, accion, archivo, total_registros, cambios_detectados, archivo_cargado, fecha_accion)
@@ -3658,7 +3703,7 @@ def registrar_movimientos_lote(movimientos):
         return 0
 
     ahora = datetime.now().isoformat()
-    conn = get_db_connection()
+    conn = database_connection()
     cursor = conn.cursor()
     try:
         ensure_runtime_schema(cursor)
@@ -4052,6 +4097,8 @@ def comparar_con_ultima_base(df, registrar=True, update_job=None, alcance='base 
         'alcance_comparacion': alcance,
         'por_documento': por_documento
     }
+    if not registrar:
+        resumen['_movimientos_pendientes'] = movimientos_pendientes
     update(60, 'Comparación finalizada', f'{movimientos_registrados} movimiento(s) registrado(s) en lote.')
     log_procesamiento_base_maestra('Comparación finalizada', movimientos_registrados=movimientos_registrados)
     return resumen
@@ -4112,7 +4159,7 @@ def obtener_alertas():
 # ==================== RUTAS: BENEFICIARIOS ====================
 @app.route('/api/beneficiarios', methods=['GET'])
 def obtener_beneficiarios():
-    """Lista beneficiarios"""
+    """Lista la población de la Base Maestra publicada."""
     unidad = request.args.get('unidad')
     estado = request.args.get('estado', EstadoUsuario.ACTIVO)
     
@@ -4120,14 +4167,14 @@ def obtener_beneficiarios():
     cursor = conn.cursor()
     
     if rol_actual() == 'SUPERADMIN':
-        query = "SELECT * FROM beneficiarios WHERE estado = ?"
-        params = [estado]
+        query = "SELECT *, unidad_servicio AS unidad, documento AS nui FROM master_ninos WHERE activo = 1"
+        params = []
     else:
-        query = "SELECT * FROM beneficiarios WHERE estado = ? AND COALESCE(fundacion_id, 1) = ?"
-        params = [estado, fundacion_actual_id()]
+        query = "SELECT *, unidad_servicio AS unidad, documento AS nui FROM master_ninos WHERE activo = 1 AND COALESCE(fundacion_id, 1) = ?"
+        params = [fundacion_actual_id()]
     
     if unidad:
-        query += " AND unidad = ?"
+        query += " AND unidad_servicio = ?"
         params.append(unidad)
     
     cursor.execute(query, params)
@@ -4503,6 +4550,7 @@ def _procesar_base_cuentame_core(ruta_cuentame, filename, options=None, update_j
     update(28, 'Preparando comparación con Base Maestra', f'{len(df_comparacion)} registro(s) para {alcance_comparacion}.')
     cambios = comparar_con_ultima_base(
         df_comparacion,
+        registrar=False,
         update_job=update,
         alcance=alcance_comparacion,
         unidades_alcance=unidades_seleccionadas if unidades_seleccionadas and not procesar_todo else None
@@ -4518,6 +4566,10 @@ def _procesar_base_cuentame_core(ruta_cuentame, filename, options=None, update_j
     log_procesamiento_base_maestra('Fin de guardado de usuarios actuales', total=len(df))
     update(72, 'Actualizando beneficiarios actuales')
     guardar_beneficiarios_actuales(df)
+    movimientos_pendientes = cambios.pop('_movimientos_pendientes', [])
+    if movimientos_pendientes:
+        update(74, 'Registrando movimientos operativos', f'{len(movimientos_pendientes)} movimiento(s) después de sincronizar beneficiarios.')
+        cambios['movimientos_registrados'] = registrar_movimientos_lote(movimientos_pendientes)
     guardar_auditoria('Operador', filename, total_usuarios_base, str(cambios))
 
     update(76, 'Actualizando alertas operativas')
@@ -4713,11 +4765,11 @@ def procesar_sistema():
 @app.route('/api/plantillas', methods=['GET', 'POST'])
 def manejar_plantillas():
     if request.method == 'GET':
-        conn = get_db_connection()
+        conn = database_connection()
         cursor = conn.cursor()
         ensure_runtime_schema(cursor)
         conn.commit()
-        plantillas = cursor.execute('SELECT * FROM plantillas ORDER BY COALESCE(fecha_carga, fecha_ultima_actualizacion, "") DESC').fetchall()
+        plantillas = cursor.execute("SELECT * FROM plantillas ORDER BY COALESCE(fecha_carga, fecha_ultima_actualizacion, '') DESC").fetchall()
         conn.close()
         return jsonify({'plantillas': [dict(row) for row in plantillas]})
 
@@ -4740,7 +4792,7 @@ def manejar_plantillas():
     ruta_destino = os.path.join(TEMPLATES_FOLDER, nombre_guardado)
     file.save(ruta_destino)
 
-    conn = get_db_connection()
+    conn = database_connection()
     conn.execute('''
         INSERT INTO plantillas
         (nombre, nombre_original, nombre_guardado, tipo, ruta_archivo, fecha_carga, version, estado, activa)
@@ -5516,7 +5568,7 @@ def cuentas_cobro_generar():
 
 def obtener_docente_relacion(unidad: str) -> str:
     unidad_norm = normalize_unidad(unidad)
-    conn = get_db_connection()
+    conn = database_connection()
     cursor = conn.cursor()
     ensure_runtime_schema(cursor)
     fila = cursor.execute("""
@@ -5540,10 +5592,10 @@ def relacion_mes_generar():
     cursor = conn.cursor()
     ensure_runtime_schema(cursor)
     filas = cursor.execute("""
-        SELECT unidad, tipo_beneficiario, edad_meses, estado
-        FROM beneficiarios
-        WHERE estado = ?
-    """, (EstadoUsuario.ACTIVO,)).fetchall()
+        SELECT unidad_servicio AS unidad, grupo_etario AS tipo_beneficiario, edad_meses, estado
+        FROM master_ninos
+        WHERE activo = 1 AND COALESCE(fundacion_id,1) = ?
+    """, (fundacion_actual_id(),)).fetchall()
     conn.close()
 
     resumen = {}
@@ -5836,16 +5888,21 @@ def generar_informe_supervision():
 @app.route('/api/unidades', methods=['GET', 'POST'])
 def manejar_unidades():
     """Consulta o crea manualmente unidades para el tablero."""
-    conn = get_db_connection()
+    # Estas rutas operativas usan el adaptador DB-API PostgreSQL, que conserva
+    # correctamente el resultado mientras se aplican los controles multi-tenant.
+    conn = database_connection()
     cursor = conn.cursor()
     ensure_runtime_schema(cursor)
 
     if request.method == 'GET':
         filas = cursor.execute("""
-            SELECT nombre, direccion, telefono, total_usuarios, total_gestantes, fecha_actualizacion
-            FROM unidades
+            SELECT nombre, NULL AS direccion, NULL AS telefono,
+                   total_ninos AS total_usuarios, 0 AS total_gestantes,
+                   fecha_consolidacion AS fecha_actualizacion
+            FROM master_unidades
+            WHERE activo=1 AND COALESCE(fundacion_id,1)=?
             ORDER BY nombre
-        """).fetchall()
+        """, (fundacion_actual_id(),)).fetchall()
         conn.close()
         unidades = []
         nombres_incluidos = set()
@@ -5908,7 +5965,7 @@ def historial():
 
 @app.route('/api/estadisticas', methods=['GET'])
 def estadisticas():
-    conn = get_db_connection()
+    conn = database_connection()
     if rol_actual() == 'SUPERADMIN':
         filtro = '1=1'
         params = []
@@ -5924,9 +5981,9 @@ def estadisticas():
         FROM peso_talla
         WHERE estado_nutricional IN (?, ?) AND {filtro}
     """, [EstadoNutricion.RIESGO, EstadoNutricion.DESNUTRICION] + params).fetchone()['total']
-    vencido = conn.execute(f'SELECT COUNT(*) as total FROM peso_talla WHERE estado = "vencido" AND {filtro}', params).fetchone()['total']
-    proximo = conn.execute(f'SELECT COUNT(*) as total FROM peso_talla WHERE estado = "proximo_vencer" AND {filtro}', params).fetchone()['total']
-    al_dia = conn.execute(f'SELECT COUNT(*) as total FROM peso_talla WHERE estado = "al_dia" AND {filtro}', params).fetchone()['total']
+    vencido = conn.execute(f'SELECT COUNT(*) as total FROM peso_talla WHERE estado = ? AND {filtro}', ['vencido'] + params).fetchone()['total']
+    proximo = conn.execute(f'SELECT COUNT(*) as total FROM peso_talla WHERE estado = ? AND {filtro}', ['proximo_vencer'] + params).fetchone()['total']
+    al_dia = conn.execute(f'SELECT COUNT(*) as total FROM peso_talla WHERE estado = ? AND {filtro}', ['al_dia'] + params).fetchone()['total']
     conn.close()
     return jsonify({
         'total_activos': total,
@@ -6247,13 +6304,13 @@ def inyectar_datos_en_plantillas(unidad_nombre, lista_usuarios, options=None):
             'centro_zonal': valor_metadata_any('CentroZonal', 'Centro Zonal', 'centro_zonal') or 'CZ Ciudad de prueba',
             'municipio': valor_metadata_any('Municipio', 'municipio') or 'Ciudad de prueba',
             'modalidad': valor_metadata_any('Modalidad', 'modalidad'),
-            'servicio_atencion': valor_metadata_any('ServicioAtencion', 'Servicio de Atención', 'Modalidad') or valor_metadata_any('Modalidad'),
+            'servicio_atencion': valor_metadata_any('ServicioAtencion', 'Servicio de Atención', 'Modalidad', 'modalidad'),
             'contrato': valor_metadata_any('NumeroContrato', 'Número de Contrato', 'numero_contrato') or limpiar_valor(docente.get('contrato')) or limpiar_valor(unidad_db.get('contrato')),
             'vigencia': valor_metadata_any('Vigencia', 'vigencia') or str(año),
-            'eas': valor_metadata_any('NombreEAS', 'Nombre EAS', 'EntidadAdministradora') or 'FUNDACIÓN PACÍFICO VIVE',
-            'unidad': unidad_nombre,
+            'eas': valor_metadata_any('NombreEAS', 'Nombre EAS', 'EntidadAdministradora', 'nombre_eas') or 'FUNDACIÓN PACÍFICO VIVE',
+            'unidad': valor_metadata_any('Unidad', 'unidad', 'unidad_servicio', 'nombre_unidad') or limpiar_valor(unidad_db.get('nombre')) or unidad_nombre,
             'unidad_origen': valor_metadata_any('NombreUnidadOrigen', 'Nombre Punto Entrega Origen') or unidad_nombre,
-            'codigo_uds': valor_metadata_any('CodigoUnidadServicio', 'Código UDS', 'Codigo UDS', 'codigo_unidad_servicio') or limpiar_valor(unidad_db.get('codigo_unidad_servicio')),
+            'codigo_uds': valor_metadata_any('CodigoUnidadServicio', 'Código UDS', 'Codigo UDS', 'codigo_unidad_servicio', 'codigo_unidad') or limpiar_valor(unidad_db.get('codigo_unidad_servicio')),
             'codigo_origen': valor_metadata_any('CodigoUnidadOrigen', 'Código Punto Entrega Origen') or valor_metadata_any('CodigoUnidadServicio', 'codigo_unidad_servicio'),
             'mes': mes_nombre,
             'año': str(año),
@@ -6312,6 +6369,8 @@ def inyectar_datos_en_plantillas(unidad_nombre, lista_usuarios, options=None):
         def alias_encabezado_coincide(txt, alias):
             if not txt or not alias:
                 return False
+            if alias == 'servicio':
+                return txt == 'servicio'
             if len(alias) <= 3:
                 # Evita falsos positivos con rótulos cortos como CC dentro de
                 # palabras como ACCIÓN. Debe aparecer como token independiente.
@@ -6347,14 +6406,14 @@ def inyectar_datos_en_plantillas(unidad_nombre, lista_usuarios, options=None):
             (['centro zonal'], valores['centro_zonal']),
             (['municipio'], valores['municipio']),
             (['modalidad de atencion', 'modalidad de atención', 'modalidad'], valores['modalidad']),
-            (['servicio de atencion', 'servicio de atención'], valores['servicio_atencion']),
+            (['servicio de atencion', 'servicio de atención', 'servicio'], valores['servicio_atencion']),
             (['numero de contrato', 'número de contrato', 'contrato'], valores['contrato']),
             (['mes de la entrega', 'mes de entrega', 'mes de consumo', 'mes'], valores['mes']),
             (['ano', 'año', 'anio', 'vigencia'], valores['año']),
-            (['codigo del punto de entrega o uds', 'código del punto de entrega o uds', 'codigo cuentame uds', 'código cuéntame uds', 'codigo uds', 'código uds'], valores['codigo_uds']),
+            (['codigo del punto de entrega o uds', 'código del punto de entrega o uds', 'codigo cuentame de la uds', 'código cuéntame de la uds', 'codigo cuentame uds', 'código cuéntame uds', 'codigo uds', 'código uds'], valores['codigo_uds']),
             (['codigo punto de entrega de origen', 'código punto de entrega de origen'], valores['codigo_origen'] or valores['codigo_uds']),
             (['nombre punto de entrega de origen'], valores['unidad_origen']),
-            (['nombre punto de entrega o uds', 'nombre de la unidad de servicio', 'nombre unidad de servicio', 'nombre unidad de atencion', 'nombre unidad de atención', 'unidad de atencion', 'unidad de atención', 'uds'], valores['unidad']),
+            (['nombre punto de entrega o uds', 'nombre de la unidad de servicio', 'nombre unidad de servicio', 'nombre unidad de atencion', 'nombre unidad de atención', 'unidad de atencion', 'unidad de atención'], valores['unidad']),
             (['responsable punto de entrega o uds', 'responsable punto de entrega', 'nombre agente educativo', 'agente educativo', 'docente'], valores['docente']),
             (['suplente punto de entrega', 'suplente'], valores['suplente']),
             (['direccion punto de entrega o uds', 'dirección punto de entrega o uds', 'direccion uds', 'dirección uds', 'direccion unidad', 'dirección unidad'], valores['direccion_unidad']),
@@ -6368,6 +6427,16 @@ def inyectar_datos_en_plantillas(unidad_nombre, lista_usuarios, options=None):
         ]
         for aliases, valor in reglas_encabezado:
             escribir_por_etiquetas(aliases, valor)
+
+        # Distribución permanente del encabezado de Bienestarina. Se aplica al
+        # final para que ningún escritor genérico vuelva a encerrar los valores
+        # largos en una sola celda angosta.
+        if 'bienestarina' in normalizar_texto_clave(ws.title) or any(
+            'bienestarina' in normalizar_texto_clave(ws.cell(r, c).value)
+            for r in range(1, min(ws.max_row, 10) + 1)
+            for c in range(1, min(ws.max_column, 20) + 1)
+        ):
+            _alpha75_aplicar_encabezado_bienestarina(ws, valores)
 
         # Reemplazo seguro de valores obsoletos en encabezado: corrige casos como
         # formato reutilizado que aún traía datos de otra UDS.
@@ -6473,7 +6542,11 @@ def inyectar_datos_en_plantillas(unidad_nombre, lista_usuarios, options=None):
         is_rpp = 'rpp' in formato_norm
 
         # Solo el bloque de la tabla. Filas superiores se usan para metadatos, no para columnas de usuario.
-        rows_scan = range(max(1, header_row - 4), min(ws.max_row, header_row + 8) + 1)
+        # Los rótulos institucionales situados antes del encabezado no son
+        # columnas del participante. En la segunda página de Bienestarina, por
+        # ejemplo, "Cédula del Responsable" está cuatro filas antes y hacía que
+        # la columna A se detectara simultáneamente como documento y consecutivo.
+        rows_scan = range(max(1, header_row), min(ws.max_row, header_row + 8) + 1)
         control_cols = set()
         total_mensual_col = None
 
@@ -6939,14 +7012,36 @@ def inyectar_datos_en_plantillas(unidad_nombre, lista_usuarios, options=None):
             return ''
         if campo == 'casos_retiro':
             return ''
+        # Los usuarios ya llegan filtrados al RPP correspondiente. Aun así se
+        # calcula el grupo por edad para marcar exactamente una X en la columna
+        # poblacional correcta, incluso cuando Cuéntame trae el grupo amplio
+        # "6 meses a 5 años".
+        grupo_calculado = {
+            '0 A 6 MESES Y GESTANTES': 'grupo_0_6_gestante',
+            '6 A 11 MESES 29 DÍAS': 'grupo_6_11',
+            '1 A 2 AÑOS 11 MESES': 'grupo_1_2',
+            '3 A 5 AÑOS 11 MESES': 'grupo_3_5',
+        }.get(categoria_rpp)
+        if grupo_calculado:
+            pass
+        elif 'gestante' in normalizar_texto_clave(tipo_benef):
+            grupo_calculado = 'grupo_0_6_gestante'
+        elif 0 <= edad_total <= 5:
+            grupo_calculado = 'grupo_0_6_gestante'
+        elif 6 <= edad_total <= 11:
+            grupo_calculado = 'grupo_6_11'
+        elif 12 <= edad_total <= 35:
+            grupo_calculado = 'grupo_1_2'
+        elif 36 <= edad_total <= 71:
+            grupo_calculado = 'grupo_3_5'
         if campo == 'grupo_0_6_gestante':
-            return 'X' if ('gestante' in normalizar_texto_clave(tipo_benef) or '0 a 6' in grupo or '0 a 5' in grupo) else ''
+            return 'X' if grupo_calculado == campo else ''
         if campo == 'grupo_6_11':
-            return 'X' if '6 a 11' in grupo else ''
+            return 'X' if grupo_calculado == campo else ''
         if campo == 'grupo_1_2':
-            return 'X' if '1 a 2' in grupo else ''
+            return 'X' if grupo_calculado == campo else ''
         if campo == 'grupo_3_5':
-            return 'X' if '3 a 5' in grupo else ''
+            return 'X' if grupo_calculado == campo else ''
         return ''
 
     def cambio_aplica(user, campo):
@@ -7549,24 +7644,138 @@ def inyectar_datos_en_plantillas(unidad_nombre, lista_usuarios, options=None):
                     return value
             return ''
 
+        def pertenece_tenant(item):
+            fid = item.get('fundacion_id')
+            if fid in (None, ''):
+                return True
+            try:
+                return int(fid) == int(fundacion_actual_id())
+            except (TypeError, ValueError):
+                return False
+
+        def coincide_unidad(item):
+            valor = item.get('nombre') or item.get('unidad_servicio') or item.get('unidad') or ''
+            return normalize_unidad(valor) == unidad_nombre
+
+        def datos_json(item):
+            raw = item.get('datos_json')
+            if isinstance(raw, dict):
+                return raw
+            if isinstance(raw, str) and raw.strip():
+                try:
+                    value = json.loads(raw)
+                    return value if isinstance(value, dict) else {}
+                except Exception:
+                    return {}
+            return {}
+
+        def first_value(item, *keys):
+            extra = datos_json(item)
+            for source in (item, extra):
+                for key in keys:
+                    value = limpiar_valor(source.get(key))
+                    if value:
+                        return value
+            return ''
+
         unidad_db = {}
         try:
             conn = get_db_connection()
-            cursor = conn.cursor()
-            ensure_runtime_schema(cursor)
-            for row in cursor.execute("SELECT * FROM unidades").fetchall():
-                item = dict(row)
-                if normalize_unidad(item.get('nombre') or '') == unidad_nombre:
-                    unidad_db = item
+            # Fuente canónica primero; la tabla histórica queda solo como respaldo.
+            for tabla in ('master_unidades', 'unidades'):
+                try:
+                    filas = conn.execute(f"SELECT * FROM {tabla}").fetchall()
+                except Exception:
+                    filas = []
+                for row in filas:
+                    item = dict(row)
+                    activo = item.get('activo')
+                    if tabla == 'master_unidades' and activo not in (None, '', 1, True, '1'):
+                        continue
+                    if pertenece_tenant(item) and coincide_unidad(item):
+                        unidad_db = item
+                        break
+                if unidad_db:
                     break
             conn.close()
         except Exception:
             unidad_db = {}
 
-        agente = obtener_talento_por_unidad(unidad_nombre) or {}
+        def agente_ram():
+            candidatos = []
+            try:
+                conn = get_db_connection()
+                consultas = [
+                    "SELECT * FROM master_talento_humano",
+                    """SELECT p.*, a.unidad AS unidad_asignada,
+                              COALESCE(a.rol, a.cargo, p.rol_normalizado, p.cargo) AS cargo_asignado
+                       FROM th_asignaciones a
+                       JOIN th_personas p ON p.id=a.persona_id
+                       WHERE UPPER(COALESCE(a.estado,'ACTIVO'))='ACTIVO'
+                         AND COALESCE(p.activo,1)=1""",
+                ]
+                for index, sql in enumerate(consultas):
+                    try:
+                        filas = conn.execute(sql).fetchall()
+                    except Exception:
+                        filas = []
+                    for row in filas:
+                        item = dict(row)
+                        if not pertenece_tenant(item):
+                            continue
+                        if index == 0 and item.get('activo') not in (None, '', 1, True, '1'):
+                            continue
+                        if item.get('unidad_asignada') and not item.get('unidad'):
+                            item['unidad'] = item.get('unidad_asignada')
+                        if item.get('cargo_asignado'):
+                            item['cargo'] = item.get('cargo_asignado')
+                        if not _talento_coincide_unidad(item, unidad_nombre):
+                            continue
+                        cargo = normalizar_texto_clave(item.get('cargo') or item.get('rol_normalizado') or '')
+                        if not any(token in cargo for token in ('agente', 'docente', 'educativo')):
+                            continue
+                        if not item.get('nombre'):
+                            item['nombre'] = item.get('nombre_completo') or unir_partes(item.get('nombres'), item.get('apellidos'))
+                        candidatos.append((index, normalizar_texto_clave(item.get('nombre')), item))
+                conn.close()
+            except Exception:
+                candidatos = []
+            if candidatos:
+                candidatos.sort(key=lambda value: (value[0], value[1]))
+                return candidatos[0][2]
+            return obtener_talento_por_unidad(unidad_nombre) or {}
+
+        agente = agente_ram()
         eas = meta_any('NombreEAS', 'nombre_eas', 'EntidadAdministradora')
         nit = opt_value('nit', 'NIT', 'nit_eas', default='') or meta_any('NIT', 'Nit', 'nit_eas', 'nit')
         modalidad = meta_any('Modalidad', 'modalidad')
+        nui_uds = (
+            meta_any('NUIUDS', 'NuiUds', 'nui_uds', 'NUI_UCA', 'nui_uca')
+            or first_value(unidad_db, 'nui_uds', 'nui_uca', 'nui', 'NUI')
+        )
+        codigo_cuentame = (
+            meta_any('CodigoCuentame', 'CodigoCUENTAME', 'codigo_cuentame', 'Código CUENTAME UDS')
+            or first_value(unidad_db, 'codigo_cuentame', 'codigo_uds', 'codigo_unidad_servicio', 'codigo_unidad')
+        )
+        codigo_uds = codigo_cuentame or nui_uds or (
+            meta_any('CodigoUnidadServicio', 'codigo_unidad_servicio', 'codigo_unidad', 'CodigoUnidad')
+            or first_value(unidad_db, 'codigo_unidad', 'codigo_unidad_servicio')
+        )
+        agente_nombre = (
+            limpiar_valor(agente.get('nombre') or unir_partes(agente.get('nombres'), agente.get('apellidos')))
+            or first_value(unidad_db, 'docente_asignado', 'agente_educativo', 'docente')
+            or meta_any('Docente', 'docente', 'AgenteEducativo', 'agente_educativo')
+        )
+        documento_agente = (
+            limpiar_documento_talento(agente.get('documento'))
+            or first_value(unidad_db, 'docente_documento', 'documento_docente', 'documento_agente')
+            or meta_any('DocumentoDocente', 'documento_docente', 'CedulaDocente', 'cedula_docente', 'documento_agente')
+        )
+        telefono_agente = (
+            limpiar_documento_talento(agente.get('telefono'))
+            or first_value(unidad_db, 'telefono_docente', 'telefono_agente')
+            or meta_any('TelefonoDocente', 'telefono_docente', 'TelefonoAgente', 'telefono_agente')
+        )
         return {
             'eas_pds': eas,
             'eas': eas,
@@ -7578,14 +7787,18 @@ def inyectar_datos_en_plantillas(unidad_nombre, lista_usuarios, options=None):
             'mes_nombre': mes_nombre,
             'mes_numero': mes,
             'anio': año,
-            'agente_educativo': limpiar_valor(agente.get('nombre') or unir_partes(agente.get('nombres'), agente.get('apellidos'))).upper(),
-            'documento_agente': limpiar_documento_talento(agente.get('documento')),
+            'agente_educativo': agente_nombre.upper(),
+            'documento_agente': documento_agente,
             'modalidad': modalidad,
-            'codigo_uds': meta_any('CodigoUnidadServicio', 'codigo_unidad_servicio') or limpiar_valor(unidad_db.get('codigo_unidad_servicio')),
+            'nui_uds': nui_uds or codigo_uds,
+            'codigo_cuentame': codigo_cuentame or codigo_uds,
+            'codigo_uds': codigo_uds,
             'unidad': unidad_nombre,
             'servicio_atencion': meta_any('ServicioAtencion', 'servicio_atencion'),
             'direccion_uds': opt_value('direccion_uds', 'direccion_unidad', default='') or limpiar_valor(unidad_db.get('direccion')),
-            'telefono_uds': opt_value('telefono_uds', 'telefono_unidad', default='') or limpiar_documento_talento(unidad_db.get('telefono')),
+            # Regla funcional RAM: este rótulo recibe el teléfono del agente
+            # responsable; solo si falta se usa el teléfono institucional.
+            'telefono_uds': telefono_agente or opt_value('telefono_uds', 'telefono_unidad', default='') or limpiar_documento_talento(unidad_db.get('telefono')),
         }
 
     def dias_no_atencion_ram_v3():
@@ -7715,8 +7928,9 @@ def inyectar_datos_en_plantillas(unidad_nombre, lista_usuarios, options=None):
             entry.get('tipo') == 'ram'
             and (str(entry.get('version') or '').strip() == '3' or 'plantilla ram oficial v3' in formato_norm or 'registro mensual v3' in formato_norm)
         )
-        # RAM V3 pagina en bloques de 20; no se trunca la lista de participantes.
-        usuarios_formato = usuarios_ordenados if es_ram_v3_formato else usuarios_ordenados[:max_usuarios_formato]
+        es_ram_oficial = entry.get('tipo') == 'ram'
+        # Todo RAM oficial pagina en bloques de 20; no se trunca la población.
+        usuarios_formato = usuarios_ordenados if es_ram_oficial else usuarios_ordenados[:max_usuarios_formato]
 
         if es_rpp_formato:
             ok_ctx, errores_ctx, resumen_ctx = validate_rpp_context(entry, usuarios_formato, minuta_rpp_vigente, categoria_rpp)
@@ -7770,6 +7984,28 @@ def inyectar_datos_en_plantillas(unidad_nombre, lista_usuarios, options=None):
                     f"participantes={resultado_ram.get('total_participantes')}; "
                     f"paginas={resultado_ram.get('paginas_ram')}; "
                     f"advertencias={len(resultado_ram.get('warnings') or [])}"
+                )
+                continue
+
+            if es_ram_oficial:
+                from services.ram_historical_service import generate_ram_historical
+                nombre_salida = secure_filename(f"{unidad_nombre}_RAM_ASISTENCIA_MENSUAL_{int(año):04d}_{int(mes):02d}.xlsx")
+                salida_path = os.path.join(OUTPUT_FOLDER, nombre_salida)
+                resultado_ram = generate_ram_historical(
+                    ruta_plantilla,
+                    salida_path,
+                    usuarios_formato,
+                    año,
+                    mes,
+                    metadata=metadata_ram_v3(),
+                    attendance_provider=obtener_dias_asistencia_usuario,
+                    non_service_dates=dias_no_atencion_ram_v3(),
+                    expected_sha256=entry.get('hash_sha256'),
+                )
+                registrar_archivo_generado_alpha57(
+                    'ram', unidad_nombre, nombre_salida, salida_path,
+                    mes=mes, anio=año, grupo_etario=None,
+                    extra={'plantilla': os.path.basename(str(ruta_plantilla)), 'version': '2', 'usuarios': resultado_ram.get('total_participantes', 0), 'paginas_ram': resultado_ram.get('paginas_ram', 1)},
                 )
                 continue
 
@@ -7994,7 +8230,10 @@ def _alpha68_parse_formatos_seleccionados(options=None):
     normalizados = set()
     aliases = {
         'rpp': 'rpp', 'bienestarina': 'bienestarina', 'ram': 'ram',
-        'ran': 'ran', 'rran': 'rran', 'relacion': 'relacion_mensual',
+        # RAN/RRAN fueron retirados. Se conserva un marcador para que clientes
+        # antiguos no conviertan una selección obsoleta en "generar todo".
+        'ran': 'formato_no_disponible', 'rran': 'formato_no_disponible',
+        'relacion': 'relacion_mensual',
         'relacion_mensual': 'relacion_mensual', 'listado': 'listado_usuarios',
         'listado_usuarios': 'listado_usuarios', 'usuarios': 'listado_usuarios',
         'distribucion': 'distribucion_alimentos', 'distribucion_alimentos': 'distribucion_alimentos',
@@ -8315,7 +8554,12 @@ def _alpha57_normalizar_formato_descarga(formato):
     txt = normalizar_texto_clave(raw)
     if 'bienestarina' in txt or 'bienesterina' in txt:
         return 'bienestarina'
-    if 'asistencia' in txt or 'ram' in txt or 'rram' in txt or 'ran' in txt or 'run' in txt:
+    # RAN/RRAN es un formato distinto de RAM. Debe evaluarse antes de buscar
+    # "ram", pues de otro modo RRAN contiene el substring RAM/RAN según el alias.
+    tokens = set(txt.split())
+    if tokens.intersection({'ran', 'rran'}) or raw.lower() in {'ran', 'rran'}:
+        return 'ran'
+    if 'asistencia' in txt or txt in {'ram', 'rram'}:
         return 'ram'
     if 'rpp' in txt or raw.lower().startswith('rpp_'):
         return raw.lower().replace('-', '_') if raw.lower().startswith('rpp_') else 'rpp'
@@ -8391,7 +8635,7 @@ def registrar_archivo_generado_alpha57(formato, unidad, archivo, ruta_archivo, m
 def _alpha57_formato_match(registro_formato, solicitado):
     reg = _alpha57_normalizar_formato_descarga(registro_formato)
     sol = _alpha57_normalizar_formato_descarga(solicitado)
-    if sol in {'bienestarina', 'ram'}:
+    if sol in {'bienestarina', 'ram', 'ran'}:
         return reg == sol
     if str(sol).startswith('rpp_'):
         return reg == 'rpp' or str(reg).startswith('rpp')
@@ -8992,22 +9236,96 @@ def _alpha59_split_nombre_completo(nombre):
 
 def _alpha59_usuario_normalizado(row, unidad_consulta=''):
     data = _alpha59_row_to_dict(row)
-    nombres = data.get('nombres') or data.get('nombre') or data.get('Nombre') or ''
-    apellidos = data.get('apellidos') or ''
-    if data.get('primer_nombre') or data.get('primer_apellido'):
-        primer_nombre = data.get('primer_nombre') or ''
-        segundo_nombre = data.get('segundo_nombre') or ''
-        primer_apellido = data.get('primer_apellido') or ''
-        segundo_apellido = data.get('segundo_apellido') or ''
+
+    # La consolidación conserva el registro documental completo dentro de
+    # datos_json (en algunas versiones hay un segundo datos_json anidado).
+    # Promover esos campos evita perder acudiente, contacto y encabezados al
+    # generar formatos desde master_ninos.
+    documental = {}
+    pendiente = [data.get('datos_json')]
+    for _nivel in range(3):
+        if not pendiente:
+            break
+        raw_json = pendiente.pop(0)
+        if not raw_json:
+            continue
+        try:
+            parsed = json.loads(raw_json) if isinstance(raw_json, str) else dict(raw_json)
+        except Exception:
+            parsed = {}
+        if not isinstance(parsed, dict):
+            continue
+        for clave, valor in parsed.items():
+            if clave != 'datos_json' and valor not in (None, ''):
+                documental.setdefault(clave, valor)
+        if parsed.get('datos_json'):
+            pendiente.append(parsed.get('datos_json'))
+
+    def dato(*claves, default=''):
+        for clave in claves:
+            valor = data.get(clave)
+            if valor not in (None, ''):
+                return valor
+            valor = documental.get(clave)
+            if valor not in (None, ''):
+                return valor
+        return default
+
+    nombres = (
+        dato('nombres', 'nombre_completo', 'nombre', 'Nombre') or ''
+    )
+    apellidos = dato('apellidos') or ''
+    primer_nombre_doc = dato('primer_nombre', 'primer_nombre_del_beneficiario')
+    segundo_nombre_doc = dato('segundo_nombre', 'segundo_nombre_del_beneficiario')
+    primer_apellido_doc = dato('primer_apellido', 'primer_apellido_del_beneficiario')
+    segundo_apellido_doc = dato('segundo_apellido', 'segundo_apellido_del_beneficiario')
+    if primer_nombre_doc or primer_apellido_doc:
+        primer_nombre = primer_nombre_doc or ''
+        segundo_nombre = segundo_nombre_doc or ''
+        primer_apellido = primer_apellido_doc or ''
+        segundo_apellido = segundo_apellido_doc or ''
     else:
         split = _alpha59_split_nombre_completo(f'{nombres} {apellidos}'.strip())
         primer_nombre = split['primer_nombre']
         segundo_nombre = split['segundo_nombre']
         primer_apellido = split['primer_apellido']
         segundo_apellido = split['segundo_apellido']
-    documento = data.get('documento') or data.get('nui') or data.get('NUI') or ''
-    unidad = data.get('unidad') or unidad_consulta or ''
+    documento = dato('documento', 'nui', 'NUI', 'documento_del_beneficiario') or ''
+    unidad = (
+        dato('unidad', 'unidad_servicio', 'nombre_unidad', 'unidad_atencion',
+             'uds', 'nombre_de_la_unidad_de_servicio') or unidad_consulta or ''
+    )
+    edad_meses = data.get('edad_meses')
+    if edad_meses in (None, ''):
+        fecha_nacimiento = dato('fecha_nacimiento', 'FechaNacimiento', 'fechaNacimiento', 'fecha_de_nacimiento_del_beneficiario')
+        if fecha_nacimiento:
+            try:
+                edad_meses = calcular_edad_meses(fecha_nacimiento)
+            except Exception:
+                edad_meses = None
     item = dict(data)
+    # Alias institucionales utilizados por los encabezados de RPP,
+    # Bienestarina y RAN/RAM.
+    item.update({
+        'regional': dato('regional', 'regional_del_contrato', 'nombre_de_la_regional_de_la_unidad_de_servicio'),
+        'centro_zonal': dato('centro_zonal', 'nombre_del_centro_zonal'),
+        'municipio': dato('municipio', 'nombre_municipio_de_la_unidad_de_servicio'),
+        'contrato': dato('contrato', 'numero_contrato', 'numero_del_contrato'),
+        'nombre_eas': dato('nombre_eas', 'nombre_de_la_entidad_contratista'),
+        'codigo_unidad': dato('codigo_unidad', 'codigo_unidad_servicio', 'codigo_de_la_unidad_de_servicio'),
+        'modalidad': dato('modalidad'),
+        'telefono': dato('telefono', 'celular', 'telefono_del_beneficiario'),
+        'documento_acudiente': dato('documento_acudiente', 'numero_de_documento_del_acudiente_o_responsable'),
+        'tipo_documento_acudiente': dato('tipo_documento_acudiente', 'tipo_de_documento_del_acudiente_o_responsable'),
+        'parentesco': dato('parentesco', 'tipo_de_responsable'),
+    })
+    acudiente = ' '.join(str(x).strip() for x in [
+        dato('primer_nombre_acudiente', 'primer_nombre_del_acudiente_o_responsable'),
+        dato('segundo_nombre_acudiente', 'segundo_nombre_del_acudiente_o_responsable'),
+        dato('primer_apellido_acudiente', 'primer_apellido_del_acudiente_o_responsable'),
+        dato('segundo_apellido_acudiente', 'segundo_apellido_del_acudiente_o_responsable'),
+    ] if str(x or '').strip())
+    item['nombre_acudiente'] = dato('nombre_acudiente') or acudiente
     item.update({
         'PrimerNombre': primer_nombre,
         'SegundoNombre': segundo_nombre,
@@ -9016,18 +9334,22 @@ def _alpha59_usuario_normalizado(row, unidad_consulta=''):
         'Nombre': ' '.join([x for x in [primer_nombre, segundo_nombre, primer_apellido, segundo_apellido] if x]).strip(),
         'Documento': documento,
         'NUI': data.get('nui') or documento,
-        'TipoDocumento': data.get('tipo_documento') or data.get('TipoDocumento') or '',
-        'EdadMeses': data.get('edad_meses') if data.get('edad_meses') not in (None, '') else 0,
-        'GrupoEdad': data.get('grupo_edad') or data.get('grupo_etario') or '',
-        'TipoBeneficiario': data.get('tipo_beneficiario') or '',
-        'FechaIngreso': data.get('fecha_ingreso') or data.get('FechaIngreso') or '',
-        'FechaRetiro': data.get('fecha_retiro') or data.get('FechaRetiro') or '',
-        'MotivoRetiro': data.get('motivo_retiro') or data.get('MotivoRetiro') or '',
+        'TipoDocumento': dato('tipo_documento', 'TipoDocumento', 'tipo_de_documento_del_beneficiario'),
+        # No convertir un dato ausente en cero: eso clasificaba a todos los niños
+        # de Base Maestra como menores de seis meses e impedía generar los otros RPP.
+        'EdadMeses': edad_meses,
+        'GrupoEdad': dato('grupo_edad', 'grupo_etario', 'nombre_tipo_de_beneficiario'),
+        'TipoBeneficiario': dato('tipo_beneficiario', 'nombre_tipo_de_beneficiario'),
+        'FechaNacimiento': dato('fecha_nacimiento', 'FechaNacimiento', 'fecha_de_nacimiento_del_beneficiario'),
+        'FechaIngreso': dato('fecha_ingreso', 'FechaIngreso', 'fecha_de_atencion_del_beneficiario_a_la_uds'),
+        'FechaRetiro': dato('fecha_retiro', 'FechaRetiro'),
+        'MotivoRetiro': dato('motivo_retiro', 'MotivoRetiro'),
         'Unidad': unidad,
-        'Telefono': data.get('telefono') or '',
-        'Acudiente': data.get('nombre_acudiente') or '',
-        'DocumentoAcudiente': data.get('documento_acudiente') or '',
-        'Parentesco': data.get('parentesco') or '',
+        'Telefono': dato('telefono', 'celular', 'telefono_del_beneficiario'),
+        'Acudiente': dato('nombre_acudiente') or acudiente,
+        'DocumentoAcudiente': dato('documento_acudiente', 'numero_de_documento_del_acudiente_o_responsable'),
+        'TipoDocumentoAcudiente': dato('tipo_documento_acudiente', 'tipo_de_documento_del_acudiente_o_responsable'),
+        'Parentesco': dato('parentesco', 'tipo_de_responsable'),
     })
     return item
 
@@ -9056,37 +9378,75 @@ def _alpha59_deduplicar_usuarios(usuarios):
 
 
 def _alpha59_obtener_usuarios_unidad(unidad):
+    """Obtiene la población consolidada de una UDS.
+
+    ``master_ninos`` es la fuente autoritativa. Las tablas históricas se usan
+    únicamente cuando la Base Maestra no contiene población para la UDS; así
+    evitamos mezclar versiones antiguas o contar dos veces al mismo niño.
+    """
     unidad_norm = normalize_unidad(unidad) or str(unidad or '').upper()
     unidad_txt = normalizar_texto_clave(unidad_norm)
-    usuarios = []
+    tenant_id = fundacion_actual_id()
+    resultado = []
+    conn = None
+
+    def pertenece_unidad(data):
+        unidad_fila = (
+            data.get('unidad_servicio') or data.get('unidad') or data.get('Unidad') or
+            data.get('nombre_unidad') or data.get('unidad_atencion') or data.get('uds') or ''
+        )
+        fila_norm = normalize_unidad(unidad_fila) or str(unidad_fila or '').upper()
+        fila_txt = normalizar_texto_clave(fila_norm)
+        return bool(
+            unidad_txt and fila_txt and
+            (unidad_txt == fila_txt or unidad_txt in fila_txt or fila_txt in unidad_txt)
+        )
+
+    def fila_activa(data, fuente):
+        try:
+            fid = data.get('fundacion_id')
+            if fid not in (None, '') and int(fid) != int(tenant_id):
+                return False
+        except (TypeError, ValueError):
+            return False
+        if fuente == 'master_ninos' and data.get('activo') not in (None, '', 1, True, '1', 'true', 'TRUE'):
+            return False
+        estado = normalizar_texto_clave(data.get('estado') or '')
+        return not any(token in estado for token in ('retir', 'fallec', 'inactiv'))
+
     try:
         conn = get_db_connection()
-        tablas = []
-        try:
-            tablas_db = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
-        except Exception:
-            tablas_db = []
-        for tabla in ['usuarios', 'beneficiarios']:
-            if tabla not in tablas_db:
-                continue
-            try:
-                rows = conn.execute(f'SELECT * FROM {tabla}').fetchall()
-            except Exception:
-                rows = []
-            for row in rows:
-                data = _alpha59_row_to_dict(row)
-                u = data.get('unidad') or data.get('Unidad') or ''
-                u_norm = normalize_unidad(u) or str(u or '').upper()
-                u_txt = normalizar_texto_clave(u_norm)
-                if unidad_txt and u_txt and (unidad_txt == u_txt or unidad_txt in u_txt or u_txt in unidad_txt):
-                    usuarios.append(_alpha59_usuario_normalizado(data, unidad))
-        try:
-            conn.close()
-        except Exception:
-            pass
+
+        # Primero la fuente consolidada; solo si está vacía se consultan legados.
+        for fuentes in (('master_ninos',), ('usuarios', 'beneficiarios')):
+            usuarios = []
+            for tabla in fuentes:
+                # No usar PRAGMA/sqlite_master aquí: la plataforma opera sobre
+                # PostgreSQL y esas comprobaciones abortan la transacción antes de
+                # poder leer la Base Maestra. La consulta directa es compatible
+                # con ambos motores; las instalaciones vigentes siempre crean
+                # estas tablas mediante las migraciones de arranque.
+                try:
+                    rows = conn.execute(f'SELECT * FROM {tabla}').fetchall()
+                except Exception:
+                    rows = []
+                for row in rows:
+                    data = _alpha59_row_to_dict(row)
+                    if fila_activa(data, tabla) and pertenece_unidad(data):
+                        usuarios.append(_alpha59_usuario_normalizado(data, unidad))
+            usuarios = _alpha59_deduplicar_usuarios(usuarios)
+            if usuarios:
+                resultado = usuarios
+                break
     except Exception as exc:
         log_alpha56_formato('ALPHA59_USUARIOS_UNIDAD_ERROR', unidad=unidad, error=str(exc))
-    return _alpha59_deduplicar_usuarios(usuarios)
+    finally:
+        try:
+            if conn is not None:
+                conn.close()
+        except Exception:
+            pass
+    return resultado
 
 
 
@@ -9135,7 +9495,7 @@ def formatos_diagnostico_previo():
 
     minuta_mes = int(minuta.get('mes') or 0) if minuta else None
     minuta_anio = int(minuta.get('anio') or 0) if minuta else None
-    minuta_periodo_exacto = bool(minuta and minuta_mes == mes and minuta_anio == anio)
+    minuta_aplicable = bool(minuta)
     grupos = len(minuta.get('grupos') or []) if minuta else 0
     productos = sum(len(grupo.get('productos') or []) for grupo in (minuta.get('grupos') or [])) if minuta else 0
 
@@ -9150,9 +9510,7 @@ def formatos_diagnostico_previo():
         if not info['disponible']:
             razones.append(f'No existe plantilla {tipo.upper()} aplicable al periodo.')
     if not minuta:
-        razones.append('No existe una minuta RPP vigente.')
-    elif not minuta_periodo_exacto:
-        razones.append(f'La minuta RPP vigente corresponde a {minuta_mes:02d}/{minuta_anio}, no exactamente a {mes:02d}/{anio}.')
+        razones.append('No existe una minuta RPP iniciada antes o durante el período solicitado.')
 
     ready_common = unidad_conocida and bool(usuarios)
     storage_diagnostic = diagnostico_almacenamiento()
@@ -9171,7 +9529,8 @@ def formatos_diagnostico_previo():
         'plantillas': disponibles,
         'rppMinuta': {
             'disponible': bool(minuta),
-            'periodoExacto': minuta_periodo_exacto,
+            'periodoExacto': bool(minuta and minuta_mes == mes and minuta_anio == anio),
+            'aplicableAlPeriodo': minuta_aplicable,
             'mes': minuta_mes,
             'anio': minuta_anio,
             'version': minuta.get('version') if minuta else None,
@@ -9183,7 +9542,7 @@ def formatos_diagnostico_previo():
         'preparado': {
             'bienestarina': bool(ready_common and disponibles['bienestarina']['disponible']),
             'ram': bool(ready_common and disponibles['ram']['disponible']),
-            'rpp': bool(ready_common and disponibles['rpp']['disponible'] and minuta_periodo_exacto),
+            'rpp': bool(ready_common and disponibles['rpp']['disponible'] and minuta_aplicable),
         },
         'razones': razones,
         'errorPlantillas': plantillas_error or None,
@@ -9214,9 +9573,10 @@ def _alpha59_filtrar_rpp_grupo(usuarios, grupo):
         gtxt = normalizar_texto_clave(user.get('GrupoEdad') or user.get('grupo_edad') or '')
         edad = _alpha59_edad_meses(user)
         es_gestante = 'gestante' in tipo or 'gestante' in gtxt
-        if grupo == 'rpp_0_6_gestantes' and (es_gestante or 0 <= edad <= 6 or '0 a 6' in gtxt):
+        # Rangos disjuntos: menores de 6 meses (0-5), luego 6-11.
+        if grupo == 'rpp_0_6_gestantes' and (es_gestante or 0 <= edad <= 5 or '0 a 6' in gtxt):
             filtrados.append(user)
-        elif grupo == 'rpp_6_11' and (7 <= edad <= 11 or '6 a 11' in gtxt):
+        elif grupo == 'rpp_6_11' and (6 <= edad <= 11 or '6 a 11' in gtxt):
             filtrados.append(user)
         elif grupo == 'rpp_1_2' and (12 <= edad <= 35 or '1 a 2' in gtxt):
             filtrados.append(user)
@@ -9227,6 +9587,22 @@ def _alpha59_filtrar_rpp_grupo(usuarios, grupo):
 
 def _alpha59_metadata_formato(unidad, usuarios, mes=None, anio=None):
     base = (usuarios or [{}])[0] if usuarios else {}
+    unidad_db = {}
+    try:
+        conn = get_db_connection()
+        for row in conn.execute('SELECT * FROM unidades').fetchall():
+            candidato = _alpha59_row_to_dict(row)
+            nombre = candidato.get('nombre') or ''
+            if normalize_unidad(nombre) == normalize_unidad(unidad) or normalizar_texto_clave(nombre) in equivalentes_unidad(unidad):
+                unidad_db = candidato
+                break
+        conn.close()
+    except Exception:
+        unidad_db = {}
+    try:
+        talento = obtener_talento_por_unidad(unidad) or {}
+    except Exception:
+        talento = {}
     mes_val = int(mes or request.args.get('mes') or datetime.now().month) if has_request_context() else int(mes or datetime.now().month)
     anio_val = int(anio or request.args.get('anio') or request.args.get('año') or datetime.now().year) if has_request_context() else int(anio or datetime.now().year)
     return {
@@ -9240,13 +9616,18 @@ def _alpha59_metadata_formato(unidad, usuarios, mes=None, anio=None):
         'centro_zonal': base.get('centro_zonal') or '',
         'municipio': base.get('municipio') or '',
         'modalidad': base.get('modalidad') or '',
-        'codigo_unidad': base.get('codigo_unidad_servicio') or base.get('codigo_unidad') or '',
-        'codigo_uds': base.get('codigo_unidad_servicio') or base.get('codigo_unidad') or '',
-        'responsable': base.get('docente') or base.get('agente_educativo') or '',
-        'docente': base.get('docente') or '',
-        'direccion': base.get('direccion_unidad') or '',
-        'telefono': base.get('telefono') or '',
-        'eas': base.get('nombre_eas') or 'Organización de prueba',
+        'codigo_unidad': base.get('codigo_unidad_servicio') or base.get('codigo_unidad') or unidad_db.get('codigo_unidad_servicio') or '',
+        'codigo_uds': base.get('codigo_unidad_servicio') or base.get('codigo_unidad') or unidad_db.get('codigo_unidad_servicio') or '',
+        'codigo_origen': base.get('codigo_unidad_servicio') or base.get('codigo_unidad') or unidad_db.get('codigo_unidad_servicio') or '',
+        'unidad_origen': base.get('Unidad') or base.get('unidad_servicio') or unidad_db.get('nombre') or unidad,
+        'responsable': base.get('docente') or base.get('agente_educativo') or talento.get('nombre') or unidad_db.get('docente_asignado') or '',
+        'docente': base.get('docente') or talento.get('nombre') or unidad_db.get('docente_asignado') or '',
+        'direccion': base.get('direccion_unidad') or unidad_db.get('direccion') or talento.get('direccion') or '',
+        'direccion_unidad': base.get('direccion_unidad') or unidad_db.get('direccion') or talento.get('direccion') or '',
+        'telefono': unidad_db.get('telefono') or talento.get('telefono') or base.get('telefono') or base.get('Telefono') or '',
+        'telefono_docente': talento.get('telefono') or unidad_db.get('telefono') or '',
+        'contrato': base.get('contrato') or unidad_db.get('contrato') or talento.get('contrato') or '',
+        'eas': base.get('nombre_eas') or '',
         'fecha_entrega': request.args.get('fecha_entrega') if has_request_context() else '',
         'lote': request.args.get('lote') if has_request_context() else '',
         'cantidad': request.args.get('cantidad') if has_request_context() else 1,
@@ -9347,7 +9728,7 @@ def _alpha60_generar_bienestarina_directa(unidad, mes=None, anio=None):
     función siempre valida existencia física antes de devolver el nombre.
     """
     try:
-        usuarios = _alpha60_usuarios_bienestarina_unidad(unidad)
+        usuarios = _alpha59_obtener_usuarios_unidad(unidad)
         if not usuarios:
             log_alpha56_formato('ALPHA60_BIENESTARINA_DIRECTA_SIN_USUARIOS', unidad=unidad)
             return None
@@ -9519,7 +9900,7 @@ def _alpha65_generar_bienestarina_para_uds(unidad, mes=None, anio=None):
     ruta = os.path.join(OUTPUT_FOLDER, nombre)
     try:
         os.makedirs(OUTPUT_FOLDER, exist_ok=True)
-        usuarios = _alpha60_usuarios_bienestarina_unidad(unidad) or _alpha59_obtener_usuarios_unidad(unidad)
+        usuarios = _alpha59_obtener_usuarios_unidad(unidad)
         usuarios = _alpha59_deduplicar_usuarios(usuarios)
         _alpha65_log('INICIO_GENERAR_BIENESTARINA', unidad=unidad, archivo_esperado=nombre, usuarios=len(usuarios or []))
         if not usuarios:
@@ -9600,10 +9981,8 @@ def _alpha65_generar_bienestarina_para_uds(unidad, mes=None, anio=None):
             put(f'Q{row}', f'{acud} {doc_acud}'.strip())
             put(f'R{row}', user.get('Parentesco') or user.get('parentesco') or '')
 
-        try:
-            ws.print_area = ws.print_area or 'A1:T50'
-        except Exception:
-            pass
+        # No imponer área de impresión: se conserva exactamente la definida en
+        # la plantilla oficial (incluido el caso en que esté sin configurar).
         wb.save(ruta)
         wb.close()
 
@@ -9764,6 +10143,18 @@ def descargar_formato(unidad, formato):
     controlado para que el frontend no abandone la plataforma.
     """
     formato_norm = _alpha57_normalizar_formato_descarga(formato)
+    if formato_norm == 'ran':
+        return jsonify({
+            'ok': False,
+            'error': 'RAN/RRAN no tiene una plantilla oficial registrada.',
+            'mensaje': (
+                'RAN es independiente de RAM. Cargue y versione la plantilla '
+                'institucional RAN/RRAN antes de solicitar su generación.'
+            ),
+            'unidad': unidad,
+            'formato': formato,
+            'requierePlantillaOficial': True,
+        }), 422
     if formato_norm == 'ram':
         mes_ram, anio_ram = _alpha69_periodo_descarga_ram()
         nombre_archivo = _alpha69_buscar_ram_periodo(unidad, mes_ram, anio_ram)
@@ -9857,47 +10248,8 @@ def _alpha67_unidades_equivalentes_txt(unidad):
 
 
 def _alpha67_obtener_usuarios_bienestarina(unidad):
-    """Busca usuarios de la UDS en tablas históricas sin modificar la BD."""
-    unidad_keys = _alpha67_unidades_equivalentes_txt(unidad)
-    usuarios = []
-    try:
-        conn = get_db_connection()
-        conn.row_factory = sqlite3.Row if 'sqlite3' in globals() else getattr(conn, 'row_factory', None)
-        try:
-            tablas_db = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
-        except Exception:
-            tablas_db = set()
-        for tabla in ['beneficiarios', 'usuarios', 'master_ninos', 'bm_ninos']:
-            if tabla not in tablas_db:
-                continue
-            try:
-                rows = conn.execute(f'SELECT * FROM {tabla}').fetchall()
-            except Exception as exc:
-                _alpha67_log_bienestarina('QUERY_TABLA_ERROR', tabla=tabla, unidad=unidad, error=str(exc))
-                continue
-            for row in rows:
-                data = _alpha59_row_to_dict(row)
-                unidad_raw = (
-                    data.get('unidad') or data.get('Unidad') or data.get('unidad_servicio') or
-                    data.get('nombre_unidad') or data.get('unidad_atencion') or data.get('uds') or ''
-                )
-                item_keys = _alpha67_unidades_equivalentes_txt(unidad_raw)
-                if unidad_keys and item_keys and unidad_keys.isdisjoint(item_keys):
-                    # Comparación flexible pero solo dentro de equivalencias normalizadas.
-                    joined_req = ' '.join(sorted(unidad_keys))
-                    joined_item = ' '.join(sorted(item_keys))
-                    if joined_req not in joined_item and joined_item not in joined_req:
-                        continue
-                usuarios.append(_alpha59_usuario_normalizado(data, unidad))
-        try:
-            conn.close()
-        except Exception:
-            pass
-    except Exception as exc:
-        _alpha67_log_bienestarina('OBTENER_USUARIOS_FATAL', unidad=unidad, error=str(exc), traceback=traceback.format_exc())
-    usuarios = _alpha59_deduplicar_usuarios(usuarios)
-    _alpha67_log_bienestarina('USUARIOS_OBTENIDOS', unidad=unidad, total=len(usuarios))
-    return usuarios
+    """Usa la misma fuente canónica de participantes que RPP y RAM."""
+    return _alpha59_obtener_usuarios_unidad(unidad)
 
 
 def _alpha67_plantillas_bienestarina():
@@ -10012,7 +10364,7 @@ def _alpha67_generar_bienestarina_para_uds(unidad, mes=None, anio=None):
     ruta = os.path.join(OUTPUT_FOLDER, nombre)
     try:
         os.makedirs(OUTPUT_FOLDER, exist_ok=True)
-        usuarios = _alpha67_obtener_usuarios_bienestarina(unidad)
+        usuarios = _alpha59_obtener_usuarios_unidad(unidad)
         if not usuarios:
             _alpha67_log_bienestarina('NO_GENERA_SIN_USUARIOS', unidad=unidad, archivo=nombre)
             return {'ok': False, 'archivo': None, 'ruta': ruta, 'causa': 'No se encontraron usuarios para la UDS solicitada.'}
@@ -10052,6 +10404,10 @@ def _alpha67_generar_bienestarina_para_uds(unidad, mes=None, anio=None):
         _alpha67_put(ws, 'S4', metadata.get('telefono') or '')
         _alpha67_put(ws, 'N1', f'MES DE CONSUMO: {mes_txt}')
         _alpha67_put(ws, 'R1', f'AÑO: {anio_int}')
+        _alpha75_aplicar_encabezado_bienestarina(ws, {
+            **metadata, 'unidad': unidad, 'mes': mes_txt,
+            'anio': anio_int, 'año': anio_int,
+        })
 
         filas = list(range(10, 24)) + list(range(31, 47))
         columnas = list('ABCDEFGHIJKLMNOPQRS')
@@ -10078,10 +10434,7 @@ def _alpha67_generar_bienestarina_para_uds(unidad, mes=None, anio=None):
             doc_acudiente = str(user.get('DocumentoAcudiente') or user.get('documento_acudiente') or '').strip()
             _alpha67_put(ws, f'Q{row}', f'{acudiente} {doc_acudiente}'.strip())
             _alpha67_put(ws, f'R{row}', user.get('Parentesco') or user.get('parentesco') or '')
-        try:
-            ws.print_area = ws.print_area or 'A1:T50'
-        except Exception:
-            pass
+        # Conservar exactamente la configuración de impresión oficial.
         wb.save(ruta)
         try:
             wb.close()
@@ -10182,79 +10535,8 @@ def _alpha74_template_bienestarina_seguro():
 
 
 def _alpha74_usuarios_bienestarina_seguro(unidad):
-    """Obtiene usuarios de una UDS con varios métodos sin modificar la BD."""
-    fuentes = []
-    usuarios = []
-    for nombre_func in ['_alpha67_obtener_usuarios_bienestarina', '_alpha60_usuarios_bienestarina_unidad', '_alpha59_obtener_usuarios_unidad']:
-        try:
-            fn = globals().get(nombre_func)
-            if callable(fn):
-                temp = fn(unidad) or []
-                fuentes.append({'funcion': nombre_func, 'total': len(temp)})
-                if temp:
-                    usuarios.extend(temp)
-        except Exception as exc:
-            fuentes.append({'funcion': nombre_func, 'error': str(exc)})
-
-    # Consulta directa de contingencia por si los adaptadores históricos fallan.
-    try:
-        unidad_keys = set()
-        for val in [unidad, normalize_unidad(unidad)]:
-            if val:
-                unidad_keys.add(normalizar_texto_clave(val))
-        try:
-            for eq in equivalentes_unidad(unidad):
-                unidad_keys.add(normalizar_texto_clave(eq))
-        except Exception:
-            pass
-        conn = get_db_connection()
-        try:
-            tablas_db = {r[0] if not isinstance(r, dict) else r.get('name') for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
-        except Exception:
-            tablas_db = set()
-        for tabla in ['beneficiarios', 'usuarios']:
-            if tabla not in tablas_db:
-                continue
-            try:
-                rows = conn.execute(f'SELECT * FROM {tabla}').fetchall()
-            except Exception as exc:
-                fuentes.append({'tabla': tabla, 'error': str(exc)})
-                continue
-            total_tabla = 0
-            for row in rows:
-                data = _alpha59_row_to_dict(row)
-                unidad_raw = data.get('unidad') or data.get('Unidad') or data.get('unidad_servicio') or data.get('nombre_unidad') or data.get('uds') or ''
-                item_keys = {normalizar_texto_clave(unidad_raw), normalizar_texto_clave(normalize_unidad(unidad_raw))}
-                item_keys = {x for x in item_keys if x}
-                coincide = False
-                if unidad_keys and item_keys:
-                    coincide = not unidad_keys.isdisjoint(item_keys)
-                    if not coincide:
-                        req = ' '.join(sorted(unidad_keys))
-                        item = ' '.join(sorted(item_keys))
-                        coincide = bool(req and item and (req in item or item in req))
-                if not coincide:
-                    continue
-                try:
-                    usuarios.append(_alpha59_usuario_normalizado(data, unidad))
-                    total_tabla += 1
-                except Exception:
-                    usuarios.append(dict(data))
-                    total_tabla += 1
-            fuentes.append({'tabla': tabla, 'total': total_tabla})
-        try:
-            conn.close()
-        except Exception:
-            pass
-    except Exception as exc:
-        fuentes.append({'directo_error': str(exc), 'traceback': traceback.format_exc()})
-
-    try:
-        usuarios = _alpha59_deduplicar_usuarios(usuarios)
-    except Exception:
-        pass
-    _alpha74_log_bienestarina('USUARIOS_SEGURIDAD_RESULTADO', unidad=unidad, total=len(usuarios), fuentes=fuentes)
-    return usuarios
+    """Obtiene exclusivamente la población canónica compartida por los formatos."""
+    return _alpha59_obtener_usuarios_unidad(unidad)
 
 
 def _alpha74_put_cell(ws, ref, value):
@@ -10264,6 +10546,127 @@ def _alpha74_put_cell(ws, ref, value):
         ws[ref] = value
     except Exception:
         pass
+
+
+# Encabezado oficial Bienestarina: exclusivamente filas 1 a 5. Los rangos se
+# centralizan para que todas las rutas de generación produzcan el mismo diseño.
+BIENESTARINA_HEADER_LAYOUT = {
+    'lugar_label': 'A1:B1', 'lugar': 'C1:E1',
+    'codigo_label': 'F1:I1', 'codigo_uds': 'J1:M1',
+    'mes_consumo': 'N1:Q1', 'anio': 'R1:T1',
+    'regional_label': 'A2:B2', 'regional': 'C2:E2',
+    'nombre_uds_label': 'F2:I2', 'nombre_uds': 'J2:T2',
+    'centro_zonal_label': 'A3:B3', 'centro_zonal': 'C3:E3',
+    'responsable_label': 'F3:I3', 'responsable': 'J3:M3',
+    'suplente_label': 'N3:P3', 'suplente': 'Q3:T3',
+    'municipio_label': 'A4:B4', 'municipio': 'C4:E4',
+    'direccion_label': 'F4:I4', 'direccion': 'J4:M4',
+    'barrio_label': 'N4:Q4', 'telefono': 'R4:T4',
+    'modalidad_label': 'A5:B5', 'modalidad': 'C5:E5',
+    'codigo_origen_label': 'F5:I5', 'codigo_origen': 'J5:M5',
+    'nombre_origen_label': 'N5:Q5', 'nombre_origen': 'R5:T5',
+}
+
+
+def _alpha75_aplicar_encabezado_bienestarina(ws, metadata):
+    """Reorganiza solo A1:T5 y conserva intactas tabla e impresión oficial."""
+    from openpyxl.cell.cell import MergedCell
+    from openpyxl.styles import Alignment
+    from openpyxl.utils.cell import range_boundaries
+
+    valores = {
+        'lugar_label': 'LUGAR:',
+        'lugar': metadata.get('lugar') or metadata.get('tipo_punto_entrega') or 'PUNTO DE ENTREGA UDS',
+        'codigo_label': 'CÓDIGO DEL PUNTO DE ENTREGA O UDS:',
+        'codigo_uds': metadata.get('codigo_uds') or metadata.get('codigo_unidad') or '',
+        'mes_consumo': f"MES DE CONSUMO: {metadata.get('mes') or ''}",
+        'anio': f"AÑO: {metadata.get('año') or metadata.get('anio') or ''}",
+        'regional_label': 'REGIONAL:', 'regional': metadata.get('regional') or '',
+        'nombre_uds_label': 'NOMBRE PUNTO DE ENTREGA O UDS:',
+        'nombre_uds': metadata.get('unidad') or metadata.get('Unidad') or '',
+        'centro_zonal_label': 'CENTRO ZONAL:', 'centro_zonal': metadata.get('centro_zonal') or '',
+        'responsable_label': 'RESPONSABLE PUNTO DE ENTREGA O UDS:',
+        'responsable': metadata.get('docente') or metadata.get('responsable') or '',
+        'suplente_label': 'SUPLENTE / PROVEEDOR:', 'suplente': metadata.get('suplente') or metadata.get('proveedor') or '',
+        'municipio_label': 'MUNICIPIO:', 'municipio': metadata.get('municipio') or '',
+        'direccion_label': 'DIRECCIÓN PUNTO DE ENTREGA O UDS:',
+        'direccion': metadata.get('direccion_unidad') or metadata.get('direccion') or '',
+        'barrio_label': f"BARRIO: {metadata.get('barrio') or ''}",
+        'telefono': f"TELÉFONO: {metadata.get('telefono_unidad') or metadata.get('telefono_docente') or metadata.get('telefono') or ''}",
+        'modalidad_label': 'MODALIDAD:', 'modalidad': metadata.get('modalidad') or '',
+        'codigo_origen_label': 'CÓDIGO PUNTO DE ENTREGA DE ORIGEN:',
+        'codigo_origen': metadata.get('codigo_origen') or metadata.get('codigo_uds') or metadata.get('codigo_unidad') or '',
+        'nombre_origen_label': 'NOMBRE PUNTO DE ENTREGA DE ORIGEN:',
+        'nombre_origen': metadata.get('unidad_origen') or metadata.get('unidad') or metadata.get('Unidad') or '',
+    }
+
+    # Descombinar únicamente rangos que tocan A1:T5. Nunca se interviene desde
+    # la fila 8, donde comienza la tabla de beneficiarios.
+    for merged in list(ws.merged_cells.ranges):
+        if merged.min_row <= 5 and merged.max_row >= 1 and merged.min_col <= 20:
+            ws.unmerge_cells(str(merged))
+
+    for campo, rango in BIENESTARINA_HEADER_LAYOUT.items():
+        min_col, min_row, max_col, max_row = range_boundaries(rango)
+        anchor = ws.cell(min_row, min_col)
+        # Se conserva fuente, relleno, borde y formato numérico del ancla oficial;
+        # solo se ajusta alineación para lectura completa.
+        anchor.value = valores.get(campo, '')
+        alineacion = copy.copy(anchor.alignment)
+        alineacion.wrap_text = True
+        alineacion.vertical = 'center'
+        alineacion.horizontal = 'center' if campo.endswith('_label') or campo in {'mes_consumo', 'anio', 'telefono', 'barrio_label'} else 'left'
+        alineacion.shrink_to_fit = False
+        anchor.alignment = alineacion
+        # Extender el estilo oficial del ancla al bloque antes de combinar evita
+        # huecos visuales y mantiene fuente, relleno y bordes del encabezado.
+        for row in range(min_row, max_row + 1):
+            for col in range(min_col, max_col + 1):
+                celda = ws.cell(row, col)
+                celda._style = copy.copy(anchor._style)
+                celda.alignment = copy.copy(anchor.alignment)
+        if min_col != max_col or min_row != max_row:
+            ws.merge_cells(rango)
+
+    # Alturas suficientes sin reducir la fuente. La tabla (fila 8 en adelante)
+    # mantiene exactamente sus alturas originales.
+    for row, height in {1: 34, 2: 34, 3: 42, 4: 42, 5: 42}.items():
+        ws.row_dimensions[row].height = max(float(ws.row_dimensions[row].height or 0), height)
+
+    # Comprobación estructural previa al guardado: todo texto largo debe vivir
+    # en un rango combinado y todas las celdas no-ancla deben quedar vacías.
+    errores = []
+    for campo, rango in BIENESTARINA_HEADER_LAYOUT.items():
+        min_col, min_row, max_col, max_row = range_boundaries(rango)
+        valor = str(ws.cell(min_row, min_col).value or '')
+        if len(valor) > 18 and min_col == max_col:
+            errores.append(f'{campo}: texto largo sin combinar')
+        for row in range(min_row, max_row + 1):
+            for col in range(min_col, max_col + 1):
+                if row == min_row and col == min_col:
+                    continue
+                celda = ws.cell(row, col)
+                if not isinstance(celda, MergedCell) and celda.value not in (None, ''):
+                    errores.append(f'{campo}: contenido superpuesto en {celda.coordinate}')
+    if errores:
+        raise ValueError('Encabezado Bienestarina inválido: ' + '; '.join(errores))
+    return {'rangos': dict(BIENESTARINA_HEADER_LAYOUT), 'campos': valores}
+
+
+def _alpha75_actualizar_archivo_bienestarina(ruta, unidad, mes=None, anio=None):
+    """Aplica el encabezado permanente a archivos nuevos o ya existentes."""
+    if not ruta or not os.path.exists(ruta):
+        return False
+    wb = load_workbook(ruta, data_only=False, keep_vba=str(ruta).lower().endswith('.xlsm'))
+    try:
+        usuarios = _alpha59_obtener_usuarios_unidad(unidad)
+        metadata = _alpha59_metadata_formato(unidad, usuarios, mes=mes, anio=anio)
+        ws = wb['plantilla de bienestarina '] if 'plantilla de bienestarina ' in wb.sheetnames else wb.active
+        _alpha75_aplicar_encabezado_bienestarina(ws, metadata)
+        wb.save(ruta)
+        return True
+    finally:
+        wb.close()
 
 
 def _alpha74_generar_bienestarina_garantizada(unidad, mes=None, anio=None):
@@ -10327,10 +10730,20 @@ def _alpha74_generar_bienestarina_garantizada(unidad, mes=None, anio=None):
             'J3': metadata.get('responsable') or metadata.get('docente') or metadata.get('agente_educativo') or '',
             'J4': metadata.get('direccion') or metadata.get('direccion_unidad') or '',
             'S4': metadata.get('telefono') or metadata.get('telefono_docente') or '',
+            'J5': metadata.get('codigo_origen') or metadata.get('codigo_uds') or metadata.get('codigo_unidad') or '',
+            'R5': metadata.get('unidad_origen') or unidad,
             'N1': f'MES DE CONSUMO: {mes_txt}',
             'R1': f'AÑO: {anio_int}',
         }.items():
             _alpha74_put_cell(ws, ref, value)
+
+        _alpha75_aplicar_encabezado_bienestarina(ws, {
+            **metadata,
+            'unidad': unidad,
+            'mes': mes_txt,
+            'anio': anio_int,
+            'año': anio_int,
+        })
 
         # Filas oficiales conocidas: hoja 1 = 1..14, hoja 2 = 15..30 aprox.
         filas = list(range(10, 24)) + list(range(31, 47))
@@ -10360,10 +10773,7 @@ def _alpha74_generar_bienestarina_garantizada(unidad, mes=None, anio=None):
             _alpha74_put_cell(ws, f'Q{row}', f'{acudiente} {doc_acudiente}'.strip())
             _alpha74_put_cell(ws, f'R{row}', user.get('Parentesco') or user.get('parentesco') or '')
 
-        try:
-            ws.print_area = ws.print_area or 'A1:T50'
-        except Exception:
-            pass
+        # Conservar sin cambios el área de impresión de la plantilla oficial.
         wb.save(ruta)
         try:
             wb.close()
@@ -10424,6 +10834,13 @@ def descargar_bienestarina_alpha57():
         log_alpha71('RESPUESTA_ERROR', **payload)
         return jsonify(payload), status
 
+    def enviar_con_encabezado_permanente(nombre, ruta):
+        """Toda descarga, incluso histórica, sale con el encabezado vigente."""
+        mes = request.args.get('mes') or request.args.get('month')
+        anio = request.args.get('anio') or request.args.get('año') or request.args.get('year')
+        _alpha75_actualizar_archivo_bienestarina(ruta, unidad, mes=mes, anio=anio)
+        return send_from_directory(os.path.dirname(ruta), os.path.basename(ruta), as_attachment=True)
+
     try:
         if not unidad:
             return error_controlado('Debe indicar la UDS para descargar Bienestarina.', status=400)
@@ -10444,7 +10861,7 @@ def descargar_bienestarina_alpha57():
                     motivo = f'validacion_exception:{exc}'
                 log_alpha71('ARCHIVO_EXPLICITO', unidad=unidad, archivo=nombre, ruta=ruta, ok=ok, motivo=motivo)
                 if ok:
-                    return send_from_directory(OUTPUT_FOLDER, nombre, as_attachment=True)
+                    return enviar_con_encabezado_permanente(nombre, ruta)
 
         # 2) Camino legacy estable: buscar como lo hacía la versión que sí descargaba.
         # En esa versión el botón enviaba plantilla_bienestarina.xlsx al descargador genérico.
@@ -10459,7 +10876,7 @@ def descargar_bienestarina_alpha57():
                         valido, motivo = _alpha63_validar_archivo_descarga(nombre, unidad, 'bienestarina')
                         log_alpha71('VALIDACION_LEGACY', unidad=unidad, archivo=nombre, ruta=ruta, valido=valido, motivo=motivo)
                         if valido:
-                            return send_from_directory(OUTPUT_FOLDER, nombre, as_attachment=True)
+                            return enviar_con_encabezado_permanente(nombre, ruta)
             except Exception as exc:
                 log_alpha71('BUSQUEDA_LEGACY_ERROR', unidad=unidad, formato_busqueda=formato_busqueda, error=str(exc), traceback=traceback.format_exc())
 
@@ -10474,7 +10891,7 @@ def descargar_bienestarina_alpha57():
                         valido, motivo = _alpha63_validar_archivo_descarga(nombre, unidad, 'bienestarina')
                         log_alpha71('VALIDACION_GENERADO_HISTORICO', unidad=unidad, archivo=nombre, ruta=ruta, valido=valido, motivo=motivo)
                         if valido:
-                            return send_from_directory(OUTPUT_FOLDER, nombre, as_attachment=True)
+                            return enviar_con_encabezado_permanente(nombre, ruta)
             except Exception as exc:
                 log_alpha71('GENERACION_HISTORICA_ERROR', unidad=unidad, formato_generacion=formato_generacion, error=str(exc), traceback=traceback.format_exc())
 
@@ -10489,7 +10906,7 @@ def descargar_bienestarina_alpha57():
                         valido, motivo = _alpha63_validar_archivo_descarga(nombre, unidad, 'bienestarina')
                         log_alpha71('VALIDACION_ALPHA67', unidad=unidad, archivo=nombre, ruta=ruta, valido=valido, motivo=motivo)
                         if valido:
-                            return send_from_directory(OUTPUT_FOLDER, nombre, as_attachment=True)
+                            return enviar_con_encabezado_permanente(nombre, ruta)
             except Exception as exc:
                 log_alpha71('GENERACION_ALPHA67_ERROR', unidad=unidad, error=str(exc), traceback=traceback.format_exc())
 
@@ -10502,7 +10919,7 @@ def descargar_bienestarina_alpha57():
             if isinstance(resultado74, dict) and resultado74.get('ok') and resultado74.get('archivo'):
                 nombre, ruta = _alpha57_safe_join_output(resultado74.get('archivo'))
                 if nombre and ruta and os.path.exists(ruta) and os.path.getsize(ruta) > 0:
-                    return send_from_directory(OUTPUT_FOLDER, nombre, as_attachment=True)
+                    return enviar_con_encabezado_permanente(nombre, ruta)
         except Exception as exc:
             log_alpha71('GENERACION_ALPHA74_ERROR', unidad=unidad, error=str(exc), traceback=traceback.format_exc())
 
@@ -10566,7 +10983,10 @@ def descargar_rpp_por_categoria():
             'grupo_recibido': grupo_raw,
             'grupo_normalizado': grupo,
             'tag_esperado': tag_esperado,
-            'output_folder': OUTPUT_FOLDER,
+            # TenantPath protege el aislamiento por fundación, pero no es un
+            # tipo JSON. Convertirlo a texto evita transformar un 404 funcional
+            # (RPP aún no generado) en un 409 por serialización.
+            'output_folder': os.fspath(OUTPUT_FOLDER),
             'ultimos_archivos_generados': _alpha64_listar_ultimos_generados(),
         }
         _alpha64_log('RPP_DESCARGA_NO_DISPONIBLE_ALPHA64', **payload)
@@ -11170,7 +11590,7 @@ def api_alpha69_auditoria_bienestarina():
     unidad = request.args.get('unidad') or ''
     try:
         plantillas = _alpha67_plantillas_bienestarina() if '_alpha67_plantillas_bienestarina' in globals() else []
-        usuarios = _alpha67_obtener_usuarios_bienestarina(unidad) if unidad and '_alpha67_obtener_usuarios_bienestarina' in globals() else []
+        usuarios = _alpha59_obtener_usuarios_unidad(unidad) if unidad else []
         archivo = _alpha67_buscar_bienestarina_exacta(unidad) if unidad and '_alpha67_buscar_bienestarina_exacta' in globals() else None
         ruta = os.path.join(OUTPUT_FOLDER, secure_filename(os.path.basename(archivo))) if archivo else ''
         payload = {

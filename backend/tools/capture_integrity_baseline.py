@@ -39,6 +39,8 @@ CRITICAL_FILES = [
     "frontend/css/centro-planeacion.css",
     "frontend/css/componente-psicosocial.css",
     "start_hosting.sh", "Dockerfile", "railway.json",
+    "PROMPT_MAESTRO_CONTINUIDAD_NO_REGRESION.md",
+    "integrity/format_capabilities.json",
 ]
 CRITICAL_ROUTE_TOKENS = [
     "/api/health", "/api/auth/login", "/api/base-maestra",
@@ -100,6 +102,8 @@ def main() -> int:
         "observed_routes": route_strings(root),
         "roles": DEFAULT_ROLES,
         "format_capabilities": FORMAT_CAPABILITIES,
+        "format_capability_scope": "ALL_FORMATS",
+        "format_capability_registry": "integrity/format_capabilities.json",
         "official_templates": templates,
         "database_contract": {
             "production_backend": "postgresql",

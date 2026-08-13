@@ -172,8 +172,8 @@ def init_schema(database_path: str) -> None:
         (fundacion_id, corporacion_id, tema_default_codigo, permitir_usuario_cambiar,
          modo_default, contraste_default, font_scale_default, layout_default, densidad_default,
          radio_default, fecha_creacion, fecha_actualizacion)
-        SELECT 1, NULL, 'base-actual', 1, 'oscuro', 'normal', 100, 'normal', 'comfortable', 16, ?, ?
-        WHERE NOT EXISTS (SELECT 1 FROM tm_config_corporacion WHERE fundacion_id=1 AND corporacion_id IS NULL)
+        VALUES (1, NULL, 'base-actual', 1, 'oscuro', 'normal', 100, 'normal', 'comfortable', 16, ?, ?)
+        ON CONFLICT DO NOTHING
         """,
         (now, now),
     )

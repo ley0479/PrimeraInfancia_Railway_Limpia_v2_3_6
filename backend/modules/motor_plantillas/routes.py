@@ -493,9 +493,20 @@ def register_motor_plantillas(app, database_path: str, templates_folder: str, ou
                 'usuario_id': user['usuario_id'],
                 'observaciones': request.form.get('observaciones') or '',
             }, destino_folder=str(folder))
+            grupos = result.get('extraccion', {}).get('grupos') or []
+            productos = sum(len(grupo.get('productos') or []) for grupo in grupos)
+            if not grupos or not productos:
+                raise ValueError('La minuta no contiene grupos y productos suficientes para generar RPP.')
+            vigencia = marcar_minuta_vigente(
+                database_path, int(result['version_id']), user.get('usuario_id')
+            )
         except Exception as exc:
             return jsonify({'error': f'No se pudo procesar la minuta RPP: {exc}'}), 400
-        return jsonify({'message': 'Minuta RPP cargada como borrador.', **result})
+        return jsonify({
+            'message': 'Minuta RPP cargada, validada y marcada como vigente.',
+            'vigencia': vigencia,
+            **result,
+        })
 
     @bp.route('/minutas-rpp/<int:version_id>/vigente', methods=['POST'])
     @require_roles(*ALLOWED_ROLES)

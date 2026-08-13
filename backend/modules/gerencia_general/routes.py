@@ -19,7 +19,15 @@ def register_gerencia_general(app, database_path: str, output_folder: str | None
     def dashboard():
         anio = request.args.get('anio', type=int)
         mes = request.args.get('mes', type=int)
-        return jsonify(service.dashboard(anio, mes)), 200
+        filtros = {key: request.args.get(key) for key in ('contrato','unidad','coordinador','componente') if request.args.get(key)}
+        return jsonify(service.dashboard(anio, mes, filtros)), 200
+
+    @bp.route('/inteligencia-negocio', methods=['GET'])
+    def inteligencia_negocio():
+        anio=request.args.get('anio',type=int); mes=request.args.get('mes',type=int)
+        filtros={key:request.args.get(key) for key in ('contrato','unidad','coordinador','componente') if request.args.get(key)}
+        data=service.dashboard(anio,mes,filtros)
+        return jsonify({'periodo':data['periodo'],'filtros':data.get('filtros_aplicados',{}),'inteligencia_negocio':data.get('inteligencia_negocio',{})}),200
 
     @bp.route('/licencias', methods=['GET'])
     def licencias():

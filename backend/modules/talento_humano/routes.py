@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
+from modules.seguridad.services import require_roles
 
 from .services import TalentoHumanoService, normalizar_registro
 
@@ -34,3 +35,20 @@ def manual():
     service = TalentoHumanoService()
     resultado = service.guardar_registros([registro], origen='talento_core_manual')
     return jsonify({'resultado': resultado, 'integracion': service.resumen_integracion()})
+
+@bp.get('/integral/dashboard')
+@require_roles('SUPERADMIN','GERENTE','COORDINADOR','AUXILIAR_ADMINISTRATIVO')
+def integral_dashboard():
+    return jsonify(TalentoHumanoService().integral_dashboard())
+
+@bp.get('/integral/personas/<int:persona_id>')
+@require_roles('SUPERADMIN','GERENTE','COORDINADOR','AUXILIAR_ADMINISTRATIVO')
+def integral_persona(persona_id):
+    row=TalentoHumanoService().integral_person(persona_id)
+    return (jsonify({'persona':row}),200) if row else (jsonify({'error':'Colaborador no encontrado.'}),404)
+
+@bp.post('/integral/<string:entidad>')
+@require_roles('SUPERADMIN','GERENTE','COORDINADOR','AUXILIAR_ADMINISTRATIVO')
+def integral_crear(entidad):
+    try:return jsonify({'message':'Registro agregado al expediente sin duplicar el colaborador.','dashboard':TalentoHumanoService().integral_add(entidad,request.get_json(silent=True) or {})}),201
+    except ValueError as exc:return jsonify({'error':str(exc)}),400

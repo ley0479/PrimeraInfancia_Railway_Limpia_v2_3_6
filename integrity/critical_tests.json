@@ -1,5 +1,6 @@
 {
   "tests": [
+    "tests/test_all_formats_continuity_v2_7_1.py",
     "tests/test_operational_release_v2_3_7.py",
     "tests/test_multitenant_phase3.py",
     "tests/test_multitenant_release_v2_4_0.py",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import secrets
 from modules.dbapi_compat import sqlite3
@@ -7,6 +8,7 @@ import string
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from flask import jsonify, request, g, current_app
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -144,6 +146,18 @@ def _safe_info(message: str, *args) -> None:
         pass
 
 
+def _auth_debug(message: str, *args) -> None:
+    """Traza opt-in del login sin secretos ni identificadores en claro."""
+    try:
+        env_enabled = os.getenv('AUTH_LOGIN_DEBUG', '').strip().lower() in {'1', 'true', 'yes', 'si', 'sí', 'on'}
+        if current_app.config.get('AUTH_LOGIN_DEBUG', False) or env_enabled:
+            # WARNING garantiza visibilidad incluso si el despliegue filtra INFO.
+            # Solo se activa explícitamente y nunca contiene secretos.
+            current_app.logger.warning('AUTH_DEBUG ' + message, *args)
+    except Exception:
+        pass
+
+
 def _dependency_counts(conn: sqlite3.Connection, column: str, value: int, *, excluded: set[str] | None = None) -> dict:
     """Cuenta referencias sin construir nombres desde datos del usuario."""
     if column not in {'fundacion_id', 'usuario_id', 'usuario_creador_id', 'creado_por', 'actualizado_por'}:
@@ -182,6 +196,36 @@ def _user_dependency_summary(conn: sqlite3.Connection, user_id: int) -> dict:
 def register_seguridad(app, database_path: str) -> None:
     ensure_security_schema(database_path)
 
+    def attach_auth_correlation_headers(response):
+        """Permite demostrar que navegador y diagnóstico llegan a la misma instancia."""
+        if request.path == '/api/auth/login':
+            try:
+                from modules.seguridad.runtime_diagnostics import project_instance_id
+                database_url = str(app.config.get('DATABASE_URL', ''))
+                parsed_database = urlsplit(database_url.replace('postgresql+psycopg://', 'postgresql://', 1))
+                database_target = ''
+                if parsed_database.hostname:
+                    database_target = f"{parsed_database.hostname}:{parsed_database.port or 5432}{parsed_database.path or ''}"
+                response.headers['X-Auth-Instance-ID'] = project_instance_id(app.config)
+                response.headers['X-Auth-Environment'] = str(app.config.get('APP_ENV', 'unknown'))
+                response.headers['X-Auth-Database-Backend'] = (
+                    'postgresql' if database_url.startswith('postgresql')
+                    else 'sqlite' if database_url.startswith('sqlite') else 'unknown'
+                )
+                response.headers['X-Auth-Request-ID'] = str(
+                    (getattr(g, 'error_context', {}) or {}).get('client_request_id') or ''
+                )
+                response.headers['X-Auth-Database-Target'] = database_target
+                response.headers['X-Auth-Env-SHA256'] = str(os.getenv('PROJECT_ENV_SHA256') or '')
+            except Exception:
+                pass
+        return response
+
+    # Los tests de contrato usan una aplicación mínima sin el hook de Flask.
+    # La ruta de producción sí lo registra; el doble conserva compatibilidad.
+    if hasattr(app, 'after_request'):
+        app.after_request(attach_auth_correlation_headers)
+
     def single_tenant_mode() -> bool:
         return bool(app.config.get('SINGLE_TENANT_MODE', True))
 
@@ -201,7 +245,27 @@ def register_seguridad(app, database_path: str) -> None:
             'identifier_hash': identifier_hash,
         }
 
+        database_url = str(app.config.get('DATABASE_URL', ''))
+        database_backend = 'postgresql' if database_url.startswith('postgresql') else 'sqlite' if database_url.startswith('sqlite') else 'unknown'
+        _auth_debug(
+            'request_started request_id=%s app_env=%s database_backend=%s database_configured=%s identifier_present=%s identifier_hash=%s content_type=%s content_length=%s payload_keys=%s password_length=%s',
+            client_request_id,
+            app.config.get('APP_ENV'),
+            database_backend,
+            bool(database_url),
+            bool(username),
+            identifier_hash,
+            getattr(request, 'content_type', None),
+            getattr(request, 'content_length', None),
+            sorted(str(key) for key in data.keys()),
+            len(password),
+        )
+
         if not username or not password:
+            _auth_debug(
+                'input_rejected request_id=%s username_present=%s password_present=%s',
+                client_request_id, bool(username), bool(password),
+            )
             return jsonify({
                 'error': 'Usuario/correo y contraseña requeridos.',
                 'code': 'LOGIN_FIELDS_REQUIRED',
@@ -212,7 +276,19 @@ def register_seguridad(app, database_path: str) -> None:
             g.error_context['stage'] = 'load_login_state'
             retry_after, usuario, read_meta = load_login_state(database_path, username)
             db_retries += int(read_meta.get('db_retries', 0))
+            _auth_debug(
+                'database_read_ok request_id=%s user_found=%s user_id=%s role=%s active=%s state=%s retry_after=%s db_retries=%s',
+                client_request_id,
+                bool(usuario),
+                usuario['id'] if usuario else None,
+                usuario['rol'] if usuario else None,
+                usuario['activo'] if usuario else None,
+                usuario['estado'] if usuario else None,
+                retry_after,
+                db_retries,
+            )
             if retry_after:
+                _auth_debug('rate_limited request_id=%s retry_after=%s', client_request_id, retry_after)
                 return _rate_limited_response(retry_after)
 
             valid_password = False
@@ -229,6 +305,14 @@ def register_seguridad(app, database_path: str) -> None:
                     )
                     valid_password = False
 
+            _auth_debug(
+                'password_checked request_id=%s user_found=%s hash_present=%s password_valid=%s',
+                client_request_id,
+                bool(usuario),
+                bool(usuario and usuario['password_hash']),
+                valid_password,
+            )
+
             if not usuario or not valid_password:
                 g.error_context['stage'] = 'record_failed_login_atomic'
                 blocked, failure_meta = record_login_failure_atomic(
@@ -242,6 +326,13 @@ def register_seguridad(app, database_path: str) -> None:
                     user_agent=request.headers.get('User-Agent'),
                 )
                 db_retries += int(failure_meta.get('db_retries', 0))
+                _auth_debug(
+                    'login_rejected request_id=%s reason=%s blocked=%s db_retries=%s',
+                    client_request_id,
+                    'user_not_found' if not usuario else 'invalid_password',
+                    bool(blocked),
+                    db_retries,
+                )
                 if blocked:
                     return _rate_limited_response(blocked)
                 duration_ms = int((time.monotonic() - started) * 1000)
@@ -278,6 +369,13 @@ def register_seguridad(app, database_path: str) -> None:
                 user_agent=request.headers.get('User-Agent'),
             )
             db_retries += int(session_meta.get('db_retries', 0))
+            _auth_debug(
+                'session_created request_id=%s user_id=%s token_type=opaque_session token_returned=%s db_retries=%s',
+                client_request_id,
+                usuario['id'],
+                bool(token),
+                db_retries,
+            )
 
             # La sesión ya fue validada. La lectura de facturación usa un camino
             # interno explícito, sin modificar ``flask.g`` antes de que termine
@@ -315,6 +413,10 @@ def register_seguridad(app, database_path: str) -> None:
             response.headers['X-Login-Duration-Ms'] = str(duration_ms)
             response.headers['X-Login-DB-Retries'] = str(db_retries)
             response.headers['Server-Timing'] = f'auth;dur={duration_ms}'
+            _auth_debug(
+                'request_completed request_id=%s status=200 duration_ms=%s user_id=%s',
+                client_request_id, duration_ms, usuario['id'],
+            )
             return response
 
         except sqlite3.OperationalError as exc:

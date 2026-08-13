@@ -270,7 +270,15 @@ class UCAIntegrationEngine:
         }
 
     def _health(self, conn: sqlite3.Connection, fundacion_id: int, unit_name: str, unit_code: str | None, participant_total: int) -> dict[str, Any]:
-        valuations = self._scoped_rows(conn, "sn_valoraciones", fundacion_id=fundacion_id, unit_name=unit_name, unit_code=unit_code, fields=("id", "documento", "unidad", "fecha_valoracion", "nivel_alerta", "estado_control", "proximo_control", "activo"))
+        valuations = self._scoped_rows(
+            conn, "master_ninos", fundacion_id=fundacion_id, unit_name=unit_name,
+            unit_code=unit_code, fields=("id", "documento", "unidad_servicio",
+            "fecha_carga", "diagnostico_nutricional", "estado_nutricional",
+            "alertas_json", "activo")
+        )
+        valuations = [row for row in valuations if any(row.get(field) not in (None, '', '[]') for field in (
+            'diagnostico_nutricional', 'estado_nutricional', 'alertas_json'
+        ))]
         alerts = self._scoped_rows(conn, "sn_alertas", fundacion_id=fundacion_id, unit_name=unit_name, unit_code=unit_code, fields=("id", "documento", "unidad", "tipo", "nivel", "mensaje", "fecha_alerta", "atendida"), extra_where="COALESCE(atendida,0)=0" if "atendida" in self.columns(conn, "sn_alertas") else None)
         deliverables = self._scoped_rows(conn, "sn_entregables_mes", fundacion_id=fundacion_id, unit_name=unit_name, unit_code=unit_code, fields=("id", "codigo", "mes", "anio", "uds", "estado", "porcentaje", "fecha_actualizacion"))
         records = self._scoped_rows(conn, "sn_expedientes_integrales", fundacion_id=fundacion_id, unit_name=unit_name, unit_code=unit_code, unit_columns=("unidad_nombre",), fields=("id", "documento", "unidad_nombre", "estado"), limit=10000)
@@ -281,7 +289,7 @@ class UCAIntegrationEngine:
         channels = self._scoped_rows(conn, "sn_canalizaciones", fundacion_id=fundacion_id, unit_name=unit_name, unit_code=unit_code, unit_columns=("unidad_nombre",), fields=("id", "unidad_nombre", "estado", "prioridad", "fecha_limite"), limit=10000)
         unique_valued = len({str(row.get("documento") or row.get("id")) for row in valuations})
         coverage = round((unique_valued / participant_total) * 100, 2) if participant_total else 0.0
-        overdue_controls = sum(1 for row in valuations if _date_value(row.get("proximo_control")) and _date_value(row.get("proximo_control")) < date.today().isoformat())
+        overdue_controls = 0
         pending_docs = sum(1 for row in documents if _state(row.get("estado")) not in {"VIGENTE", "VALIDADO", "NO_APLICA"})
         open_channels = [row for row in channels if _state(row.get("estado")) not in _COMPLETE_STATES]
         score = coverage
@@ -303,7 +311,7 @@ class UCAIntegrationEngine:
             "entregables": len(deliverables),
             "cumplimiento_porcentaje": score,
             "semaforo": "ROJO" if alerts or overdue_controls or any(_state(row.get("prioridad")) in {"CRITICA", "CRITICO", "ALTA", "ALTO"} for row in open_channels) else (self._semaphore(score) if participant_total or records else "GRIS"),
-            "fuentes": ["sn_valoraciones", "sn_alertas", "sn_entregables_mes", "sn_expedientes_integrales", "sn_documentos_salud", "sn_actividades_integrales", "sn_canalizaciones"],
+            "fuentes": ["master_ninos", "master_salud_nutricion", "sn_alertas", "sn_entregables_mes", "sn_expedientes_integrales", "sn_documentos_salud", "sn_actividades_integrales", "sn_canalizaciones"],
         }
 
     def _formats(self, conn: sqlite3.Connection, fundacion_id: int, unit_name: str, unit_code: str | None) -> dict[str, Any]:
@@ -336,17 +344,17 @@ class UCAIntegrationEngine:
         }
 
     def _talent(self, conn: sqlite3.Connection, fundacion_id: int, unit_name: str, unit_code: str | None) -> dict[str, Any]:
-        people = self._scoped_rows(conn, "th_personas", fundacion_id=fundacion_id, unit_name=unit_name, unit_code=unit_code, fields=("id", "unidad", "nombre", "rol_normalizado", "cargo", "estado", "activo"))
-        assignments = self._scoped_rows(conn, "th_asignaciones", fundacion_id=fundacion_id, unit_name=unit_name, unit_code=unit_code, fields=("id", "unidad", "persona_id", "rol", "cargo", "estado", "fecha_inicio", "fecha_fin"))
-        active_people = sum(1 for row in people if _state(row.get("estado")) not in {"INACTIVO", "SUSPENDIDO", "RETIRADO", "ELIMINADO"})
-        active_assignments = sum(1 for row in assignments if _state(row.get("estado")) in {"ACTIVO", "ACTIVA", "VIGENTE", ""})
+        assignments = self._scoped_rows(conn, "master_talento_humano", fundacion_id=fundacion_id, unit_name=unit_name, unit_code=unit_code, unit_columns=("unidad_servicio",), fields=("id", "documento", "unidad_servicio", "nombre_completo", "rol_normalizado", "cargo", "estado", "activo"))
+        people = {str(row.get("documento") or row.get("id")): row for row in assignments}
+        active_people = sum(1 for row in people.values() if _state(row.get("estado")) not in {"INACTIVO", "SUSPENDIDO", "RETIRADO", "ELIMINADO"})
+        active_assignments = sum(1 for row in assignments if _state(row.get("estado")) not in {"INACTIVO", "SUSPENDIDO", "RETIRADO", "ELIMINADO"})
         return {
             "personas": len(people),
             "personas_activas": active_people,
             "asignaciones": len(assignments),
             "asignaciones_activas": active_assignments,
             "semaforo": "VERDE" if active_people and active_assignments else ("AMARILLO" if active_people else "ROJO"),
-            "fuentes": ["th_personas", "th_asignaciones"],
+            "fuentes": ["master_talento_humano"],
         }
 
     def _families_networks(self, conn: sqlite3.Connection, fundacion_id: int, unit_name: str, unit_code: str | None) -> dict[str, Any]:

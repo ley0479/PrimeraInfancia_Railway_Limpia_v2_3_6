@@ -52,7 +52,8 @@ CREATE TABLE IF NOT EXISTS pm_auditoria (
 CATEGORIAS_PAQUETE = [
     ('01_Bienestarina', 'Bienestarina'),
     ('02_RPP', 'RPP'),
-    ('03_RAM_RAN_RRAN', 'RAM / RAN / RRAN'),
+    # Se conserva el código interno para compatibilidad con paquetes históricos.
+    ('03_RAM_RAN_RRAN', 'RAM'),
     ('04_Relacion_Mes', 'Relación del mes'),
     ('05_Cuentas_Cobro', 'Cuentas de cobro'),
     ('06_Informe_Nutricional', 'Informe nutricional'),

@@ -9,6 +9,7 @@ para los módulos migrados en Fase 2C.5.
 """
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
@@ -165,7 +166,10 @@ class CoreCursor:
         sql2, bind = convert_qmark_sql(guarded_sql, params)
         result = self.connection.execute(text(sql2), bind)
         rows: list[dict[str, Any]] = []
-        lastrowid = int(getattr(result, 'lastrowid', 0) or 0)
+        # psycopg 3 cierra el cursor de un SELECT al consultar ``lastrowid``.
+        # Materializar primero las lecturas y pedir ese atributo únicamente a
+        # sentencias de escritura evita ``InterfaceError: the cursor is closed``.
+        lastrowid = 0
         if result.returns_rows:
             rows = rows_to_dicts(result)
             if add_returning and rows:
@@ -174,6 +178,8 @@ class CoreCursor:
                 except Exception:
                     lastrowid = 0
                 rows = []
+        else:
+            lastrowid = int(getattr(result, 'lastrowid', 0) or 0)
         self.rowcount = int(result.rowcount or 0)
         self.lastrowid = lastrowid
         self._last_result = CoreResult(rows, self.rowcount, self.lastrowid)
@@ -211,7 +217,10 @@ class CoreCursor:
         result = self.connection.execute(text(sql2), bind_rows)
         rowcount = int(result.rowcount if result.rowcount is not None and result.rowcount >= 0 else len(rows_in))
         self.rowcount = rowcount
-        self.lastrowid = int(getattr(result, 'lastrowid', 0) or self.lastrowid or 0)
+        # executemany no necesita ``lastrowid`` para el contrato actual. En
+        # PostgreSQL/psycopg consultarlo puede cerrar resultados prematuramente.
+        if not result.returns_rows:
+            self.lastrowid = int(getattr(result, 'lastrowid', 0) or self.lastrowid or 0)
         self._last_result = CoreResult([], rowcount, self.lastrowid)
         return self._last_result
 
@@ -321,6 +330,8 @@ class CoreCompatRepository:
         return {col['name'] for col in inspector.get_columns(table)}
 
     def ensure_column(self, table: str, column: str, definition: str) -> None:
+        if os.getenv('SKIP_RUNTIME_SCHEMA_DDL', '').strip().lower() in {'1', 'true', 'yes', 'si', 'sí', 'on'}:
+            return
         if column in self.columns(table):
             return
         ddl = normalize_ddl_for_engine(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
@@ -329,6 +340,11 @@ class CoreCompatRepository:
 
     def execute(self, sql: str, params: Iterable[Any] | Mapping[str, Any] | None = None) -> int:
         guarded_sql = _guard_core_sql(sql, params or ())
+        if (
+            os.getenv('SKIP_RUNTIME_SCHEMA_DDL', '').strip().lower() in {'1', 'true', 'yes', 'si', 'sí', 'on'}
+            and re.match(r"^\s*(CREATE|ALTER|DROP)\b", guarded_sql, re.I)
+        ):
+            return 0
         if re.match(r"^\s*(CREATE|ALTER|DROP)\b", guarded_sql, re.I):
             _CORE_TENANT_SCHEMA_CACHE.clear()
         guarded_sql = normalize_sql_for_engine(guarded_sql)
@@ -396,4 +412,3 @@ class CoreCompatRepository:
         with database.transaction() as conn:
             result = conn.execute(text(sql2), binds)
             return int(result.rowcount if result.rowcount is not None and result.rowcount >= 0 else len(rows_list))
-

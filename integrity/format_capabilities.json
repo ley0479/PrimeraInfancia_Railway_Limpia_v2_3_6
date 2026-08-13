@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "scope": "ALL_FORMATS",
+  "policy": {
+    "default_protection": "PROTECTED",
+    "unknown_formats": "AUTO_REGISTER_AND_BLOCK_UNTESTED",
+    "stable_version_required": true,
+    "incremental_patch_required": true,
+    "regression_test_required": true,
+    "official_template_hash_required": true,
+    "deployment_on_failure": "BLOCKED"
+  },
+  "universal_capabilities": [
+    "fuente_datos",
+    "mapeo_campos",
+    "tipos_dato",
+    "estructura_plantilla",
+    "estilos",
+    "formulas",
+    "totales",
+    "encabezados",
+    "pies_y_firmas",
+    "area_impresion",
+    "orden_registros",
+    "paginacion",
+    "nombre_archivo",
+    "version_vigencia",
+    "aislamiento_fundacion_uca",
+    "descarga"
+  ],
+  "format_families": {
+    "RAM": {
+      "aliases": ["RAM", "RRAM", "REGISTRO ASISTENCIA MENSUAL"],
+      "capabilities": ["tipo_documento", "numero_documento", "encabezado_automatico", "orden_grupo_etario"]
+    },
+    "RAN_RRAN_RUN_ASISTENCIA": {
+      "aliases": ["RAN", "RRAN", "RUN", "ASISTENCIA", "LISTADO_ASISTENCIA"],
+      "capabilities": ["dias_atencion", "marcas_asistencia", "orden_grupo_etario"]
+    },
+    "RPP": {
+      "aliases": ["RPP", "REGISTRO PROCEDENCIA PROCEDIMIENTO"],
+      "capabilities": ["plantilla_oficial", "minuta_vigente_hasta_sustitucion", "productos_y_cantidades"]
+    },
+    "BIENESTARINA": {
+      "aliases": ["BIENESTARINA", "BIENESTARINA DEL MES"],
+      "capabilities": ["plantilla_oficial", "fuente_base_maestra", "entregas_y_totales"]
+    },
+    "BASE_MAESTRA_CUENTAME": {
+      "aliases": ["BASE MAESTRA", "CUENTAME", "CRUCE BASES"],
+      "capabilities": ["identificacion_beneficiario", "estado_vinculacion", "trazabilidad_importacion"]
+    },
+    "CUENTAS_COBRO_FACTURACION": {
+      "aliases": ["CUENTA DE COBRO", "CUENTAS COBRO", "FACTURACION"],
+      "capabilities": ["periodo", "beneficiario_contrato", "valores_y_totales"]
+    },
+    "REPORTES_INFORMES": {
+      "aliases": ["REPORTE", "INFORME", "INFORME ESTADISTICO", "REPORTE GERENCIAL", "SUPERVISION"],
+      "capabilities": ["filtros", "periodo", "trazabilidad_fuentes", "exportacion"]
+    },
+    "PLANEACION_Y_PSICOSOCIAL": {
+      "aliases": ["PLANEACION PEDAGOGICA", "CENTRO PLANEACION", "PSICOSOCIAL", "FAMILIAS Y REDES"],
+      "capabilities": ["contenido", "periodo", "responsable", "evidencias"]
+    },
+    "OTROS_DINAMICOS": {
+      "aliases": ["OTROS", "PLANTILLA CARGADA", "FORMATO DINAMICO"],
+      "capabilities": ["registro_automatico", "prueba_antes_de_publicar"]
+    }
+  }
+}

@@ -156,12 +156,86 @@ CREATE TABLE IF NOT EXISTS pp_historial_planeacion (
     fecha_accion TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS pp_proyectos_pedagogicos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fundacion_id INTEGER NOT NULL,
+    usuario_creador_id INTEGER,
+    unidad TEXT NOT NULL,
+    vigencia INTEGER NOT NULL,
+    nombre TEXT NOT NULL,
+    enfoque TEXT,
+    diagnostico_contexto TEXT,
+    objetivos TEXT,
+    estrategias TEXT,
+    participacion_familias TEXT,
+    enfoque_diferencial TEXT,
+    estado TEXT DEFAULT 'BORRADOR',
+    version_actual INTEGER DEFAULT 0,
+    docente_id INTEGER,
+    coordinador_id INTEGER,
+    validado_por_docente_id INTEGER,
+    validado_por TEXT,
+    fecha_validacion TEXT,
+    activo INTEGER DEFAULT 1,
+    fecha_creacion TEXT NOT NULL,
+    fecha_actualizacion TEXT,
+    UNIQUE (fundacion_id, unidad, vigencia)
+);
+
+CREATE TABLE IF NOT EXISTS pp_proyecto_versiones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fundacion_id INTEGER NOT NULL,
+    usuario_creador_id INTEGER,
+    proyecto_id INTEGER NOT NULL,
+    numero_version INTEGER NOT NULL,
+    origen TEXT DEFAULT 'MANUAL',
+    estado TEXT DEFAULT 'BORRADOR',
+    contenido_json TEXT NOT NULL,
+    fuentes_json TEXT,
+    resumen_cambios TEXT,
+    validado_por_docente_id INTEGER,
+    validado_por TEXT,
+    fecha_validacion TEXT,
+    fecha_creacion TEXT NOT NULL,
+    FOREIGN KEY (proyecto_id) REFERENCES pp_proyectos_pedagogicos(id),
+    UNIQUE (proyecto_id, numero_version)
+);
+
+CREATE TABLE IF NOT EXISTS pp_seguimientos_pedagogicos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fundacion_id INTEGER NOT NULL,
+    usuario_creador_id INTEGER,
+    proyecto_id INTEGER,
+    planeacion_id INTEGER,
+    actividad_id INTEGER,
+    unidad TEXT NOT NULL,
+    periodo TEXT NOT NULL,
+    tipo TEXT DEFAULT 'SEGUIMIENTO',
+    hallazgos TEXT,
+    avances TEXT,
+    dificultades TEXT,
+    acuerdos TEXT,
+    proxima_accion TEXT,
+    estado TEXT DEFAULT 'BORRADOR',
+    validado_por TEXT,
+    fecha_validacion TEXT,
+    activo INTEGER DEFAULT 1,
+    fecha_creacion TEXT NOT NULL,
+    fecha_actualizacion TEXT,
+    FOREIGN KEY (proyecto_id) REFERENCES pp_proyectos_pedagogicos(id),
+    FOREIGN KEY (planeacion_id) REFERENCES pp_planeaciones(id),
+    FOREIGN KEY (actividad_id) REFERENCES pp_actividades(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_pp_planeaciones_periodo ON pp_planeaciones(periodo, estado);
 CREATE INDEX IF NOT EXISTS idx_pp_planeaciones_fundacion ON pp_planeaciones(fundacion_id, periodo);
 CREATE INDEX IF NOT EXISTS idx_pp_actividades_planeacion ON pp_actividades(planeacion_id, estado);
 CREATE INDEX IF NOT EXISTS idx_pp_actividades_fecha ON pp_actividades(fecha_programada, estado);
 CREATE INDEX IF NOT EXISTS idx_pp_documentos_planeacion ON pp_documentos_generados(planeacion_id, tipo_documento);
 CREATE INDEX IF NOT EXISTS idx_pp_evidencias_planeacion ON pp_evidencias_planeacion(planeacion_id, actividad_id);
+CREATE INDEX IF NOT EXISTS idx_pp_proyectos_uca ON pp_proyectos_pedagogicos(fundacion_id, unidad, vigencia, estado);
+CREATE INDEX IF NOT EXISTS idx_pp_versiones_proyecto ON pp_proyecto_versiones(fundacion_id, proyecto_id, numero_version);
+CREATE INDEX IF NOT EXISTS idx_pp_seguimientos_uca ON pp_seguimientos_pedagogicos(fundacion_id, unidad, periodo, estado);
 """
 
 TIPOS_ACTIVIDAD_DEFAULT = [

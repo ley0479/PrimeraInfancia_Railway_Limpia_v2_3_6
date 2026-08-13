@@ -75,6 +75,50 @@ class Gate:
                 changed_templates.append(rel)
         self.record("Plantillas oficiales estables", not changed_templates, ", ".join(changed_templates), evidence=changed_templates)
 
+    def check_format_registry(self) -> None:
+        """Valida la política transversal de continuidad de todos los formatos."""
+        relative = self.baseline.get("format_capability_registry", "integrity/format_capabilities.json")
+        path = self.root / relative
+        if not path.is_file():
+            self.record("Registro funcional de todos los formatos", False, f"{relative} ausente")
+            return
+        try:
+            registry = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            self.record("Registro funcional de todos los formatos", False, f"JSON inválido: {exc}")
+            return
+
+        policy = registry.get("policy") or {}
+        families = registry.get("format_families") or {}
+        universal = registry.get("universal_capabilities") or []
+        required_policy = {
+            "default_protection": "PROTECTED",
+            "unknown_formats": "AUTO_REGISTER_AND_BLOCK_UNTESTED",
+            "deployment_on_failure": "BLOCKED",
+        }
+        errors = []
+        if registry.get("scope") != "ALL_FORMATS":
+            errors.append("scope debe ser ALL_FORMATS")
+        for key, expected in required_policy.items():
+            if policy.get(key) != expected:
+                errors.append(f"policy.{key} debe ser {expected}")
+        for key in ("stable_version_required", "incremental_patch_required", "regression_test_required", "official_template_hash_required"):
+            if policy.get(key) is not True:
+                errors.append(f"policy.{key} debe ser true")
+        if not isinstance(universal, list) or len(set(universal)) < 10:
+            errors.append("faltan capacidades universales")
+        if not isinstance(families, dict) or "OTROS_DINAMICOS" not in families:
+            errors.append("falta cobertura para formatos dinámicos")
+        for name, config in families.items() if isinstance(families, dict) else []:
+            if not config.get("aliases") or not config.get("capabilities"):
+                errors.append(f"familia incompleta: {name}")
+        self.record(
+            "Registro funcional de todos los formatos",
+            not errors,
+            f"{len(families)} familias; {len(universal)} protecciones universales" if not errors else "; ".join(errors),
+            evidence={"registry": relative, "errors": errors},
+        )
+
     def check_python(self) -> None:
         failures = []
         files = [p for p in self.root.rglob("*.py") if ".git" not in p.parts]
@@ -186,6 +230,7 @@ def main() -> int:
     gate = Gate(root, baseline)
     started = time.perf_counter()
     gate.check_contract()
+    gate.check_format_registry()
     gate.check_python()
     gate.check_javascript()
     gate.check_postgresql_readiness()

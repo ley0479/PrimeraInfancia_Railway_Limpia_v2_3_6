@@ -17,6 +17,13 @@ from .services import (
     periodo_actual,
     extract_text_from_file,
 )
+from .proyectos import (
+    create_project,
+    get_project,
+    list_projects,
+    update_from_execution,
+    validate_teacher_version,
+)
 
 ALLOWED_UPLOADS = {'.xlsx', '.xls', '.xlsm', '.csv', '.txt', '.doc', '.docx', '.pdf'}
 ALLOWED_TEMPLATES = {'.docx', '.xlsx', '.xlsm', '.pdf'}
@@ -60,6 +67,52 @@ def register_planeacion_pedagogica(app, database_path: str, upload_folder: str, 
             'coordinadores': repo.list_coordinadores(),
             'docentes': repo.list_docentes(),
         }), 200
+
+    @bp.route('/proyectos-pedagogicos', methods=['GET', 'POST'])
+    def proyectos_pedagogicos():
+        if request.method == 'GET':
+            return jsonify({'proyectos': list_projects(
+                repo,
+                vigencia=request.args.get('vigencia', type=int),
+                unidad=request.args.get('unidad'),
+            )}), 200
+        try:
+            project = create_project(repo, payload())
+            return jsonify({'message': 'Proyecto pedagógico creado como borrador versionado.', 'proyecto': project}), 201
+        except PermissionError as exc:
+            return jsonify({'error': str(exc), 'code': 'PEDAGOGY_FORBIDDEN'}), 403
+        except ValueError as exc:
+            return jsonify({'error': str(exc), 'code': 'PEDAGOGY_VALIDATION_ERROR'}), 400
+
+    @bp.route('/proyectos-pedagogicos/<int:project_id>', methods=['GET'])
+    def proyecto_pedagogico_detail(project_id: int):
+        project = get_project(repo, project_id)
+        if not project:
+            return jsonify({'error': 'Proyecto pedagógico no encontrado.'}), 404
+        return jsonify({'proyecto': project}), 200
+
+    @bp.route('/proyectos-pedagogicos/<int:project_id>/actualizar-desde-ejecucion', methods=['POST'])
+    def proyecto_actualizar_desde_ejecucion(project_id: int):
+        try:
+            project = update_from_execution(repo, project_id, payload().get('resumen_cambios') or '')
+            return jsonify({
+                'message': 'Se creó un nuevo borrador desde actividades ejecutadas; requiere validación docente.',
+                'proyecto': project,
+            }), 201
+        except PermissionError as exc:
+            return jsonify({'error': str(exc), 'code': 'PEDAGOGY_FORBIDDEN'}), 403
+        except LookupError as exc:
+            return jsonify({'error': str(exc)}), 404
+
+    @bp.route('/proyectos-pedagogicos/<int:project_id>/validar-docente', methods=['POST'])
+    def proyecto_validar_docente(project_id: int):
+        try:
+            project = validate_teacher_version(repo, project_id, payload().get('observacion') or '')
+            return jsonify({'message': 'Versión validada por la docente responsable.', 'proyecto': project}), 200
+        except PermissionError as exc:
+            return jsonify({'error': str(exc), 'code': 'TEACHER_VALIDATION_REQUIRED'}), 403
+        except LookupError as exc:
+            return jsonify({'error': str(exc)}), 404
 
     @bp.route('/planeaciones', methods=['GET', 'POST'])
     def planeaciones():

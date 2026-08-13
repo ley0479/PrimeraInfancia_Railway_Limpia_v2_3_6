@@ -4,6 +4,7 @@ let ppEstado = {
     plantillas: [],
     documentos: [],
     evidencias: [],
+    proyectos: [],
     catalogos: { coordinadores: [], docentes: [], tipos_documento: [], tipos_actividad: [] },
     planeacionActual: null
 };
@@ -33,6 +34,7 @@ function ppMostrarVista(vista) {
     document.querySelectorAll('.pp-view').forEach(el => el.classList.toggle('hidden', el.id !== `pp-view-${vista}`));
     document.querySelectorAll('.pp-tab').forEach(el => el.classList.toggle('activa', el.dataset.view === vista));
     if (vista === 'dashboard') ppCargarDashboard();
+    if (vista === 'proyectos') ppCargarProyectos();
     if (vista === 'cargar') ppCargarCatalogos();
     if (vista === 'planeaciones') ppCargarPlaneaciones();
     if (vista === 'plantillas') ppCargarPlantillas();
@@ -68,10 +70,80 @@ function ppPoblarSelects() {
     const docenteOptions = '<option value="">Sin agente educativo</option>' + docentes.map(d => `<option value="${d.id}">${ppHtml(d.nombre)}${d.unidad ? ' · ' + ppHtml(d.unidad) : ''}</option>`).join('');
     ['pp-coordinador', 'pp-manual-coordinador', 'pp-evidencia-coordinador'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = coordOptions; });
     ['pp-docente', 'pp-manual-docente'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = docenteOptions; });
+    const proyectoCoord = document.getElementById('pp-proyecto-coordinador');
+    if (proyectoCoord) proyectoCoord.innerHTML = coordOptions;
+    const proyectoDocente = document.getElementById('pp-proyecto-docente');
+    if (proyectoDocente) proyectoDocente.innerHTML = docenteOptions;
     const tipoDocSelect = document.getElementById('pp-plantilla-tipo');
     if (tipoDocSelect) tipoDocSelect.innerHTML = tiposDoc.map(t => `<option>${ppHtml(t)}</option>`).join('');
     const tipoActSelect = document.getElementById('pp-manual-tipo');
     if (tipoActSelect) tipoActSelect.innerHTML = tiposAct.map(t => `<option>${ppHtml(t.nombre)}</option>`).join('');
+}
+
+async function ppCrearProyecto() {
+    const message = document.getElementById('pp-proyecto-message');
+    const data = {
+        unidad: document.getElementById('pp-proyecto-unidad')?.value.trim() || '',
+        vigencia: Number(document.getElementById('pp-proyecto-vigencia')?.value || new Date().getFullYear()),
+        nombre: document.getElementById('pp-proyecto-nombre')?.value.trim() || '',
+        docente_id: document.getElementById('pp-proyecto-docente')?.value || null,
+        coordinador_id: document.getElementById('pp-proyecto-coordinador')?.value || null,
+        diagnostico_contexto: document.getElementById('pp-proyecto-diagnostico')?.value || '',
+        objetivos: document.getElementById('pp-proyecto-objetivos')?.value || '',
+        estrategias: document.getElementById('pp-proyecto-estrategias')?.value || '',
+        participacion_familias: document.getElementById('pp-proyecto-familias')?.value || '',
+        enfoque_diferencial: document.getElementById('pp-proyecto-diferencial')?.value || ''
+    };
+    if (!data.unidad || !data.nombre) {
+        if (message) message.textContent = 'UCA y nombre son obligatorios.';
+        return;
+    }
+    try {
+        const response = await ppApi('/proyectos-pedagogicos', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+        });
+        if (message) message.textContent = response.message || 'Proyecto creado.';
+        await ppCargarProyectos();
+    } catch (error) {
+        if (message) message.textContent = error.message || 'No se pudo crear el proyecto.';
+    }
+}
+
+async function ppCargarProyectos() {
+    const list = document.getElementById('pp-proyectos-list');
+    const vigencia = Number(document.getElementById('pp-proyecto-vigencia')?.value || new Date().getFullYear());
+    const vigenciaInput = document.getElementById('pp-proyecto-vigencia');
+    if (vigenciaInput && !vigenciaInput.value) vigenciaInput.value = String(vigencia);
+    try {
+        const response = await ppApi(`/proyectos-pedagogicos?vigencia=${encodeURIComponent(vigencia)}`);
+        ppEstado.proyectos = response.proyectos || [];
+        if (!list) return;
+        list.innerHTML = ppEstado.proyectos.length ? ppEstado.proyectos.map(project => `
+            <article class="border-b border-slate-800 p-4 space-y-2">
+                <div class="flex justify-between gap-3"><div><p class="font-semibold text-slate-100">${ppHtml(project.nombre)}</p><p class="text-xs text-slate-400">${ppHtml(project.unidad)} · ${project.vigencia} · versión ${project.version_actual || 0}</p></div>${ppEstadoBadge(project.estado)}</div>
+                <div class="flex flex-wrap gap-2"><button onclick="ppActualizarProyecto(${project.id})" class="rounded-lg bg-indigo-600 px-3 py-1 text-xs text-white">Actualizar desde ejecución</button><button onclick="ppValidarProyectoDocente(${project.id})" class="rounded-lg bg-emerald-600 px-3 py-1 text-xs text-white">Validación docente</button></div>
+            </article>`).join('') : '<div class="p-4 text-sm text-slate-500">No hay proyectos pedagógicos para esta vigencia.</div>';
+    } catch (error) {
+        if (list) list.innerHTML = `<div class="p-4 text-sm text-rose-300">${ppHtml(error.message)}</div>`;
+    }
+}
+
+async function ppActualizarProyecto(id) {
+    const resumen = prompt('Resumen de la actualización:', 'Actualización desde actividades ejecutadas') || '';
+    try {
+        const response = await ppApi(`/proyectos-pedagogicos/${id}/actualizar-desde-ejecucion`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({resumen_cambios: resumen})});
+        alert(response.message || 'Borrador actualizado.');
+        await ppCargarProyectos();
+    } catch (error) { alert(error.message || 'No se pudo actualizar.'); }
+}
+
+async function ppValidarProyectoDocente(id) {
+    const observacion = prompt('Observación de validación docente:', '') || '';
+    try {
+        const response = await ppApi(`/proyectos-pedagogicos/${id}/validar-docente`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({observacion})});
+        alert(response.message || 'Proyecto validado.');
+        await ppCargarProyectos();
+    } catch (error) { alert(error.message || 'La validación requiere la docente asignada.'); }
 }
 
 async function ppCargarDashboard() {

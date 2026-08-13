@@ -13,23 +13,23 @@ from modules.sqlalchemy_compat import CoreCompatRepository
 
 
 class OperacionCentralRepository(CoreCompatRepository):
-    """Operaciones Core para beneficiarios, usuarios, unidades y auditoría."""
+    """Operaciones Core con Base Maestra publicada como fuente canónica."""
 
     def contar_beneficiarios(self, fundacion_id: int | None = None) -> int:
         if fundacion_id is None:
-            row = self.fetch_one("SELECT COUNT(*) AS total FROM beneficiarios")
+            row = self.fetch_one("SELECT COUNT(*) AS total FROM master_ninos WHERE activo = 1")
         else:
             row = self.fetch_one(
-                "SELECT COUNT(*) AS total FROM beneficiarios WHERE COALESCE(fundacion_id, 1) = ?",
+                "SELECT COUNT(*) AS total FROM master_ninos WHERE activo = 1 AND COALESCE(fundacion_id, 1) = ?",
                 (fundacion_id,),
             )
         return int((row or {}).get("total") or 0)
 
     def listar_unidades(self, fundacion_id: int | None = None) -> list[dict[str, Any]]:
         if fundacion_id is None:
-            return self.fetch_all("SELECT * FROM unidades ORDER BY nombre")
+            return self.fetch_all("SELECT * FROM master_unidades WHERE activo = 1 ORDER BY nombre")
         return self.fetch_all(
-            "SELECT * FROM unidades WHERE COALESCE(fundacion_id, 1) = ? ORDER BY nombre",
+            "SELECT * FROM master_unidades WHERE activo = 1 AND COALESCE(fundacion_id, 1) = ? ORDER BY nombre",
             (fundacion_id,),
         )
 

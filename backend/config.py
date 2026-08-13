@@ -167,6 +167,9 @@ class BaseConfig:
     LOGIN_DB_RETRY_BASE_MS = env_int("LOGIN_DB_RETRY_BASE_MS", 50)
     LOGIN_DB_RETRY_BUDGET_MS = env_int("LOGIN_DB_RETRY_BUDGET_MS", 1200)
     LOGIN_SLOW_THRESHOLD_MS = env_int("LOGIN_SLOW_THRESHOLD_MS", 1500)
+    # Diagnostico temporal y seguro del flujo de autenticacion. Nunca registra
+    # contrasenas, hashes, tokens ni la DATABASE_URL completa.
+    AUTH_LOGIN_DEBUG = env_bool("AUTH_LOGIN_DEBUG", False)
     RECOVERY_MAX_ATTEMPTS = env_int("RECOVERY_MAX_ATTEMPTS", 5)
     RECOVERY_WINDOW_SECONDS = env_int("RECOVERY_WINDOW_SECONDS", 3600)
     RECOVERY_LOCK_SECONDS = env_int("RECOVERY_LOCK_SECONDS", 3600)
@@ -181,8 +184,14 @@ class BaseConfig:
     RESET_WINDOW_SECONDS = env_int("RESET_WINDOW_SECONDS", 900)
     RESET_LOCK_SECONDS = env_int("RESET_LOCK_SECONDS", 900)
     PASSWORD_RESET_PUBLIC_URL = os.getenv("PASSWORD_RESET_PUBLIC_URL", PUBLIC_APP_URL).rstrip("/")
-    RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
-    PASSWORD_RESET_FROM_EMAIL = os.getenv("PASSWORD_RESET_FROM_EMAIL", "").strip()
+    SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com").strip()
+    SMTP_PORT = env_int("SMTP_PORT", 587)
+    SMTP_USERNAME = os.getenv("SMTP_USERNAME", "").strip()
+    SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "").strip()
+    SMTP_USE_TLS = env_bool("SMTP_USE_TLS", True)
+    SMTP_USE_SSL = env_bool("SMTP_USE_SSL", False)
+    SMTP_TIMEOUT_SECONDS = env_int("SMTP_TIMEOUT_SECONDS", 15)
+    PASSWORD_RESET_FROM_EMAIL = os.getenv("PASSWORD_RESET_FROM_EMAIL", "").strip() or SMTP_USERNAME
 
     ALLOW_LEGACY_QUERY_TOKENS = env_bool("ALLOW_LEGACY_QUERY_TOKENS", False)
     ENABLE_LEGACY_TENANT_BACKFILL = env_bool("ENABLE_LEGACY_TENANT_BACKFILL", False)

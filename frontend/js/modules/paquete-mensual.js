@@ -1,7 +1,8 @@
 const PM_CATEGORIAS = [
     ['01_Bienestarina', 'Bienestarina'],
     ['02_RPP', 'RPP'],
-    ['03_RAM_RAN_RRAN', 'RAM / RAN / RRAN'],
+    // La clave se conserva para leer paquetes históricos; la interfaz muestra solo RAM.
+    ['03_RAM_RAN_RRAN', 'RAM'],
     ['04_Relacion_Mes', 'Relación del mes'],
     ['05_Cuentas_Cobro', 'Cuentas de cobro'],
     ['06_Informe_Nutricional', 'Informe nutricional'],

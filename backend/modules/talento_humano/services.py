@@ -175,6 +175,15 @@ class TalentoHumanoService:
         ctx = self.context()
         return self.repo.list_talento(ctx.get('fundacion_id'), ctx.get('rol') == 'SUPERADMIN')
 
+    def integral_dashboard(self) -> dict[str, Any]:
+        ctx=self.context(); return self.repo.integral_dashboard(int(ctx.get('fundacion_id') or 1))
+
+    def integral_person(self, person_id: int) -> dict[str, Any] | None:
+        ctx=self.context(); return self.repo.integral_person(person_id,int(ctx.get('fundacion_id') or 1))
+
+    def integral_add(self, entity: str, payload: dict[str, Any]) -> dict[str, Any]:
+        ctx=self.context(); self.repo.integral_add(entity,payload,ctx); return self.integral_dashboard()
+
     def guardar_registros(self, registros: list[dict[str, Any]], origen: str = 'guardar_registros_talento') -> dict[str, Any]:
         ctx = self.context()
         normalizados = []

@@ -26,6 +26,9 @@
     "start_hosting.sh",
     "Dockerfile",
     "railway.json"
+    ,
+    "PROMPT_MAESTRO_CONTINUIDAD_NO_REGRESION.md",
+    "integrity/format_capabilities.json"
   ],
   "critical_modules": [
     "seguridad",
@@ -215,6 +218,8 @@
     "BIENESTARINA",
     "LISTADO_ASISTENCIA"
   ],
+  "format_capability_scope": "ALL_FORMATS",
+  "format_capability_registry": "integrity/format_capabilities.json",
   "official_templates": {
     "backend/seed_data/templates_originales/oficiales/plantilla_ram_oficial_v3.xlsx": {
       "sha256": "52ae6d192acd678d282d851bbc43d0ebd042efe4e338c3761a4f87f207b14fdf",

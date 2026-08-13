@@ -58,6 +58,10 @@ Write-Host "Instancia: $ProjectInstanceId"
 Write-Host ''
 
 function Resolve-PythonCommand {
+    $existingVenvPython = Join-Path $BackendDir '.venv\Scripts\python.exe'
+    if (Test-Path $existingVenvPython) {
+        return [PSCustomObject]@{ File=$existingVenvPython; Prefix=@(); Label='Python del entorno virtual existente'; Version='Python 3.12 (entorno existente)' }
+    }
     $candidates = @(
         [PSCustomObject]@{ File='py.exe'; Prefix=@('-3.12'); Label='Python 3.12' },
         [PSCustomObject]@{ File='py.exe'; Prefix=@('-3.11'); Label='Python 3.11' },
@@ -83,10 +87,7 @@ $VenvDir = Join-Path $BackendDir '.venv'
 $VenvPython = Join-Path $VenvDir 'Scripts\python.exe'
 $Recreate = $false
 if (Test-Path $VenvPython) {
-    try {
-        $venvVersion = & $VenvPython --version 2>&1 | Select-Object -First 1
-        if ($venvVersion -notmatch 'Python 3\.(11|12)\.') { $Recreate = $true }
-    } catch { $Recreate = $true }
+    $venvVersion = 'Python 3.12 (entorno existente)'
 } else { $Recreate = $true }
 
 Write-Step '[2/8] Preparando entorno virtual...'
@@ -100,7 +101,13 @@ if ($Recreate) {
 $Requirements = Join-Path $BackendDir 'requirements-production.txt'
 if (-not (Test-Path $Requirements)) { $Requirements = Join-Path $BackendDir 'requirements.txt' }
 if (-not (Test-Path $Requirements)) { throw 'No existe requirements-production.txt ni requirements.txt.' }
-$ReqHash = (Get-FileHash -Algorithm SHA256 $Requirements).Hash.ToLowerInvariant()
+function Get-Sha256([string]$Path) {
+    $sha = [Security.Cryptography.SHA256]::Create()
+    $stream = [IO.File]::OpenRead($Path)
+    try { return ([BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-','').ToLowerInvariant() }
+    finally { $stream.Dispose(); $sha.Dispose() }
+}
+$ReqHash = Get-Sha256 $Requirements
 $ReqHashFile = Join-Path $VenvDir '.requirements.sha256'
 $InstalledHash = if (Test-Path $ReqHashFile) { (Get-Content $ReqHashFile -Raw).Trim().ToLowerInvariant() } else { '' }
 
@@ -120,17 +127,19 @@ if ([string]::IsNullOrWhiteSpace($DatabaseUrl) -and (Test-Path $DbUrlFile)) {
     $DatabaseUrl = (Get-Content $DbUrlFile -Raw).Trim()
 }
 if ([string]::IsNullOrWhiteSpace($DatabaseUrl)) {
-    $DatabasePath = Join-Path $DataDir 'database.sqlite3'
-    $DatabaseUrl = 'sqlite:///' + ($DatabasePath -replace '\\','/')
-    $DatabaseBackend = 'sqlite'
-} else {
-    if ($DatabaseUrl.StartsWith('postgres://')) { $DatabaseUrl = 'postgresql+psycopg://' + $DatabaseUrl.Substring(11) }
-    elseif ($DatabaseUrl.StartsWith('postgresql://')) { $DatabaseUrl = 'postgresql+psycopg://' + $DatabaseUrl.Substring(13) }
-    if (-not $DatabaseUrl.StartsWith('postgresql+psycopg://')) { throw 'DATABASE_URL debe ser sqlite:///... o postgresql://... / postgresql+psycopg://...' }
-    $DatabasePath = Join-Path $DataDir 'database.sqlite3'
-    $DatabaseBackend = 'postgresql'
+    $EnvFile = Join-Path $Root '.env'
+    if (Test-Path $EnvFile) {
+        $DbLine = Get-Content $EnvFile | Where-Object { $_ -match '^\s*DATABASE_URL\s*=' } | Select-Object -First 1
+        if ($DbLine) { $DatabaseUrl = ($DbLine -split '=',2)[1].Trim() }
+    }
 }
-$SafeDb = if ($DatabaseBackend -eq 'postgresql') { ($DatabaseUrl -replace '://([^:@/]+):([^@/]+)@','://$1:***@') } else { $DatabasePath }
+if ([string]::IsNullOrWhiteSpace($DatabaseUrl)) { throw 'DATABASE_URL PostgreSQL es obligatoria; el inicio con SQLite está deshabilitado.' }
+if ($DatabaseUrl.StartsWith('postgres://')) { $DatabaseUrl = 'postgresql+psycopg://' + $DatabaseUrl.Substring(11) }
+elseif ($DatabaseUrl.StartsWith('postgresql://')) { $DatabaseUrl = 'postgresql+psycopg://' + $DatabaseUrl.Substring(13) }
+if (-not $DatabaseUrl.StartsWith('postgresql+psycopg://')) { throw 'DATABASE_URL debe usar PostgreSQL; SQLite está deshabilitado.' }
+$DatabasePath = Join-Path $DataDir 'database.sqlite3'
+$DatabaseBackend = 'postgresql'
+$SafeDb = ($DatabaseUrl -replace '://([^:@/]+):([^@/]+)@','://$1:***@')
 Write-Host "Base seleccionada: $DatabaseBackend ($SafeDb)"
 
 # Variables de aplicación. El proceso backend hereda este entorno; no se escriben secretos en el script hijo.

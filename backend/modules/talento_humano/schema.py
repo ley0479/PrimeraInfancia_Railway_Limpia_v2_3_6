@@ -152,6 +152,47 @@ CREATE TABLE IF NOT EXISTS th_sincronizaciones (
     fundacion_id INTEGER DEFAULT 1,
     fecha_sincronizacion TEXT
 );
+
+CREATE TABLE IF NOT EXISTS th_documentos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, fundacion_id INTEGER NOT NULL,
+    persona_id INTEGER NOT NULL, tipo TEXT NOT NULL, nombre TEXT NOT NULL,
+    fecha_emision TEXT, fecha_vencimiento TEXT, estado TEXT DEFAULT 'VIGENTE',
+    archivo_referencia TEXT, observaciones TEXT, validado_por INTEGER,
+    fecha_validacion TEXT, creado_por INTEGER, fecha_creacion TEXT NOT NULL,
+    fecha_actualizacion TEXT NOT NULL, FOREIGN KEY(persona_id) REFERENCES th_personas(id)
+);
+CREATE INDEX IF NOT EXISTS idx_th_documentos_persona ON th_documentos(fundacion_id,persona_id,estado,fecha_vencimiento);
+
+CREATE TABLE IF NOT EXISTS th_formaciones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, fundacion_id INTEGER NOT NULL,
+    persona_id INTEGER NOT NULL, nombre TEXT NOT NULL, entidad TEXT,
+    tipo TEXT DEFAULT 'FORMACION', fecha_inicio TEXT, fecha_fin TEXT,
+    horas REAL DEFAULT 0, estado TEXT DEFAULT 'PROGRAMADA', certificado_referencia TEXT,
+    calendario_entregable_id INTEGER, observaciones TEXT, creado_por INTEGER,
+    fecha_creacion TEXT NOT NULL, fecha_actualizacion TEXT NOT NULL,
+    FOREIGN KEY(persona_id) REFERENCES th_personas(id)
+);
+CREATE INDEX IF NOT EXISTS idx_th_formaciones_persona ON th_formaciones(fundacion_id,persona_id,estado,fecha_inicio);
+
+CREATE TABLE IF NOT EXISTS th_evaluaciones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, fundacion_id INTEGER NOT NULL,
+    persona_id INTEGER NOT NULL, periodo TEXT NOT NULL, tipo TEXT DEFAULT 'ACOMPANAMIENTO',
+    fortalezas TEXT, oportunidades TEXT, compromisos TEXT, resultado TEXT,
+    estado TEXT DEFAULT 'BORRADOR', evaluador_id INTEGER, evaluador_nombre TEXT,
+    validado_por INTEGER, fecha_validacion TEXT, fecha_evaluacion TEXT NOT NULL,
+    fecha_creacion TEXT NOT NULL, fecha_actualizacion TEXT NOT NULL,
+    FOREIGN KEY(persona_id) REFERENCES th_personas(id)
+);
+CREATE INDEX IF NOT EXISTS idx_th_evaluaciones_persona ON th_evaluaciones(fundacion_id,persona_id,periodo,estado);
+
+CREATE TABLE IF NOT EXISTS th_capacidades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, fundacion_id INTEGER NOT NULL,
+    persona_id INTEGER NOT NULL, capacidad TEXT NOT NULL, nivel TEXT DEFAULT 'EN_DESARROLLO',
+    interes_apoyo INTEGER DEFAULT 0, necesidad_formacion INTEGER DEFAULT 0,
+    observaciones TEXT, actualizado_por INTEGER, fecha_actualizacion TEXT NOT NULL,
+    UNIQUE(fundacion_id,persona_id,capacidad), FOREIGN KEY(persona_id) REFERENCES th_personas(id)
+);
+CREATE INDEX IF NOT EXISTS idx_th_capacidades_mapa ON th_capacidades(fundacion_id,capacidad,nivel);
 """
 
 

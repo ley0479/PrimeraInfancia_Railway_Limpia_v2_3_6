@@ -72,7 +72,7 @@ def register_paquete_mensual(app, database_path: str, output_folder: str, base_d
             'componentes': [
                 'Bienestarina',
                 'RPP',
-                'RAM / RAN / RRAN',
+                'RAM',
                 'Relación del mes',
                 'Cuentas de cobro',
                 'Informe nutricional',

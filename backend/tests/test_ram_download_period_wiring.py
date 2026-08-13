@@ -49,8 +49,14 @@ def run():
         generar_desde_plantilla_oficial('ram', {'metadata': {'anio': 2026, 'mes_numero': 7}, 'usuarios': [user]}, out2, templates)
         generar_desde_plantilla_oficial('ram', {'metadata': {'anio': 2026, 'mes_numero': 8}, 'usuarios': [user]}, out3, templates)
         assert_true(out2.exists() and out3.exists(), 'No se generaron ambas versiones RAM')
-        assert_true('FORMATO RAM V2 HISTORICO' in load_workbook(out2, read_only=True).sheetnames, 'RAM V2 inválido')
-        assert_true('FORMATO RAM' in load_workbook(out3, read_only=True).sheetnames, 'RAM V3 inválido')
+        wb2 = load_workbook(out2, read_only=True)
+        wb3 = load_workbook(out3, read_only=True)
+        try:
+            assert_true('FORMATO RAM V2 HISTORICO' in wb2.sheetnames, 'RAM V2 inválido')
+            assert_true('FORMATO RAM' in wb3.sheetnames, 'RAM V3 inválido')
+        finally:
+            wb2.close()
+            wb3.close()
 
     print(json.dumps({'ok': True, 'checks': [
         'Periodo visible y enviado',

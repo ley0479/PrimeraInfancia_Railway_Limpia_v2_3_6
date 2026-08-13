@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 from typing import Any
 
+from modules.dbapi_compat import sqlite3
 from modules.sqlalchemy_compat import CoreCompatRepository
 
 from .schema import SCHEMA_SQL
@@ -32,7 +33,10 @@ class CruceBasesRepository(CoreCompatRepository):
 
     def guardar_cruce(self, resultado: dict[str, Any], metadata: dict[str, Any]) -> int:
         resumen = resultado.get('resumen', {})
-        with self.connect() as conn:
+        # El INSERT necesita lastrowid para relacionar detalles y auditoría.
+        # CompatConnection implementa ese contrato sobre PostgreSQL sin cerrar
+        # el cursor al procesar RETURNING.
+        with sqlite3.connect(self.database_path) as conn:
             cur = conn.cursor()
             cruce_id = cur.execute(
                 """

@@ -50,7 +50,16 @@ def connect(database_path: str) -> sqlite3.Connection:
 
 def ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
     try:
-        cols = {r['name'] for r in conn.execute(f'PRAGMA table_info({table})').fetchall()}
+        cols = {
+            r['name'] for r in conn.execute(
+                """
+                SELECT column_name AS name
+                FROM information_schema.columns
+                WHERE table_schema = current_schema() AND table_name = ?
+                """,
+                (str(table),),
+            ).fetchall()
+        }
         if column not in cols:
             conn.execute(f'ALTER TABLE {table} ADD COLUMN {column} {definition}')
     except Exception:
@@ -344,14 +353,30 @@ def validate_mapping(mapping: list[dict], strict: bool = False) -> dict:
 
 
 def table_exists(conn: sqlite3.Connection, table: str) -> bool:
-    row = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()
+    row = conn.execute(
+        """
+        SELECT table_name AS name
+        FROM information_schema.tables
+        WHERE table_schema = current_schema() AND table_name = ?
+        """,
+        (str(table),),
+    ).fetchone()
     return row is not None
 
 
 def table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
     if not table_exists(conn, table):
         return set()
-    return {r['name'] for r in conn.execute(f'PRAGMA table_info({table})').fetchall()}
+    return {
+        r['name'] for r in conn.execute(
+            """
+            SELECT column_name AS name
+            FROM information_schema.columns
+            WHERE table_schema = current_schema() AND table_name = ?
+            """,
+            (str(table),),
+        ).fetchall()
+    }
 
 
 def normalize_unit(value: Any) -> str:
@@ -362,23 +387,25 @@ def get_users_by_unit(database_path: str, unidad: str, limit: int = 20) -> list[
     unidad_norm = normalize_unit(unidad)
     conn = connect(database_path)
     users: list[dict] = []
-    if not table_exists(conn, 'beneficiarios'):
+    if not table_exists(conn, 'master_ninos'):
         conn.close()
         return users
-    cols = table_columns(conn, 'beneficiarios')
+    cols = table_columns(conn, 'master_ninos')
     select_cols = [
         'documento', 'nui', 'tipo_documento', 'nombres', 'apellidos', 'primer_nombre',
         'segundo_nombre', 'primer_apellido', 'segundo_apellido', 'fecha_nacimiento',
         'edad_meses', 'nombre_acudiente', 'documento_acudiente', 'tipo_documento_acudiente',
         'parentesco', 'telefono', 'unidad', 'estado', 'sexo', 'grupo_etario', 'observaciones'
     ]
-    select_cols = [c for c in select_cols if c in cols]
+    aliases = {'unidad': 'unidad_servicio'}
+    select_cols = [c for c in select_cols if c in cols or aliases.get(c) in cols]
     if not select_cols:
         conn.close()
         return users
-    rows = conn.execute(f"SELECT {', '.join(select_cols)} FROM beneficiarios WHERE UPPER(COALESCE(unidad,'')) = ? AND UPPER(COALESCE(estado,'ACTIVO')) IN ('ACTIVO','ACTIVA','') LIMIT ?", (unidad_norm, int(limit))).fetchall()
+    projection = ', '.join((f'{aliases[c]} AS {c}' if c in aliases else c) for c in select_cols)
+    rows = conn.execute(f"SELECT {projection} FROM master_ninos WHERE activo=1 AND UPPER(COALESCE(unidad_servicio,'')) = ? LIMIT ?", (unidad_norm, int(limit))).fetchall()
     if not rows:
-        rows = conn.execute(f"SELECT {', '.join(select_cols)} FROM beneficiarios WHERE UPPER(COALESCE(unidad,'')) LIKE ? LIMIT ?", (f'%{unidad_norm}%', int(limit))).fetchall()
+        rows = conn.execute(f"SELECT {projection} FROM master_ninos WHERE activo=1 AND UPPER(COALESCE(unidad_servicio,'')) LIKE ? LIMIT ?", (f'%{unidad_norm}%', int(limit))).fetchall()
     for row in rows:
         d = dict(row)
         users.append(d)

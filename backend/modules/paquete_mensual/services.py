@@ -126,32 +126,32 @@ class PaqueteMensualService:
     def get_beneficiarios(self, fundacion_id: int | None = None) -> list[dict[str, Any]]:
         conn = self.connect()
         cur = conn.cursor()
-        if not self.table_exists(cur, 'beneficiarios'):
+        if not self.table_exists(cur, 'master_ninos'):
             conn.close()
             return []
-        cols = {r['name'] for r in cur.execute("PRAGMA table_info(beneficiarios)").fetchall()}
+        cols = {r['name'] for r in cur.execute("PRAGMA table_info(master_ninos)").fetchall()}
         where = "1=1"
         params: list[Any] = []
         if fundacion_id and 'fundacion_id' in cols:
             where += " AND COALESCE(fundacion_id, ?) = ?"
             params.extend([fundacion_id, fundacion_id])
-        rows = [dict(r) for r in cur.execute(f"SELECT * FROM beneficiarios WHERE {where}", tuple(params)).fetchall()]
+        rows = [dict(r) for r in cur.execute(f"SELECT *, unidad_servicio AS unidad, documento AS nui FROM master_ninos WHERE activo=1 AND {where}", tuple(params)).fetchall()]
         conn.close()
         return rows
 
     def get_talento(self, fundacion_id: int | None = None) -> list[dict[str, Any]]:
         conn = self.connect()
         cur = conn.cursor()
-        if not self.table_exists(cur, 'coordinadores'):
+        if not self.table_exists(cur, 'master_talento_humano'):
             conn.close()
             return []
-        cols = {r['name'] for r in cur.execute("PRAGMA table_info(coordinadores)").fetchall()}
+        cols = {r['name'] for r in cur.execute("PRAGMA table_info(master_talento_humano)").fetchall()}
         where = "1=1"
         params: list[Any] = []
         if fundacion_id and 'fundacion_id' in cols:
             where += " AND COALESCE(fundacion_id, ?) = ?"
             params.extend([fundacion_id, fundacion_id])
-        rows = [dict(r) for r in cur.execute(f"SELECT * FROM coordinadores WHERE {where} ORDER BY unidad, cargo, nombre", tuple(params)).fetchall()]
+        rows = [dict(r) for r in cur.execute(f"SELECT *, nombre_completo AS nombre, unidad_servicio AS unidad FROM master_talento_humano WHERE activo=1 AND {where} ORDER BY unidad_servicio, cargo, nombre_completo", tuple(params)).fetchall()]
         conn.close()
         return rows
 
@@ -366,27 +366,16 @@ class PaqueteMensualService:
         conn = self.connect()
         cur = conn.cursor()
         unidades: set[str] = set()
-        if self.table_exists(cur, 'beneficiarios'):
-            cols = {r['name'] for r in cur.execute("PRAGMA table_info(beneficiarios)").fetchall()}
-            where = "unidad IS NOT NULL AND TRIM(unidad) <> ''"
+        if self.table_exists(cur, 'master_unidades'):
+            cols = {r['name'] for r in cur.execute("PRAGMA table_info(master_unidades)").fetchall()}
+            where = "activo=1 AND nombre IS NOT NULL AND TRIM(nombre) <> ''"
             params: list[Any] = []
             if 'estado' in cols:
                 where += " AND (estado IS NULL OR LOWER(estado) IN ('activo', 'activa'))"
             if fundacion_id and 'fundacion_id' in cols:
                 where += " AND COALESCE(fundacion_id, ?) = ?"
                 params.extend([fundacion_id, fundacion_id])
-            for row in cur.execute(f"SELECT DISTINCT unidad FROM beneficiarios WHERE {where} ORDER BY unidad", tuple(params)).fetchall():
-                unidad = str(row['unidad'] or '').strip()
-                if unidad:
-                    unidades.add(unidad)
-        if not unidades and self.table_exists(cur, 'coordinadores'):
-            cols = {r['name'] for r in cur.execute("PRAGMA table_info(coordinadores)").fetchall()}
-            where = "unidad IS NOT NULL AND TRIM(unidad) <> ''"
-            params = []
-            if fundacion_id and 'fundacion_id' in cols:
-                where += " AND COALESCE(fundacion_id, ?) = ?"
-                params.extend([fundacion_id, fundacion_id])
-            for row in cur.execute(f"SELECT DISTINCT unidad FROM coordinadores WHERE {where} ORDER BY unidad", tuple(params)).fetchall():
+            for row in cur.execute(f"SELECT DISTINCT nombre AS unidad FROM master_unidades WHERE {where} ORDER BY nombre", tuple(params)).fetchall():
                 unidad = str(row['unidad'] or '').strip()
                 if unidad:
                     unidades.add(unidad)
@@ -406,7 +395,7 @@ class PaqueteMensualService:
         """Genera dentro del paquete los formatos operativos actualizados.
 
         A diferencia de versiones anteriores, esta rutina no depende únicamente de
-        archivos viejos ya generados. Genera Bienestarina, RPP, RAN y Asistencia
+        archivos viejos ya generados. Genera Bienestarina, RPP y RAM
         por cada UDS activa usando los datos actuales de la base. Si una UDS falla,
         registra el error y continúa para que el ZIP completo siempre se pueda bajar.
         """
@@ -457,8 +446,7 @@ class PaqueteMensualService:
         for unidad in unidades:
             run_one(unidad, '01_Bienestarina', folder_bien, 'generar_bienestarina', 'Bienestarina')
             run_one(unidad, '02_RPP', folder_rpp, 'generar_rpp', 'RPP')
-            run_one(unidad, '03_RAM_RAN_RRAN', folder_ram, 'generar_ran', 'RAN')
-            run_one(unidad, '03_RAM_RAN_RRAN', folder_ram, 'generar_asistencia', 'RAM_Asistencia')
+            run_one(unidad, '03_RAM_RAN_RRAN', folder_ram, 'generar_asistencia', 'RAM')
         return generated, errores
 
     def copy_existing_formats(self, package_dir: Path, conn: sqlite3.Connection, paquete_id: int, anio: int, mes: int, only_if_empty: bool = True) -> list[dict[str, Any]]:
@@ -470,7 +458,8 @@ class PaqueteMensualService:
         categories = {
             '01_Bienestarina': ['bienestarina', 'bienesterina'],
             '02_RPP': ['rpp'],
-            '03_RAM_RAN_RRAN': ['ram', 'ran', 'rran', 'asistencia'],
+            # Clave interna histórica; solo se admiten archivos RAM/asistencia.
+            '03_RAM_RAN_RRAN': ['ram', 'asistencia'],
         }
         copied: list[dict[str, Any]] = []
         period_tokens = {
@@ -595,22 +584,25 @@ class PaqueteMensualService:
         folder = ensure_dir(package_dir / '06_Informe_Nutricional')
         cur = conn.cursor()
         rows = []
-        if self.table_exists(cur, 'sn_valoraciones'):
-            cols = {r['name'] for r in cur.execute("PRAGMA table_info(sn_valoraciones)").fetchall()}
+        if self.table_exists(cur, 'master_salud_nutricion'):
+            cols = {r['name'] for r in cur.execute("PRAGMA table_info(master_salud_nutricion)").fetchall()}
             where = "1=1"
             params = []
             if 'fundacion_id' in cols and fundacion_id:
-                where += " AND COALESCE(fundacion_id, ?) = ?"
+                where += " AND COALESCE(s.fundacion_id, ?) = ?"
                 params += [fundacion_id, fundacion_id]
             sql = f"""
-                SELECT unidad, nombre_completo, documento, edad_texto, sexo, peso_kg, talla_cm, imc,
-                       diagnostico_global, nivel_alerta, fecha_valoracion, proximo_control, trimestre, estado_control
-                FROM sn_valoraciones WHERE {where} ORDER BY unidad, nombre_completo LIMIT 5000
+                SELECT n.unidad_servicio AS unidad, n.nombre_completo, s.documento,
+                       n.edad_meses AS edad_texto, n.sexo, s.peso AS peso_kg,
+                       s.talla AS talla_cm, NULL AS imc,
+                       s.diagnostico_nutricional AS diagnostico_global,
+                       s.estado_nutricional AS nivel_alerta, s.fecha_toma AS fecha_valoracion,
+                       NULL AS proximo_control, NULL AS trimestre, s.estado_nutricional AS estado_control
+                FROM master_salud_nutricion s
+                LEFT JOIN master_ninos n ON n.version_id=s.version_id AND n.fundacion_id=s.fundacion_id AND n.documento=s.documento AND n.activo=1
+                WHERE s.activo=1 AND {where} ORDER BY n.unidad_servicio, n.nombre_completo LIMIT 5000
             """
             rows = [[r['unidad'], r['nombre_completo'], r['documento'], r['edad_texto'], r['sexo'], r['peso_kg'], r['talla_cm'], r['imc'], r['diagnostico_global'], r['nivel_alerta'], r['fecha_valoracion'], r['proximo_control'], r['trimestre'], r['estado_control']] for r in cur.execute(sql, tuple(params)).fetchall()]
-        elif self.table_exists(cur, 'peso_talla'):
-            sql = "SELECT unidad, nombre, documento, peso, talla, estado_nutricional, fecha_medicion, fecha_proximo_control, estado FROM peso_talla ORDER BY unidad, nombre LIMIT 5000"
-            rows = [[r['unidad'], r['nombre'], r['documento'], '', '', r['peso'], r['talla'], '', r['estado_nutricional'], '', r['fecha_medicion'], r['fecha_proximo_control'], '', r['estado']] for r in cur.execute(sql).fetchall()]
         headers = ['Unidad', 'Nombre', 'Documento', 'Edad', 'Sexo', 'Peso', 'Talla', 'IMC', 'Diagnóstico', 'Alerta', 'Fecha valoración', 'Próximo control', 'Trimestre', 'Estado']
         xlsx = folder / f'INFORME_NUTRICIONAL_{anio}_{mes:02d}.xlsx'
         pdf = folder / f'INFORME_NUTRICIONAL_{anio}_{mes:02d}.pdf'

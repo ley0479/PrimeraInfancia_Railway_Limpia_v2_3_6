@@ -313,6 +313,18 @@ def _asset_record(conn, *, fundacion_id, tipo, original, path: Path, user, batch
     conn.execute(sql, (fundacion_id,tipo,original,path.name,str(path),mime,path.stat().st_size,0,user,now,now,width,height,version,batch_id))
 
 
+def _branding_version(now: datetime | None = None) -> int:
+    """Return an ordered version that fits PostgreSQL's 32-bit INTEGER.
+
+    The former YYYYMMDDHHMMSS representation has 14 digits and therefore
+    overflowed the INTEGER column used by ``identidad_visual_archivos``.
+    Minute precision is sufficient because each generation also has a unique
+    ``lote_id``.
+    """
+    current = now or datetime.now()
+    return current.toordinal() * 1440 + current.hour * 60 + current.minute
+
+
 def _generate_branding_assets(image, root: Path, remove_white: bool):
     from PIL import Image
     if remove_white:
@@ -494,7 +506,7 @@ def _get_or_create_config(
     ''', (fundacion_id,)).fetchone()
     if not row:
         now = _now()
-        conn.execute('''
+        insert_cursor = conn.execute('''
             INSERT INTO configuracion_institucional
             (corporacion_id, fundacion_id, nombre_plataforma, nombre_corporacion, sigla, nombre_admin, cargo_admin, color_primario, color_secundario, activo, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
@@ -512,7 +524,10 @@ def _get_or_create_config(
             now
         ))
         conn.commit()
-        row = conn.execute('SELECT * FROM configuracion_institucional WHERE id=last_insert_rowid()').fetchone()
+        row = conn.execute(
+            'SELECT * FROM configuracion_institucional WHERE id=?',
+            (insert_cursor.lastrowid,),
+        ).fetchone()
     data = _row_to_dict(row, base_dir, tenant_root) or {}
     conn.close()
     return data
@@ -609,7 +624,11 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
             return jsonify({'error': 'Ruta institucional no autorizada.'}), 403
         if not candidate.is_file():
             return jsonify({'error': 'Archivo institucional no encontrado.'}), 404
-        return send_from_directory(str(root), str(candidate.relative_to(root)), as_attachment=False)
+        # ``send_from_directory`` usa rutas URL (separador ``/``). En Windows,
+        # ``str(Path.relative_to(...))`` produce barras invertidas y Werkzeug
+        # termina buscando un nombre inexistente, aunque el archivo esté en disco.
+        relative_file = candidate.relative_to(root).as_posix()
+        return send_from_directory(str(root), relative_file, as_attachment=False)
 
     @bp.route('/api/configuracion-institucional', methods=['GET'])
     def obtener_configuracion():
@@ -644,8 +663,8 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
             payload.setdefault('sigla', 'ORGDEMO')
             cols = ['corporacion_id', 'fundacion_id'] + allowed + ['activo', 'creado_por', 'actualizado_por', 'created_at', 'updated_at']
             params = [user['corporacion_id'], user['fundacion_id']] + [payload.get(k) for k in allowed] + [1, user['username'], user['username'], now, now]
-            conn.execute(f"INSERT INTO configuracion_institucional ({', '.join(cols)}) VALUES ({', '.join(['?'] * len(cols))})", params)
-            cfg_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+            insert_cursor = conn.execute(f"INSERT INTO configuracion_institucional ({', '.join(cols)}) VALUES ({', '.join(['?'] * len(cols))})", params)
+            cfg_id = insert_cursor.lastrowid
         conn.commit()
         cfg = conn.execute('SELECT * FROM configuracion_institucional WHERE id=?', (cfg_id,)).fetchone()
         conn.close()
@@ -749,7 +768,7 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
             user = _user()
             directories = _tenant_dirs()
             batch_id = uuid.uuid4().hex[:16]
-            version = int(datetime.now().strftime('%Y%m%d%H%M%S'))
+            version = _branding_version()
             original_name = _safe_filename(f'ORIGINAL_{user["fundacion_id"]}', file.filename)
             (directories['originales_dir'] / original_name).write_bytes(raw)
             remove_white = str(request.form.get('remove_white') or '').lower() in {'1','true','yes','on'}
@@ -939,12 +958,12 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
         now = _now()
         if estado == 'vigente':
             conn.execute("UPDATE manuales_operativos SET estado='historico', updated_at=? WHERE fundacion_id=? AND estado='vigente'", (now, user['fundacion_id']))
-        conn.execute('''
+        insert_cursor = conn.execute('''
             INSERT INTO manuales_operativos
             (corporacion_id, fundacion_id, codigo, nombre, version, fecha_documento, estado, archivo_path, total_paginas, observacion, cargado_por, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (user['corporacion_id'], user['fundacion_id'], codigo, nombre_doc, version, fecha_documento, estado, str(path), total_paginas, request.form.get('observacion') or '', user['username'], now, now))
-        manual_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+        manual_id = insert_cursor.lastrowid
         for order, (titulo, numero, inicio, fin) in enumerate(SECCIONES_MANUAL_BASE, start=1):
             conn.execute('''
                 INSERT INTO manuales_operativos_secciones

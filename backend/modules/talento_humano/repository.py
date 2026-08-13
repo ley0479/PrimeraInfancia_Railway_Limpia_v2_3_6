@@ -89,6 +89,45 @@ class TalentoHumanoRepository(CoreCompatRepository):
             return "1=1", []
         return f"({prefix}fundacion_id = ? OR {prefix}fundacion_id IS NULL)", [fundacion_id]
 
+    def integral_dashboard(self, fundacion_id: int) -> dict[str, Any]:
+        self.init_schema()
+        today = datetime.now().date().isoformat()
+        people = self.fetch_all("SELECT id,nombre,documento,cargo,rol_normalizado,unidad,estado,activo FROM th_personas WHERE fundacion_id=? AND activo=1 ORDER BY nombre", [fundacion_id])
+        documents = self.fetch_all("SELECT d.*,p.nombre persona_nombre,p.unidad FROM th_documentos d JOIN th_personas p ON p.id=d.persona_id AND p.fundacion_id=d.fundacion_id WHERE d.fundacion_id=? ORDER BY d.fecha_vencimiento,d.id DESC", [fundacion_id])
+        trainings = self.fetch_all("SELECT f.*,p.nombre persona_nombre,p.unidad FROM th_formaciones f JOIN th_personas p ON p.id=f.persona_id AND p.fundacion_id=f.fundacion_id WHERE f.fundacion_id=? ORDER BY f.fecha_inicio DESC,f.id DESC", [fundacion_id])
+        evaluations = self.fetch_all("SELECT e.*,p.nombre persona_nombre,p.unidad FROM th_evaluaciones e JOIN th_personas p ON p.id=e.persona_id AND p.fundacion_id=e.fundacion_id WHERE e.fundacion_id=? ORDER BY e.fecha_evaluacion DESC,e.id DESC", [fundacion_id])
+        capabilities = self.fetch_all("SELECT capacidad,nivel,COUNT(*) total,SUM(necesidad_formacion) necesidades,SUM(interes_apoyo) apoyos FROM th_capacidades WHERE fundacion_id=? GROUP BY capacidad,nivel ORDER BY capacidad,nivel", [fundacion_id])
+        expired=sum(bool(row.get('fecha_vencimiento')) and str(row['fecha_vencimiento']) < today and row.get('estado')!='RENOVADO' for row in documents)
+        return {'resumen':{'colaboradores_activos':len(people),'documentos':len(documents),'documentos_vencidos':expired,'formaciones_programadas':sum(row.get('estado')=='PROGRAMADA' for row in trainings),'evaluaciones_borrador':sum(row.get('estado')=='BORRADOR' for row in evaluations)},'personas':people,'documentos':documents,'formaciones':trainings,'evaluaciones':evaluations,'mapa_capacidades':capabilities}
+
+    def integral_person(self, person_id: int, fundacion_id: int) -> dict[str, Any] | None:
+        self.init_schema(); person=self.fetch_one("SELECT * FROM th_personas WHERE id=? AND fundacion_id=?",[person_id,fundacion_id])
+        if not person:return None
+        person['asignaciones']=self.fetch_all("SELECT * FROM th_asignaciones WHERE persona_id=? AND fundacion_id=? ORDER BY fecha_inicio DESC",[person_id,fundacion_id])
+        person['documentos']=self.fetch_all("SELECT * FROM th_documentos WHERE persona_id=? AND fundacion_id=? ORDER BY fecha_vencimiento",[person_id,fundacion_id])
+        person['formaciones']=self.fetch_all("SELECT * FROM th_formaciones WHERE persona_id=? AND fundacion_id=? ORDER BY fecha_inicio DESC",[person_id,fundacion_id])
+        person['evaluaciones']=self.fetch_all("SELECT * FROM th_evaluaciones WHERE persona_id=? AND fundacion_id=? ORDER BY fecha_evaluacion DESC",[person_id,fundacion_id])
+        person['capacidades']=self.fetch_all("SELECT * FROM th_capacidades WHERE persona_id=? AND fundacion_id=? ORDER BY capacidad",[person_id,fundacion_id])
+        return person
+
+    def integral_add(self, entity: str, payload: dict[str, Any], ctx: dict[str, Any]) -> None:
+        self.init_schema(); fid=int(ctx.get('fundacion_id') or 1); uid=ctx.get('usuario_id'); now=now_iso(); pid=int(payload.get('persona_id') or 0)
+        if not self.fetch_one("SELECT id FROM th_personas WHERE id=? AND fundacion_id=?",[pid,fid]): raise ValueError('Colaborador no encontrado en la fuente maestra.')
+        if entity=='documentos':
+            if not str(payload.get('tipo') or '').strip() or not str(payload.get('nombre') or '').strip(): raise ValueError('Tipo y nombre del documento son obligatorios.')
+            self.execute("INSERT INTO th_documentos(fundacion_id,persona_id,tipo,nombre,fecha_emision,fecha_vencimiento,estado,archivo_referencia,observaciones,creado_por,fecha_creacion,fecha_actualizacion) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",[fid,pid,payload.get('tipo'),payload.get('nombre'),payload.get('fecha_emision'),payload.get('fecha_vencimiento'),'VIGENTE',payload.get('archivo_referencia'),payload.get('observaciones'),uid,now,now])
+        elif entity=='formaciones':
+            if not str(payload.get('nombre') or '').strip(): raise ValueError('Nombre de formación obligatorio.')
+            self.execute("INSERT INTO th_formaciones(fundacion_id,persona_id,nombre,entidad,tipo,fecha_inicio,fecha_fin,horas,estado,observaciones,creado_por,fecha_creacion,fecha_actualizacion) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",[fid,pid,payload.get('nombre'),payload.get('entidad'),payload.get('tipo') or 'FORMACION',payload.get('fecha_inicio'),payload.get('fecha_fin'),float(payload.get('horas') or 0),'PROGRAMADA',payload.get('observaciones'),uid,now,now])
+        elif entity=='evaluaciones':
+            if not payload.get('periodo'): raise ValueError('Periodo obligatorio.')
+            self.execute("INSERT INTO th_evaluaciones(fundacion_id,persona_id,periodo,tipo,fortalezas,oportunidades,compromisos,resultado,estado,evaluador_id,evaluador_nombre,fecha_evaluacion,fecha_creacion,fecha_actualizacion) VALUES(?,?,?,?,?,?,?,?, 'BORRADOR',?,?,?,?,?)",[fid,pid,payload.get('periodo'),payload.get('tipo') or 'ACOMPANAMIENTO',payload.get('fortalezas'),payload.get('oportunidades'),payload.get('compromisos'),payload.get('resultado'),uid,ctx.get('username'),payload.get('fecha_evaluacion') or datetime.now().date().isoformat(),now,now])
+        elif entity=='capacidades':
+            if not payload.get('capacidad'): raise ValueError('Capacidad obligatoria.')
+            self.execute("INSERT INTO th_capacidades(fundacion_id,persona_id,capacidad,nivel,interes_apoyo,necesidad_formacion,observaciones,actualizado_por,fecha_actualizacion) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(fundacion_id,persona_id,capacidad) DO UPDATE SET nivel=excluded.nivel,interes_apoyo=excluded.interes_apoyo,necesidad_formacion=excluded.necesidad_formacion,observaciones=excluded.observaciones,actualizado_por=excluded.actualizado_por,fecha_actualizacion=excluded.fecha_actualizacion",[fid,pid,payload.get('capacidad'),payload.get('nivel') or 'EN_DESARROLLO',1 if payload.get('interes_apoyo') else 0,1 if payload.get('necesidad_formacion') else 0,payload.get('observaciones'),uid,now])
+        else: raise ValueError('Entidad integral inválida.')
+        self.audit('CREAR_'+entity.upper(),'th_'+entity,pid,None,payload,ctx)
+
     def list_talento(self, fundacion_id: int | None = None, superadmin: bool = False) -> list[dict[str, Any]]:
         self.init_schema()
         filtro, params = self._fundacion_filter(fundacion_id, superadmin)
@@ -122,26 +161,18 @@ class TalentoHumanoRepository(CoreCompatRepository):
         ahora = now_iso()
 
         unidad_key = str(reg.get('unidad') or '').strip()
-        cargo_key = str(reg.get('cargo') or '').strip()
-        if unidad_key:
-            existente = self.fetch_one(
-                """
-                SELECT * FROM coordinadores
-                WHERE documento = ? AND COALESCE(unidad,'') = ? AND COALESCE(cargo,'') = ?
-                  AND (fundacion_id = ? OR fundacion_id IS NULL)
-                ORDER BY id LIMIT 1
-                """,
-                [documento, unidad_key, cargo_key, fundacion_id],
-            )
-        else:
-            existente = self.fetch_one(
-                """
-                SELECT * FROM coordinadores
-                WHERE documento = ? AND (fundacion_id = ? OR fundacion_id IS NULL)
-                ORDER BY id LIMIT 1
-                """,
-                [documento, fundacion_id],
-            )
+        # La restricción real de la tabla es UNIQUE(fundacion_id, documento).
+        # Buscar también por unidad/cargo hacía que una segunda fila de la
+        # misma persona se tratara como nueva y PostgreSQL rechazara el INSERT.
+        existente = self.fetch_one(
+            """
+            SELECT * FROM coordinadores
+            WHERE documento = ? AND (fundacion_id = ? OR fundacion_id IS NULL)
+            ORDER BY CASE WHEN fundacion_id = ? THEN 0 ELSE 1 END, id
+            LIMIT 1
+            """,
+            [documento, fundacion_id, fundacion_id],
+        )
 
         payload = {
             'documento': documento,
@@ -199,25 +230,14 @@ class TalentoHumanoRepository(CoreCompatRepository):
             """,
             payload,
         )
-        if unidad_key:
-            inserted = self.fetch_one(
-                """
-                SELECT id FROM coordinadores
-                WHERE documento = ? AND COALESCE(unidad,'') = ? AND COALESCE(cargo,'') = ?
-                  AND fundacion_id = ?
-                ORDER BY id DESC LIMIT 1
-                """,
-                [documento, unidad_key, cargo_key, fundacion_id],
-            )
-        else:
-            inserted = self.fetch_one(
-                """
-                SELECT id FROM coordinadores
-                WHERE documento = ? AND fundacion_id = ?
-                ORDER BY id DESC LIMIT 1
-                """,
-                [documento, fundacion_id],
-            )
+        inserted = self.fetch_one(
+            """
+            SELECT id FROM coordinadores
+            WHERE documento = ? AND fundacion_id = ?
+            ORDER BY id DESC LIMIT 1
+            """,
+            [documento, fundacion_id],
+        )
         talent_id = int(inserted['id']) if inserted else None
         self.audit('CREAR_TALENTO_BASE', 'coordinadores', talent_id, None, payload, ctx)
         return talent_id, True

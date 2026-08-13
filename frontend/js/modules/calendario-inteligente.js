@@ -361,7 +361,7 @@
         openModal('Nuevo entregable operativo', `<div class="grid gap-3 md:grid-cols-2">
             <input id="ci-new-titulo" class="ci-input" placeholder="Actividad o entregable">
             <input id="ci-new-fecha" type="date" class="ci-input" value="${new Date().toISOString().slice(0,10)}">
-            <select id="ci-new-modulo" class="ci-input"><option>RPP</option><option>Bienestarina</option><option>RAM/RAN/Asistencia</option><option>Nutrición</option><option>Talento Humano</option><option>Planeación Pedagógica</option><option>Reportes Gerenciales</option><option>Cumplimiento ICBF</option></select>
+            <select id="ci-new-modulo" class="ci-input"><option>RPP</option><option>Bienestarina</option><option>RAM/Asistencia</option><option>Nutrición</option><option>Talento Humano</option><option>Planeación Pedagógica</option><option>Reportes Gerenciales</option><option>Cumplimiento ICBF</option></select>
             <input id="ci-new-formato" class="ci-input" placeholder="Formato">
             <input id="ci-new-coordinador" class="ci-input" placeholder="Coordinador">
             <input id="ci-new-unidad" class="ci-input" placeholder="Unidad/UDS">

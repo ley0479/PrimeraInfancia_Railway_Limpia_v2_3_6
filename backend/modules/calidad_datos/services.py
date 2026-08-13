@@ -425,18 +425,15 @@ def docentes_por_unidad_desde_db(database_path: str, fundacion_id: int = 1) -> t
     def table_exists(t: str) -> bool:
         return cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (t,)).fetchone() is not None
 
-    if table_exists('th_personas'):
+    if table_exists('master_talento_humano'):
         try:
             rows = cur.execute("""
-                SELECT p.documento, p.nombre, p.rol_normalizado, a.unidad
-                FROM th_personas p
-                LEFT JOIN th_asignaciones a
-                  ON a.persona_id = p.id
-                 AND COALESCE(a.estado,'ACTIVO')='ACTIVO'
-                 AND COALESCE(a.fundacion_id, 1) = ?
+                SELECT p.documento, p.nombre_completo AS nombre, p.rol_normalizado,
+                       p.unidad_servicio AS unidad
+                FROM master_talento_humano p
                 WHERE UPPER(COALESCE(p.rol_normalizado,'')) IN ('DOCENTE','AGENTE EDUCATIVO')
-                  AND COALESCE(p.fundacion_id, 1) = ?
-            """, (fundacion_id, fundacion_id)).fetchall()
+                  AND p.activo=1 AND COALESCE(p.fundacion_id, 1) = ?
+            """, (fundacion_id,)).fetchall()
             for r in rows:
                 unidad = normalize_unidad(r['unidad'])
                 row = dict(r)
@@ -448,25 +445,6 @@ def docentes_por_unidad_desde_db(database_path: str, fundacion_id: int = 1) -> t
         except Exception:
             pass
 
-    if table_exists('coordinadores'):
-        try:
-            rows = cur.execute("""
-                SELECT documento, COALESCE(nombre, nombres || ' ' || apellidos) nombre, cargo, unidad
-                FROM coordinadores
-                WHERE COALESCE(activo, 1) = 1
-            """).fetchall()
-            for r in rows:
-                cargo = clasificar_cargo(r['cargo'])
-                if cargo == 'DOCENTE':
-                    unidad = normalize_unidad(r['unidad'])
-                    row = dict(r)
-                    row['unidad'] = unidad
-                    if unidad:
-                        docentes_por_unidad.add(unidad)
-                    else:
-                        docentes_sin_unidad.append(row)
-        except Exception:
-            pass
     conn.close()
     return docentes_por_unidad, docentes_sin_unidad
 
@@ -492,11 +470,11 @@ def analizar_base_actual(database_path: str, fundacion_id: int = 1) -> dict[str,
 
     rows: list[dict[str, Any]] = []
     errores: list[dict[str, Any]] = []
-    if table_exists('beneficiarios'):
-        cols = {r['name'] for r in cur.execute("PRAGMA table_info(beneficiarios)").fetchall()}
-        select_cols = ['documento', 'nui', 'nombres', 'apellidos', 'primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido', 'fecha_nacimiento', 'sexo', 'unidad', 'docente', 'nombre_acudiente', 'documento_acudiente', 'telefono', 'edad_meses', 'grupo_edad', 'tipo_beneficiario', 'estado']
+    if table_exists('master_ninos'):
+        cols = {r['name'] for r in cur.execute("PRAGMA table_info(master_ninos)").fetchall()}
+        select_cols = ['documento', 'nombres', 'apellidos', 'fecha_nacimiento', 'sexo', 'unidad_servicio', 'docente', 'edad_meses', 'grupo_etario', 'estado']
         select_cols = [c for c in select_cols if c in cols]
-        db_rows = cur.execute(f"SELECT {', '.join(select_cols)} FROM beneficiarios").fetchall() if select_cols else []
+        db_rows = cur.execute(f"SELECT {', '.join(select_cols)} FROM master_ninos WHERE activo=1 AND COALESCE(fundacion_id,1)=?", (fundacion_id,)).fetchall() if select_cols else []
         for idx, r in enumerate(db_rows, start=1):
             d = dict(r)
             nombre = ' '.join([limpiar_valor(d.get(c)) for c in ['primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido'] if limpiar_valor(d.get(c))]).strip()
@@ -512,17 +490,17 @@ def analizar_base_actual(database_path: str, fundacion_id: int = 1) -> dict[str,
                 'edad_meses_calculada': edad_calc,
                 'edad_meses_archivo': edad_archivo,
                 'sexo': limpiar_valor(d.get('sexo')),
-                'unidad': normalize_unidad(d.get('unidad')),
+                'unidad': normalize_unidad(d.get('unidad_servicio')),
                 'docente': valor_upper(d.get('docente')),
                 'acudiente': valor_upper(d.get('nombre_acudiente')),
                 'documento_acudiente': limpiar_valor(d.get('documento_acudiente')),
                 'telefono': limpiar_valor(d.get('telefono')),
                 'direccion': '',
-                'tipo_beneficiario': limpiar_valor(d.get('tipo_beneficiario')),
+                'tipo_beneficiario': limpiar_valor(d.get('grupo_etario')),
                 'estado': limpiar_valor(d.get('estado')),
             })
     else:
-        errores.append({'tipo': 'TABLA_FALTANTE', 'descripcion': 'No existe tabla beneficiarios para análisis actual.'})
+        errores.append({'tipo': 'TABLA_FALTANTE', 'descripcion': 'No existe master_ninos para analizar la Base Maestra publicada.'})
 
     docentes_unidad, docentes_sin_unidad = docentes_por_unidad_desde_db(database_path, fundacion_id)
     conn.close()
