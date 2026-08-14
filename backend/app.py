@@ -4284,6 +4284,8 @@ def sincronizar():
 
 
 # ==================== RUTAS: SALUD ====================
+@app.route('/health', methods=['GET'])
+@app.route('/api/ready', methods=['GET'])
 @app.route('/api/health', methods=['GET'])
 def health():
     """Estado mínimo y huella de instancia, sin datos personales.
@@ -11650,6 +11652,27 @@ def servir_docs(filename):
 @app.route('/assets/<path:filename>')
 def servir_assets(filename):
     return send_from_directory(_project_path('frontend', 'assets'), filename)
+
+
+@app.route('/<path:client_path>', methods=['GET'])
+def servir_ruta_frontend(client_path):
+    """Fallback de navegación para enlaces directos de la interfaz web.
+
+    Railway y los navegadores pueden abrir rutas como ``/login`` o
+    ``/dashboard`` directamente. La aplicación es una SPA y debe entregar su
+    index en esos casos. Rutas API o archivos inexistentes conservan un 404
+    explícito para no ocultar endpoints mal escritos ni devolver HTML como JS.
+    """
+    normalized = str(client_path or '').strip('/')
+    if normalized == 'api' or normalized.startswith('api/'):
+        return jsonify({'error': 'Endpoint no encontrado.', 'path': f'/{normalized}'}), 404
+    if normalized.rsplit('/', 1)[-1].find('.') >= 0:
+        return jsonify({'error': 'Archivo no encontrado.', 'path': f'/{normalized}'}), 404
+    frontend_dir = _project_path('frontend')
+    index_path = os.path.join(frontend_dir, 'index.html')
+    if not os.path.isfile(index_path):
+        return jsonify({'error': 'No se encontró frontend/index.html en la plataforma.'}), 404
+    return send_from_directory(frontend_dir, 'index.html')
 
 
 @app.route('/api/acceso/tunel-info', methods=['GET'])
