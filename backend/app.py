@@ -995,8 +995,18 @@ def init_db():
     """Inicializa la base de datos con el esquema completo"""
     conn = get_db_connection()
     cursor = conn.cursor()
-    
+
     schema = Schema.get_schema_sql()
+    if database.is_postgresql:
+        # El esquema histórico se conserva compatible con SQLite para pruebas,
+        # pero producción no debe depender de que el cursor concreto traduzca
+        # DDL implícitamente. Normalizar cada sentencia aquí garantiza que
+        # AUTOINCREMENT/BLOB/REAL nunca lleguen sin convertir a PostgreSQL.
+        from modules.dbapi_compat import _split_script, _translate_ddl
+        statements = [_translate_ddl(statement) for statement in _split_script(schema)]
+        schema = ';\n'.join(statements) + ';\n'
+        if re.search(r'\bAUTOINCREMENT\b', schema, re.I):
+            raise RuntimeError('El esquema PostgreSQL conserva AUTOINCREMENT después de normalizarse.')
     cursor.executescript(schema)
     ensure_runtime_schema(cursor)
     seed_compliance_catalog(cursor)
