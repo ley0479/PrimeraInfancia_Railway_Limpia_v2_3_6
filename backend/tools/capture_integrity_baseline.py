@@ -104,6 +104,7 @@ def main() -> int:
         "format_capabilities": FORMAT_CAPABILITIES,
         "format_capability_scope": "ALL_FORMATS",
         "format_capability_registry": "integrity/format_capabilities.json",
+        "protected_functionality_registry": "integrity/protected_functionality.json",
         "official_templates": templates,
         "database_contract": {
             "production_backend": "postgresql",

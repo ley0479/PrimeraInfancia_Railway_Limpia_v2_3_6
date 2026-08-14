@@ -119,6 +119,58 @@ class Gate:
             evidence={"registry": relative, "errors": errors},
         )
 
+    def check_protected_functionality(self) -> None:
+        """Valida la matriz de baseline sin ejecutar ni modificar datos reales."""
+        relative = self.baseline.get(
+            "protected_functionality_registry",
+            "integrity/protected_functionality.json",
+        )
+        path = self.root / relative
+        if not path.is_file():
+            self.record("Baseline funcional protegida", False, f"{relative} ausente")
+            return
+        try:
+            registry = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            self.record("Baseline funcional protegida", False, f"JSON inválido: {exc}")
+            return
+
+        errors: list[str] = []
+        functions = registry.get("functionalities") or []
+        required = {"login", "panel", "postgresql", "base_maestra", "filtros_uds", "ram", "ran", "rran", "bienestarina", "rpp", "multi_tenant"}
+        observed = {str(item.get("id") or "") for item in functions if isinstance(item, dict)}
+        for missing in sorted(required - observed):
+            errors.append(f"funcionalidad obligatoria ausente: {missing}")
+        for item in functions:
+            if not isinstance(item, dict):
+                errors.append("registro de funcionalidad inválido")
+                continue
+            item_id = str(item.get("id") or "sin-id")
+            if item.get("before") != "PASS":
+                errors.append(f"{item_id}: baseline anterior no es PASS")
+            if item.get("protection") != "PROTECTED":
+                errors.append(f"{item_id}: protection debe ser PROTECTED")
+            if not item.get("control_tests"):
+                errors.append(f"{item_id}: sin prueba de control")
+            for contract in item.get("contracts") or []:
+                rel = str(contract.get("file") or "")
+                token = str(contract.get("token") or "")
+                source = self.root / rel
+                if not rel or not token or not source.is_file():
+                    errors.append(f"{item_id}: contrato inválido {rel}")
+                    continue
+                if token not in source.read_text(encoding="utf-8", errors="ignore"):
+                    errors.append(f"{item_id}: contrato perdido en {rel}: {token}")
+        environments = set(registry.get("required_environments") or [])
+        if not {"LOCAL", "RAILWAY"}.issubset(environments):
+            errors.append("la matriz debe exigir LOCAL y RAILWAY")
+        self.record(
+            "Baseline funcional protegida",
+            not errors,
+            f"{len(functions)} funcionalidades protegidas" if not errors else "; ".join(errors[:12]),
+            evidence={"registry": relative, "errors": errors},
+        )
+
     def check_python(self) -> None:
         failures = []
         files = [p for p in self.root.rglob("*.py") if ".git" not in p.parts]
@@ -231,6 +283,7 @@ def main() -> int:
     started = time.perf_counter()
     gate.check_contract()
     gate.check_format_registry()
+    gate.check_protected_functionality()
     gate.check_python()
     gate.check_javascript()
     gate.check_postgresql_readiness()

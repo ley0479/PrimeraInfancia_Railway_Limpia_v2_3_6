@@ -12,7 +12,7 @@ import traceback
 from pathlib import Path
 from difflib import SequenceMatcher
 
-from flask import Flask, request, jsonify, send_from_directory, g, has_request_context
+from flask import Flask, request, jsonify, send_from_directory, g, has_request_context, redirect
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Alignment
 from werkzeug.utils import secure_filename
@@ -11673,6 +11673,40 @@ def servir_ruta_frontend(client_path):
     if not os.path.isfile(index_path):
         return jsonify({'error': 'No se encontró frontend/index.html en la plataforma.'}), 404
     return send_from_directory(frontend_dir, 'index.html')
+
+
+@app.errorhandler(405)
+def metodo_no_permitido(error):
+    """Respuesta útil y segura cuando la URL existe pero el método no coincide."""
+    path = str(request.path or '/')
+    allowed = sorted(set(getattr(error, 'valid_methods', None) or []))
+    app.logger.warning(
+        'Método HTTP no permitido method=%s path=%s allowed=%s',
+        request.method,
+        path,
+        ','.join(allowed),
+    )
+    if path == '/' or path in {'/frontend', '/frontend/', '/frontend/index.html', '/login', '/dashboard'}:
+        # Un formulario nativo puede enviarse antes de que app.js instale su
+        # preventDefault. PRG evita repetir el POST y vuelve a cargar la SPA.
+        return redirect('/', code=303)
+    if path == '/api' or path.startswith('/api/'):
+        response = jsonify({
+            'error': 'Método HTTP no permitido para este endpoint.',
+            'method': request.method,
+            'path': path,
+            'allowed_methods': allowed,
+        })
+        response.status_code = 405
+        if allowed:
+            response.headers['Allow'] = ', '.join(allowed)
+        return response
+    return jsonify({
+        'error': 'Método HTTP no permitido.',
+        'method': request.method,
+        'path': path,
+        'allowed_methods': allowed,
+    }), 405
 
 
 @app.route('/api/acceso/tunel-info', methods=['GET'])

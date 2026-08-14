@@ -8,3 +8,5 @@ def test_public_route_fallback_and_health_aliases_are_registered():
     assert "@app.route('/<path:client_path>'" in source
     assert "normalized.startswith('api/')" in source
     assert "return send_from_directory(frontend_dir, 'index.html')" in source
+    assert "@app.errorhandler(405)" in source
+    assert "return redirect('/', code=303)" in source
