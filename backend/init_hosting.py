@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -59,7 +60,34 @@ def _safe_database_label(url: str, path: str) -> str:
     return str(path)
 
 
-def main() -> int:
+@contextmanager
+def _postgres_startup_lock():
+    """Serializa migraciones entre despliegues Railway solapados.
+
+    El advisory lock vive únicamente durante la inicialización y se libera aun
+    si una migración falla. No bloquea el tráfico ordinario ni modifica datos.
+    """
+    url = str(os.getenv('DATABASE_URL') or '').strip()
+    if not url.startswith(('postgresql://', 'postgres://', 'postgresql+psycopg://')):
+        yield
+        return
+    import psycopg
+
+    dsn = url.replace('postgresql+psycopg://', 'postgresql://', 1)
+    conn = psycopg.connect(dsn, autocommit=True)
+    lock_key = 807_202_601  # constante exclusiva del inicializador del proyecto
+    try:
+        conn.execute("SET lock_timeout = '120s'")
+        conn.execute('SELECT pg_advisory_lock(%s)', (lock_key,))
+        yield
+    finally:
+        try:
+            conn.execute('SELECT pg_advisory_unlock(%s)', (lock_key,))
+        finally:
+            conn.close()
+
+
+def _main() -> int:
     os.environ.setdefault('APP_ENV', 'production')
     from config import get_config
     from services.seed_sync import sync_managed_seed_tree
@@ -186,6 +214,11 @@ def main() -> int:
         flush=True,
     )
     return 0
+
+
+def main() -> int:
+    with _postgres_startup_lock():
+        return _main()
 
 
 if __name__ == '__main__':

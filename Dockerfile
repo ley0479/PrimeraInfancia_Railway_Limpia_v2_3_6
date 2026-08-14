@@ -1,4 +1,6 @@
-FROM python:3.12-slim
+FROM postgres:18-bookworm AS postgres_client
+
+FROM python:3.12-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -20,12 +22,17 @@ RUN apt-get update \
        fonts-dejavu-core \
        fonts-liberation \
        poppler-utils \
-       postgresql-client \
+       libpq5 \
        tesseract-ocr \
        tesseract-ocr-spa \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 appuser \
     && useradd --system --uid 10001 --gid appuser --home-dir /app --shell /usr/sbin/nologin appuser
+
+# Railway PostgreSQL opera en 18.x. Copiar el cliente oficial de la misma
+# versión evita que pg_dump 17 rechace backups del servidor 18.
+COPY --from=postgres_client /usr/lib/postgresql/18 /usr/lib/postgresql/18
+ENV PATH="/usr/lib/postgresql/18/bin:${PATH}"
 
 COPY backend/requirements-production.txt /tmp/requirements-production.txt
 RUN python -m pip install --upgrade pip \

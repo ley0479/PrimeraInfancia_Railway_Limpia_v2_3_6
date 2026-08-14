@@ -235,7 +235,8 @@ class CoreCursor:
             raise TenantIsolationError(
                 'execute_script con DML no está permitido dentro de una operación multi-fundación.'
             )
-        for statement in split_sql_script(script):
+        from modules.dbapi_compat import order_schema_statements_by_foreign_keys
+        for statement in order_schema_statements_by_foreign_keys(split_sql_script(script)):
             statement = normalize_sql_for_engine(statement)
             self.connection.execute(text(statement))
         _CORE_TENANT_SCHEMA_CACHE.clear()

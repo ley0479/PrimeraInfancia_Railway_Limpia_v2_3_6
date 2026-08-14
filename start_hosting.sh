@@ -42,6 +42,11 @@ python backend/tools/integrity_gate.py \
 
 python backend/init_hosting.py
 
+# init_hosting realiza el provisionamiento/migración una sola vez. Gunicorn no
+# debe repetir decenas de DDL e introspecciones por cada importación de worker;
+# las operaciones funcionales y consultas permanecen habilitadas.
+export SKIP_RUNTIME_SCHEMA_DDL=1
+
 # PostgreSQL elimina la contención del archivo SQLite. Se conserva un worker por
 # omisión porque algunos jobs operativos aún son memoria local; puede aumentarse
 # GUNICORN_WORKERS después de externalizar esos jobs.

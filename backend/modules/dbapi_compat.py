@@ -228,7 +228,65 @@ def _translate_ddl(sql: str) -> str:
     out = re.sub(r"\bREAL\b", "DOUBLE PRECISION", out, flags=re.I)
     out = re.sub(r"\bBLOB\b", "BYTEA", out, flags=re.I)
     out = re.sub(r"DEFAULT\s*\(\s*CURRENT_TIMESTAMP\s*\)", "DEFAULT CURRENT_TIMESTAMP", out, flags=re.I)
+    # Migraciones incrementales: un redeploy no debe fallar porque otro
+    # inicializador o una versión anterior ya creó la columna/índice.
+    out = re.sub(
+        r"\bALTER\s+TABLE\s+([^\s]+)\s+ADD\s+COLUMN\s+(?!IF\s+NOT\s+EXISTS)",
+        r"ALTER TABLE \1 ADD COLUMN IF NOT EXISTS ",
+        out,
+        flags=re.I,
+    )
+    out = re.sub(
+        r"\bCREATE\s+(UNIQUE\s+)?INDEX\s+(?!IF\s+NOT\s+EXISTS)",
+        lambda m: f"CREATE {m.group(1) or ''}INDEX IF NOT EXISTS ",
+        out,
+        flags=re.I,
+    )
     return out
+
+
+def _create_table_name(sql: str) -> str | None:
+    match = re.search(
+        r'\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"?([A-Za-z_]\w*)"?',
+        str(sql or ''), re.I,
+    )
+    return match.group(1).lower() if match else None
+
+
+def order_schema_statements_by_foreign_keys(statements: Iterable[str]) -> list[str]:
+    """Ordena CREATE TABLE padres antes que hijos, conservando el resto.
+
+    No elimina ni difiere restricciones. Si hay un ciclo real, conserva el
+    orden original de las tablas involucradas para que la auditoría lo detecte.
+    """
+    items = list(statements or [])
+    tables = {name: (idx, sql) for idx, sql in enumerate(items) if (name := _create_table_name(sql))}
+    dependencies: dict[str, set[str]] = {}
+    for name, (_idx, sql) in tables.items():
+        refs = {
+            ref.lower() for ref in re.findall(
+                r'\bREFERENCES\s+"?([A-Za-z_]\w*)"?\s*\(', sql, re.I,
+            )
+        }
+        dependencies[name] = {ref for ref in refs if ref in tables and ref != name}
+
+    ordered_names: list[str] = []
+    pending = set(tables)
+    while pending:
+        ready = sorted(
+            (name for name in pending if not (dependencies.get(name, set()) & pending)),
+            key=lambda name: tables[name][0],
+        )
+        if not ready:
+            # Ciclo: conservar orden fuente; PostgreSQL reportará la FK concreta.
+            ready = sorted(pending, key=lambda name: tables[name][0])
+        for name in ready:
+            ordered_names.append(name)
+            pending.remove(name)
+
+    ordered_tables = [tables[name][1] for name in ordered_names]
+    non_tables = [sql for sql in items if not _create_table_name(sql)]
+    return ordered_tables + non_tables
 
 
 def _split_script(script: str) -> list[str]:
@@ -502,7 +560,10 @@ class CompatCursor:
         context = current_tenant_context()
         if strict_tenant_mode() and context.tenant_id and not context.allow_global and not tenant_script_is_schema_only(script):
             raise TenantIsolationError('executescript con DML no está permitido dentro de una operación multi-fundación.')
-        for statement in _split_script(script):
+        # Todos los módulos heredan el mismo ordenamiento FK, no solo init_db.
+        # Esto evita relaciones faltantes como gp_coordinadores cuando un
+        # esquema histórico enumera primero una tabla hija.
+        for statement in order_schema_statements_by_foreign_keys(_split_script(script)):
             self.execute(statement)
         return self
 

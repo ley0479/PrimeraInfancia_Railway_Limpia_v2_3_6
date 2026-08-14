@@ -1002,8 +1002,11 @@ def init_db():
         # pero producción no debe depender de que el cursor concreto traduzca
         # DDL implícitamente. Normalizar cada sentencia aquí garantiza que
         # AUTOINCREMENT/BLOB/REAL nunca lleguen sin convertir a PostgreSQL.
-        from modules.dbapi_compat import _split_script, _translate_ddl
-        statements = [_translate_ddl(statement) for statement in _split_script(schema)]
+        from modules.dbapi_compat import (
+            _split_script, _translate_ddl, order_schema_statements_by_foreign_keys,
+        )
+        statements = order_schema_statements_by_foreign_keys(_split_script(schema))
+        statements = [_translate_ddl(statement) for statement in statements]
         schema = ';\n'.join(statements) + ';\n'
         if re.search(r'\bAUTOINCREMENT\b', schema, re.I):
             raise RuntimeError('El esquema PostgreSQL conserva AUTOINCREMENT después de normalizarse.')
@@ -9201,7 +9204,7 @@ def _alpha62_respuesta_error_bienestarina(unidad, mensaje, status=404, extra=Non
         'mensaje': mensaje,
         'unidad': unidad,
         'unidad_normalizada': normalize_unidad(unidad),
-        'output_folder': OUTPUT_FOLDER,
+        'output_folder': os.fspath(OUTPUT_FOLDER),
         'ultimos_archivos_generados': _alpha62_ultimos_archivos_bienestarina(),
     }
     if isinstance(extra, dict):
@@ -10197,7 +10200,7 @@ def descargar_formato(unidad, formato):
         'unidad': unidad,
         'formato': formato,
         'periodo': ({'mes': mes_ram, 'anio': anio_ram} if formato_norm == 'ram' else None),
-        'output_folder': OUTPUT_FOLDER,
+        'output_folder': os.fspath(OUTPUT_FOLDER),
         'ultimos_archivos_generados': ultimos
     }), 404
 
@@ -10470,7 +10473,7 @@ def _alpha67_error_bienestarina(unidad, mensaje, status=409, extra=None):
         'mensaje': mensaje,
         'unidad': unidad,
         'unidad_normalizada': normalize_unidad(unidad),
-        'output_folder': OUTPUT_FOLDER,
+        'output_folder': os.fspath(OUTPUT_FOLDER),
         'ultimos_archivos_generados': _alpha64_listar_ultimos_generados(),
         'log': 'backend/logs/alpha67_bienestarina_real.log',
     }
@@ -10836,7 +10839,7 @@ def descargar_bienestarina_alpha57():
             'unidad': unidad,
             'error': mensaje,
             'mensaje': mensaje,
-            'output_folder': OUTPUT_FOLDER,
+            'output_folder': os.fspath(OUTPUT_FOLDER),
             'ultimos_archivos_generados': _alpha64_listar_ultimos_generados() if '_alpha64_listar_ultimos_generados' in globals() else [],
             'log': 'backend/logs/alpha71_bienestarina_diff_fix.log',
         }
@@ -11614,7 +11617,7 @@ def api_alpha69_auditoria_bienestarina():
             'ruta_archivo': ruta,
             'existe_archivo': bool(ruta and os.path.exists(ruta)),
             'size_bytes': os.path.getsize(ruta) if ruta and os.path.exists(ruta) else 0,
-            'output_folder': OUTPUT_FOLDER,
+            'output_folder': os.fspath(OUTPUT_FOLDER),
         }
         _alpha69_log('bienestarina_auditoria.log', evento='AUDITORIA', **payload)
         return jsonify(payload)

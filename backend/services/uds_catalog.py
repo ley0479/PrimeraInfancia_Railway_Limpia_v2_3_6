@@ -10,6 +10,7 @@ import json
 import re
 from modules.dbapi_compat import sqlite3
 import unicodedata
+from urllib.parse import unquote_plus
 from functools import lru_cache
 from datetime import datetime
 from pathlib import Path
@@ -28,7 +29,11 @@ INVALID_UNIT_VALUES = {
 def _text(value: Any) -> str:
     if value is None:
         return ""
-    text = str(value).strip().upper().replace("\t", " ")
+    # Los nombres pueden llegar desde un segmento URL (por ejemplo,
+    # ``GUADUALITO%20JAMPAPA``). Decodificar aquí mantiene una única regla de
+    # comparación para consultas, formatos y rutas, sin fusionar nombres que
+    # sean realmente distintos.
+    text = unquote_plus(str(value)).strip().upper().replace("\t", " ")
     text = unicodedata.normalize("NFKD", text)
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
     text = text.replace("_", " ").replace("-", " ")

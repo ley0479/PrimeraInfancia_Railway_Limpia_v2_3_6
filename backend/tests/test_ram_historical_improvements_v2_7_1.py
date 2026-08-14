@@ -39,7 +39,8 @@ def main() -> None:
         assert ws["H14"].alignment.horizontal == "center" and ws["I14"].alignment.vertical == "center"
         assert all(ws.cell(14, col).alignment.textRotation == 90 for col in range(10, 35))
         assert ws["AI12"].alignment.textRotation == 90 and ws["AK9"].alignment.textRotation == 90
-        marks = [ws.cell(row, col) for row in range(15, 18) for col in range(10, 35) if ws.cell(row, col).value == "H"]
+        # A = asistencia. La marca histórica H fue retirada del formato.
+        marks = [ws.cell(row, col) for row in range(15, 18) for col in range(10, 35) if ws.cell(row, col).value == "A"]
         assert marks and all(copy(cell.font) == copy(ws.cell(cell.row, 10).font) for cell in marks)
         assert (ws["E36"].value, ws["E37"].value, ws["E38"].value) == (1, 1, 1)
         assert all(str(ws[c].font.color.rgb).upper().endswith("000000") for c in ("E36", "E37", "E38"))
