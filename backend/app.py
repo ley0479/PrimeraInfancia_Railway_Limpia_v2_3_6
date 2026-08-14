@@ -3086,7 +3086,20 @@ def dividir_nombre(nombre):
 def guardar_beneficiarios_actuales(df):
     conn = database_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE beneficiarios SET estado = ? WHERE estado = ? AND COALESCE(fundacion_id, 1) = ?", (EstadoUsuario.RETIRADO, EstadoUsuario.ACTIVO, fundacion_actual_id()))
+    fundacion_id = fundacion_actual_id()
+    cursor.execute("UPDATE beneficiarios SET estado = ? WHERE estado = ? AND COALESCE(fundacion_id, 1) = ?", (EstadoUsuario.RETIRADO, EstadoUsuario.ACTIVO, fundacion_id))
+    # La carga completa hacía un SELECT por cada beneficiario (N+1). Precargar
+    # únicamente id/documento conserva el mismo criterio de actualización y
+    # evita cientos de viajes adicionales a PostgreSQL por cada procesamiento.
+    cursor.execute(
+        "SELECT id, documento FROM beneficiarios WHERE COALESCE(fundacion_id, 1) = ?",
+        (fundacion_id,),
+    )
+    beneficiarios_existentes = {
+        str(row['documento']).strip(): row['id']
+        for row in cursor.fetchall()
+        if row['documento'] is not None
+    }
     ahora = datetime.now().isoformat()
 
     for _, fila in df.iterrows():
@@ -3108,8 +3121,7 @@ def guardar_beneficiarios_actuales(df):
         elif estado not in EstadoUsuario.ESTADOS_VALIDOS:
             estado = EstadoUsuario.ACTIVO
 
-        cursor.execute("SELECT id FROM beneficiarios WHERE documento = ? AND COALESCE(fundacion_id, 1) = ?", (documento, fundacion_actual_id()))
-        existente = cursor.fetchone()
+        existente_id = beneficiarios_existentes.get(documento)
 
         datos_comunes = {
             'documento': documento,
@@ -3151,13 +3163,13 @@ def guardar_beneficiarios_actuales(df):
             'servicio_atencion': str(fila.get('servicio_atencion', '')).strip(),
             'direccion_unidad': str(fila.get('direccion_unidad', '')).strip(),
             'codigo_unidad_servicio': str(fila.get('codigo_unidad_servicio', '')).strip(),
-            'fundacion_id': fundacion_actual_id(),
+            'fundacion_id': fundacion_id,
             'usuario_creador_id': usuario_actual_id(),
             'fecha_creacion': ahora,
             'fecha_actualizacion': ahora
         }
 
-        if existente:
+        if existente_id is not None:
             cursor.execute("""
                 UPDATE beneficiarios
                 SET documento = :documento, nombres = :nombres, apellidos = :apellidos,
@@ -3192,7 +3204,7 @@ def guardar_beneficiarios_actuales(df):
                     usuario_creador_id = COALESCE(usuario_creador_id, :usuario_creador_id),
                     fecha_actualizacion = :fecha_actualizacion
                 WHERE id = :id
-            """, {**datos_comunes, 'id': existente['id']})
+            """, {**datos_comunes, 'id': existente_id})
         else:
             cursor.execute("""
                 INSERT INTO beneficiarios
@@ -3237,11 +3249,11 @@ def guardar_beneficiarios_actuales(df):
                 total_gestantes = excluded.total_gestantes,
                 fecha_actualizacion = excluded.fecha_actualizacion
         """, (
-            unidad, unidad, EstadoUsuario.ACTIVO, fundacion_actual_id(),
-            unidad, EstadoUsuario.ACTIVO, fundacion_actual_id(), ahora, fundacion_actual_id()
+            unidad, unidad, EstadoUsuario.ACTIVO, fundacion_id,
+            unidad, EstadoUsuario.ACTIVO, fundacion_id, ahora, fundacion_id
         ))
 
-    cursor.execute('UPDATE unidades SET fundacion_id = ?, fecha_actualizacion = ? WHERE fundacion_id IS NULL', (fundacion_actual_id(), ahora))
+    cursor.execute('UPDATE unidades SET fundacion_id = ?, fecha_actualizacion = ? WHERE fundacion_id IS NULL', (fundacion_id, ahora))
     conn.commit()
     conn.close()
 
