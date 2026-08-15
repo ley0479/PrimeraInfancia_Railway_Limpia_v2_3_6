@@ -591,6 +591,21 @@ def ensure_column(cursor, table_name, column_name, definition):
         cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
 
 
+def ensure_unidades_upsert_constraint(cursor):
+    """Garantiza el conflicto lógico usado por los upserts de unidades.
+
+    Las bases PostgreSQL creadas antes del aislamiento multi-tenant conservan
+    ``UNIQUE(nombre)``. Añadir ``fundacion_id`` no crea automáticamente la
+    clave compuesta que exige ``ON CONFLICT(fundacion_id, nombre)``.
+    """
+    ensure_column(cursor, 'unidades', 'fundacion_id', 'INTEGER DEFAULT 1')
+    cursor.execute('UPDATE unidades SET fundacion_id = 1 WHERE fundacion_id IS NULL')
+    cursor.execute(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_unidades_fundacion_nombre '
+        'ON unidades(fundacion_id, nombre)'
+    )
+
+
 def ensure_runtime_schema(cursor):
     """Aplica compatibilidad incremental para bases creadas con versiones previas."""
     cursor.execute("""
@@ -658,6 +673,7 @@ def ensure_runtime_schema(cursor):
         'fecha_actualizacion': 'TEXT'
     }.items():
         ensure_column(cursor, 'unidades', col, definition)
+    ensure_unidades_upsert_constraint(cursor)
 
     for col, definition in {
         'fecha_ingreso': 'TEXT',
