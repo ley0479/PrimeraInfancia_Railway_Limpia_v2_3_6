@@ -1,0 +1,93 @@
+/* Alpha15: Calendario Inteligente de Entregables y Alertas Operativas */
+.ci-shell { display: grid; gap: 1rem; }
+.ci-card, .ci-panel {
+    border: 1px solid rgba(51, 65, 85, .95);
+    background: linear-gradient(145deg, rgba(15, 23, 42, .95), rgba(2, 6, 23, .88));
+    border-radius: 1.25rem;
+    box-shadow: 0 18px 45px rgba(0,0,0,.18);
+}
+.ci-card { padding: 1rem; }
+.ci-panel { padding: 1.25rem; }
+.ci-title-icon {
+    width: 3.8rem; height: 3.8rem; display: grid; place-items: center;
+    border-radius: 1.2rem; background: rgba(37, 99, 235, .16);
+    border: 1px solid rgba(96, 165, 250, .35); color: rgb(96 165 250);
+}
+.ci-metric {
+    border: 1px solid rgba(51, 65, 85, .95);
+    background: rgba(15, 23, 42, .7);
+    border-radius: 1rem;
+    padding: 1rem;
+    min-height: 7rem;
+}
+.ci-input {
+    width: 100%; border-radius: .85rem; border: 1px solid rgb(51 65 85);
+    background: rgb(2 6 23); color: rgb(226 232 240); padding: .75rem .9rem;
+    font-size: .875rem;
+}
+.ci-input:focus { outline: none; border-color: rgba(96, 165, 250, .75); box-shadow: 0 0 0 3px rgba(59, 130, 246, .15); }
+.ci-btn {
+    border-radius: .85rem; padding: .72rem 1rem; font-size: .875rem; font-weight: 600;
+    display: inline-flex; align-items: center; gap: .5rem; transition: .2s ease;
+}
+.ci-btn-primary { background: rgb(79 70 229); color: white; }
+.ci-btn-primary:hover { background: rgb(99 102 241); }
+.ci-btn-muted { border: 1px solid rgb(51 65 85); color: rgb(203 213 225); background: rgba(15, 23, 42, .55); }
+.ci-btn-muted:hover { background: rgba(30, 41, 59, .8); }
+.ci-btn-success { background: rgb(5 150 105); color: white; }
+.ci-btn-danger { background: rgb(190 18 60); color: white; }
+.ci-view-toggle { border: 1px solid rgb(51 65 85); border-radius: .9rem; overflow: hidden; display: inline-flex; }
+.ci-view-toggle button { padding: .6rem 1rem; color: rgb(148 163 184); border-right: 1px solid rgb(51 65 85); }
+.ci-view-toggle button:last-child { border-right: none; }
+.ci-view-toggle button.ci-active { background: rgba(79, 70, 229, .55); color: white; }
+.ci-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 1px; border: 1px solid rgb(30 41 59); border-radius: 1rem; overflow: hidden; background: rgb(30 41 59); }
+.ci-weekday { background: rgba(15, 23, 42, .98); padding: .7rem; text-align: center; font-size: .78rem; color: rgb(203 213 225); font-weight: 700; }
+.ci-day {
+    min-height: 7.4rem; background: rgba(15, 23, 42, .82); padding: .65rem; position: relative;
+    cursor: pointer; transition: .15s ease;
+}
+.ci-day:hover { background: rgba(30, 41, 59, .94); }
+.ci-day-muted { color: rgb(100 116 139); background: rgba(15, 23, 42, .45); }
+.ci-day-number { font-weight: 800; color: rgb(226 232 240); display: inline-flex; min-width: 1.7rem; justify-content: center; }
+.ci-day-today .ci-day-number { background: rgba(96, 165, 250, .16); border: 1px solid rgba(96, 165, 250, .45); border-radius: 999px; }
+.ci-event-pill { margin-top: .45rem; border-radius: .55rem; padding: .25rem .45rem; font-size: .7rem; line-height: 1.1rem; font-weight: 700; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border: 1px solid transparent; }
+.ci-dot { width: .55rem; height: .55rem; border-radius: 999px; display: inline-block; margin-right: .35rem; }
+.ci-azul { border-color: rgba(59,130,246,.5); background: rgba(59,130,246,.16); color: rgb(147 197 253); }
+.ci-verde { border-color: rgba(34,197,94,.5); background: rgba(34,197,94,.16); color: rgb(134 239 172); }
+.ci-amarillo { border-color: rgba(234,179,8,.55); background: rgba(234,179,8,.16); color: rgb(253 224 71); }
+.ci-naranja { border-color: rgba(249,115,22,.55); background: rgba(249,115,22,.16); color: rgb(253 186 116); }
+.ci-rojo { border-color: rgba(239,68,68,.55); background: rgba(239,68,68,.18); color: rgb(252 165 165); }
+.ci-gris { border-color: rgba(148,163,184,.4); background: rgba(100,116,139,.16); color: rgb(203 213 225); }
+.ci-list-status { border-radius: 999px; padding: .25rem .6rem; font-size: .72rem; font-weight: 800; border: 1px solid transparent; display: inline-flex; align-items: center; gap: .35rem; }
+.ci-annual-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.ci-mini-month { border: 1px solid rgb(30 41 59); background: rgba(15, 23, 42, .72); border-radius: 1rem; padding: .8rem; }
+.ci-mini-title { text-align: center; font-weight: 800; color: rgb(226 232 240); margin-bottom: .55rem; }
+.ci-mini-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: .18rem; font-size: .68rem; text-align: center; }
+.ci-mini-day { min-height: 1.45rem; border-radius: .35rem; color: rgb(148 163 184); display: grid; place-items: center; position: relative; }
+.ci-mini-day.has-event { color: white; font-weight: 800; }
+.ci-mini-day.has-event::after { content: ''; position: absolute; bottom: .12rem; width: .35rem; height: .35rem; border-radius: 999px; background: currentColor; }
+.ci-modal-backdrop { position: fixed; inset: 0; background: rgba(2, 6, 23, .82); backdrop-filter: blur(6px); z-index: 70; display: flex; align-items: center; justify-content: center; padding: 1.5rem; }
+.ci-modal { width: min(980px, 100%); max-height: 90vh; overflow: auto; border: 1px solid rgb(51 65 85); background: rgb(15 23 42); border-radius: 1.25rem; padding: 1.2rem; box-shadow: 0 30px 80px rgba(0,0,0,.5); }
+.ci-dashboard-widget { border: 1px solid rgba(59, 130, 246, .25); background: linear-gradient(135deg, rgba(37,99,235,.16), rgba(15,23,42,.72)); border-radius: 1rem; padding: 1rem; }
+.ci-progress { height: .55rem; border-radius: 999px; background: rgba(51,65,85,.8); overflow: hidden; }
+.ci-progress-bar { height: 100%; background: rgb(34, 197, 94); border-radius: 999px; }
+@media (max-width: 900px) {
+    .ci-day { min-height: 5.5rem; padding: .45rem; }
+    .ci-event-pill { font-size: .64rem; }
+    .ci-calendar-grid { font-size: .82rem; }
+}
+
+/* ALPHA33: vista previa editable de cronogramas antes de guardar */
+.ci-help-panel { border-color: rgba(34, 211, 238, .24); background: linear-gradient(135deg, rgba(8, 47, 73, .40), rgba(15, 23, 42, .84)); }
+.ci-preview-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: .75rem; margin-bottom: 1rem; }
+.ci-preview-summary > div { border: 1px solid rgba(51,65,85,.9); border-radius: .95rem; background: rgba(2,6,23,.55); padding: .8rem; }
+.ci-preview-summary strong { display: block; font-size: 1.55rem; line-height: 1.8rem; color: rgb(103 232 249); }
+.ci-preview-summary span { display: block; margin-top: .25rem; color: rgb(148 163 184); font-size: .74rem; }
+.ci-preview-warning { border: 1px solid rgba(245, 158, 11, .35); background: rgba(245, 158, 11, .10); color: rgb(253 230 138); border-radius: .95rem; padding: .85rem 1rem; margin-bottom: 1rem; font-size: .84rem; }
+.ci-preview-warning ul { list-style: disc; margin-left: 1.2rem; margin-top: .35rem; }
+.ci-preview-table-wrap { max-height: 52vh; overflow: auto; border: 1px solid rgb(30 41 59); border-radius: 1rem; }
+.ci-preview-table { width: 100%; min-width: 1100px; border-collapse: collapse; font-size: .78rem; }
+.ci-preview-table th { position: sticky; top: 0; z-index: 1; background: rgb(2 6 23); color: rgb(203 213 225); text-transform: uppercase; letter-spacing: .04em; padding: .7rem; border-bottom: 1px solid rgb(51 65 85); }
+.ci-preview-table td { padding: .55rem; border-bottom: 1px solid rgb(30 41 59); vertical-align: top; }
+.ci-preview-table tr:hover td { background: rgba(30,41,59,.45); }
+.ci-preview-table .ci-input { padding: .45rem .55rem; border-radius: .55rem; font-size: .78rem; }
