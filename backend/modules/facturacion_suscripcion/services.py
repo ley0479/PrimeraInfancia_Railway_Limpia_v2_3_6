@@ -549,7 +549,6 @@ def _json_error(message: str, status: int = 403):
 def register_billing_middleware(app, database_path: str, upload_folder: str | None = None) -> None:
     repo = BillingRepository(database_path)
     service = BillingService(repo, upload_folder)
-    service.init()
 
     @app.before_request
     def _billing_before_request():

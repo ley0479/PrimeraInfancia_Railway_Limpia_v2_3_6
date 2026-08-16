@@ -33,14 +33,9 @@ def register_facturacion(app, database_path: str, upload_folder: str) -> None:
     os.makedirs(module_upload, exist_ok=True)
     repo = BillingRepository(database_path)
     service = BillingService(repo, module_upload)
-    service.init()
     register_billing_middleware(app, database_path, module_upload)
 
     bp = Blueprint('facturacion_suscripcion', __name__, url_prefix='/api/facturacion')
-
-    @bp.before_request
-    def _ensure_schema():
-        service.init()
 
     @bp.route('/catalogos', methods=['GET'])
     def catalogos():

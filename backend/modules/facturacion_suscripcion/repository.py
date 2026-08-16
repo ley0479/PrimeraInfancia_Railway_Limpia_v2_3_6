@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, date, timedelta
 from typing import Any, Iterable
 
@@ -85,15 +86,24 @@ class BillingRepository(CoreCompatRepository):
             cur.execute(normalize_ddl_for_engine(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
 
     def init_schema(self) -> None:
+        if os.getenv('SKIP_RUNTIME_SCHEMA_DDL', '').strip().lower() in {
+            '1', 'true', 'yes', 'si', 'sí', 'on',
+        }:
+            return
         conn = self.connect()
-        cur = conn.cursor()
-        cur.executescript(BILLING_SCHEMA_SQL)
-        self._seed_planes(cur)
-        self._seed_paquetes(cur)
-        self._ensure_foundation_columns(cur)
-        self._ensure_subscriptions_for_foundations(cur)
-        conn.commit()
-        conn.close()
+        try:
+            cur = conn.cursor()
+            cur.executescript(BILLING_SCHEMA_SQL)
+            self._seed_planes(cur)
+            self._seed_paquetes(cur)
+            self._ensure_foundation_columns(cur)
+            self._ensure_subscriptions_for_foundations(cur)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
     def _ensure_foundation_columns(self, cur: Any) -> None:
         if not self.table_exists(cur, 'fundaciones'):

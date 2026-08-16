@@ -40,12 +40,11 @@ python backend/tools/integrity_gate.py \
   --skip-tests \
   --skip-manifest
 
-python backend/init_hosting.py
-
-# init_hosting realiza el provisionamiento/migración una sola vez. Gunicorn no
-# debe repetir decenas de DDL e introspecciones por cada importación de worker;
-# las operaciones funcionales y consultas permanecen habilitadas.
+# Debe estar activa antes de que init_hosting importe Flask: registrar módulos
+# nunca puede ejecutar DDL. init_hosting habilita DDL únicamente dentro de su
+# fase explícita y protegida de migraciones.
 export SKIP_RUNTIME_SCHEMA_DDL=1
+python backend/init_hosting.py
 
 # PostgreSQL elimina la contención del archivo SQLite. Se conserva un worker por
 # omisión porque algunos jobs operativos aún son memoria local; puede aumentarse

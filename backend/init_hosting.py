@@ -61,6 +61,20 @@ def _safe_database_label(url: str, path: str) -> str:
 
 
 @contextmanager
+def _explicit_schema_ddl():
+    """Habilita DDL solo durante la fase explícita de migraciones."""
+    previous = os.environ.get('SKIP_RUNTIME_SCHEMA_DDL')
+    os.environ['SKIP_RUNTIME_SCHEMA_DDL'] = '0'
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ['SKIP_RUNTIME_SCHEMA_DDL'] = '1'
+        else:
+            os.environ['SKIP_RUNTIME_SCHEMA_DDL'] = previous
+
+
+@contextmanager
 def _postgres_startup_lock():
     """Serializa migraciones entre despliegues Railway solapados.
 
@@ -129,15 +143,29 @@ def _main() -> int:
         allow_updates=env_bool('SYNC_MANAGED_TEMPLATES', True),
     )
 
+    # Registrar Flask debe ser libre de DDL. Esta variable se fija antes del
+    # import para impedir que cualquier Blueprint migre como efecto secundario.
+    os.environ['SKIP_RUNTIME_SCHEMA_DDL'] = '1'
+
     # app configura el Engine central antes de registrar los módulos.
     import app as app_module
     from database import database, get_db_connection
+    from modules.base_maestra.repository import BaseMaestraRepository
+    from modules.facturacion_suscripcion.repository import BillingRepository
+    from modules.facturacion_suscripcion.services import BillingService
+    from modules.panel_comercial.services import PanelComercialService
     from modules.seguridad.services import bootstrap_initial_admin
     from modules.seguridad.tenant_context import ensure_tenant_directories
     from services.rpp_minutas_service import seed_minuta_sanitizada_desde_json
     from services.uds_catalog import catalog_summary, ensure_catalog_units_sqlite, migrate_demo_units_sqlite
 
-    app_module.init_db()
+    print('[MIGRATION] explicit startup migrations start', flush=True)
+    with _explicit_schema_ddl():
+        app_module.init_db()
+        BillingService(BillingRepository(config_class.DATABASE_PATH)).init(force=True)
+        PanelComercialService(config_class.DATABASE_PATH).init_schema()
+        BaseMaestraRepository(config_class.DATABASE_PATH).init_schema()
+    print('[MIGRATION] explicit startup migrations PASS', flush=True)
     if database.is_sqlite:
         from migrations.migrate_multitenant_phase3 import migrate as migrate_multitenant_phase3
         tenant_migration = migrate_multitenant_phase3(config_class.DATABASE_PATH)

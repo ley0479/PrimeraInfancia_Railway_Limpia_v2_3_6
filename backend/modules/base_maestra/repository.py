@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from modules.dbapi_compat import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
@@ -37,6 +38,10 @@ class BaseMaestraRepository:
             conn.close()
 
     def init_schema(self) -> None:
+        if os.getenv('SKIP_RUNTIME_SCHEMA_DDL', '').strip().lower() in {
+            '1', 'true', 'yes', 'si', 'sí', 'on',
+        }:
+            return
         with self.connect() as conn:
             conn.executescript(SCHEMA_SQL)
             self._repair_active_version_index(conn)

@@ -63,9 +63,14 @@ class PanelComercialService:
 
     def init_schema(self) -> None:
         conn = connect(self.database_path)
-        conn.executescript(PANEL_COMERCIAL_SCHEMA_SQL)
-        conn.commit()
-        conn.close()
+        try:
+            conn.executescript(PANEL_COMERCIAL_SCHEMA_SQL)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
     def context(self) -> dict[str, Any]:
         user = getattr(g, 'current_user', None) or {}

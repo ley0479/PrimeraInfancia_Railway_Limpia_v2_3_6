@@ -16,12 +16,7 @@ def payload() -> dict:
 
 def register_panel_comercial(app, database_path: str) -> None:
     service = PanelComercialService(database_path)
-    service.init_schema()
     bp = Blueprint('panel_comercial', __name__, url_prefix='/api/panel-comercial')
-
-    @bp.before_request
-    def _ensure_schema():
-        service.init_schema()
 
     @bp.route('/dashboard', methods=['GET'])
     def dashboard():
