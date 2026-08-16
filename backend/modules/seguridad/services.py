@@ -20,6 +20,7 @@ from typing import Any, Mapping
 
 from flask import current_app, g, has_request_context, jsonify, redirect, request
 from werkzeug.security import generate_password_hash
+from database import database
 
 from .schema import (
     MULTITENANT_COLUMNS,
@@ -351,16 +352,48 @@ def _run_login_write(database_path: str, operation):
     raise sqlite3.OperationalError('database is busy')
 
 
+SECURITY_SCHEMA_VERSION = 1
+SECURITY_MIGRATION_NAME = 'security_fundaciones_soft_delete_v1'
+_IDENTIFIER_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+
+
+def _validated_identifier(value: str) -> str:
+    identifier = str(value or '')
+    if not _IDENTIFIER_RE.fullmatch(identifier):
+        raise ValueError(f'Identificador SQL inválido: {identifier!r}')
+    return identifier
+
+
 def table_exists(cursor: sqlite3.Cursor, table: str) -> bool:
+    table = _validated_identifier(table)
+    if database.is_postgresql:
+        row = cursor.execute(
+            """
+            SELECT 1 AS present
+            FROM information_schema.tables
+            WHERE table_schema = current_schema() AND table_name = ?
+            """,
+            (table,),
+        ).fetchone()
+        return row is not None
     row = cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()
     return row is not None
 
 
 def table_columns(cursor: sqlite3.Cursor, table: str) -> set[str]:
-    try:
-        return {row['name'] for row in cursor.execute(f"PRAGMA table_info({table})").fetchall()}
-    except Exception:
-        return set()
+    table = _validated_identifier(table)
+    if database.is_postgresql:
+        rows = cursor.execute(
+            """
+            SELECT column_name AS name
+            FROM information_schema.columns
+            WHERE table_schema = current_schema() AND table_name = ?
+            ORDER BY ordinal_position
+            """,
+            (table,),
+        ).fetchall()
+        return {str(row['name']) for row in rows}
+    return {str(row['name']) for row in cursor.execute(f'PRAGMA table_info("{table}")').fetchall()}
 
 
 def ensure_column(cursor: sqlite3.Cursor, table: str, col: str, definition: str) -> None:
@@ -369,31 +402,81 @@ def ensure_column(cursor: sqlite3.Cursor, table: str, col: str, definition: str)
     # remotas durante cada arranque; no afecta las operaciones funcionales.
     if os.getenv('SKIP_RUNTIME_SCHEMA_DDL', '').strip().lower() in {'1', 'true', 'yes', 'si', 'sí', 'on'}:
         return
-    if table_exists(cursor, table) and col not in table_columns(cursor, table):
+    table = _validated_identifier(table)
+    col = _validated_identifier(col)
+    if not table_exists(cursor, table):
+        return
+    columns = table_columns(cursor, table)
+    if col in columns:
+        if table == 'fundaciones' and col == 'eliminado_en':
+            print('[MIGRATION] fundaciones.eliminado_en already exists', flush=True)
+        return
+    if database.is_postgresql:
+        cursor.execute("SET LOCAL lock_timeout = '5s'")
+    print(f'[MIGRATION] adding {table}.{col}', flush=True)
+    try:
         cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col} {definition}")
+    except Exception as exc:
+        root_cause = exc
+        while root_cause.__cause__ is not None:
+            root_cause = root_cause.__cause__
+        raise RuntimeError(
+            f'No se pudo agregar {table}.{col}; revise locks y transacciones activas. '
+            f'Causa real: {type(root_cause).__module__}.{type(root_cause).__name__}'
+        ) from exc
+    print(f'[MIGRATION] added {table}.{col}', flush=True)
+
+
+def _security_migration_is_current(cursor: sqlite3.Cursor) -> bool:
+    if not table_exists(cursor, 'seguridad_migraciones'):
+        return False
+    row = cursor.execute(
+        "SELECT version FROM seguridad_migraciones WHERE nombre=?",
+        (SECURITY_MIGRATION_NAME,),
+    ).fetchone()
+    if not row or int(row['version'] or 0) < SECURITY_SCHEMA_VERSION:
+        return False
+    required = {
+        'usuarios_app': {'eliminado_en', 'eliminado_por', 'motivo_eliminacion'},
+        'fundaciones': {'eliminado_en', 'eliminado_por', 'motivo_eliminacion'},
+    }
+    return all(table_exists(cursor, table) and columns <= table_columns(cursor, table) for table, columns in required.items())
 
 
 def ensure_security_schema(database_path: str) -> None:
     conn = connect(database_path)
     cur = conn.cursor()
-    # PostgreSQL valida las referencias al crear cada tabla. ``usuarios_app``
-    # debe existir antes de ejecutar el resto del esquema, que contiene claves
-    # foráneas desde sesiones y recuperación de contraseña.
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS usuarios_app (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            rol TEXT NOT NULL DEFAULT 'DOCENTE',
-            unidades TEXT,
-            activo INTEGER DEFAULT 1,
-            fecha_creacion TEXT NOT NULL,
-            fecha_ultima_conexion TEXT
-        )
-    """)
-    cur.executescript(SEGURIDAD_SCHEMA_SQL)
-    for col, definition in {
+    print(f'[MIGRATION] security schema start version={SECURITY_SCHEMA_VERSION}', flush=True)
+    try:
+        if _security_migration_is_current(cur):
+            conn.rollback()
+            print('[MIGRATION] security schema PASS (already current)', flush=True)
+            return
+
+        # PostgreSQL valida las referencias al crear cada tabla. ``usuarios_app``
+        # debe existir antes del resto del esquema, que contiene sus claves foráneas.
+        if not table_exists(cur, 'usuarios_app'):
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS usuarios_app (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    rol TEXT NOT NULL DEFAULT 'DOCENTE',
+                    unidades TEXT,
+                    activo INTEGER DEFAULT 1,
+                    fecha_creacion TEXT NOT NULL,
+                    fecha_ultima_conexion TEXT
+                )
+            """)
+        required_security_tables = {
+            'fundaciones', 'roles_sistema', 'permisos_sistema', 'rol_permiso',
+            'sesiones_usuario', 'recuperacion_password', 'auth_intentos', 'auditoria_seguridad',
+        }
+        security_tables_complete = all(table_exists(cur, table) for table in required_security_tables)
+        if not security_tables_complete:
+            cur.executescript(SEGURIDAD_SCHEMA_SQL)
+        for col, definition in {
         'fundacion_id': 'INTEGER',
         'nombre_completo': 'TEXT',
         'telefono': 'TEXT',
@@ -405,73 +488,98 @@ def ensure_security_schema(database_path: str) -> None:
         'eliminado_en': 'TEXT',
         'eliminado_por': 'INTEGER',
         'motivo_eliminacion': 'TEXT',
-    }.items():
-        ensure_column(cur, 'usuarios_app', col, definition)
+        }.items():
+            ensure_column(cur, 'usuarios_app', col, definition)
 
-    for col, definition in {
+        for col, definition in {
         'eliminado_en': 'TEXT',
         'eliminado_por': 'INTEGER',
         'motivo_eliminacion': 'TEXT',
-    }.items():
-        ensure_column(cur, 'fundaciones', col, definition)
+        }.items():
+            ensure_column(cur, 'fundaciones', col, definition)
 
-    for col, definition in {
+        for col, definition in {
         'fundacion_id': 'INTEGER',
         'metodo': "TEXT DEFAULT 'EMAIL_LINK'",
         'solicitado_por': 'INTEGER',
         'ip': 'TEXT',
-    }.items():
-        ensure_column(cur, 'recuperacion_password', col, definition)
+        }.items():
+            ensure_column(cur, 'recuperacion_password', col, definition)
 
-    for table in MULTITENANT_TABLES:
-        for col, definition in MULTITENANT_COLUMNS.items():
-            ensure_column(cur, table, col, definition)
+        # El barrido histórico multi-tenant solo corresponde al provisionamiento
+        # de una instalación incompleta. Una base madura no debe bloquear todas
+        # sus tablas por una migración puntual de Seguridad/Fundaciones.
+        if not security_tables_complete:
+            for table in MULTITENANT_TABLES:
+                for col, definition in MULTITENANT_COLUMNS.items():
+                    ensure_column(cur, table, col, definition)
 
-    module_tables = cur.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND (name LIKE 'gp_%' OR name LIKE 'sn_%')"
-    ).fetchall()
-    for row in module_tables:
-        for col, definition in MULTITENANT_COLUMNS.items():
-            ensure_column(cur, row['name'], col, definition)
+            module_tables = cur.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND (name LIKE 'gp_%' OR name LIKE 'sn_%')"
+            ).fetchall()
+            for row in module_tables:
+                for col, definition in MULTITENANT_COLUMNS.items():
+                    ensure_column(cur, row['name'], col, definition)
 
-    now = now_iso()
-    cur.execute("""
+        now = now_iso()
+        cur.execute("""
         INSERT INTO fundaciones
         (id, nombre, nit, representante, estado, plan, fecha_inicio, fecha_vencimiento, fecha_creacion)
         SELECT 1, 'Entorno de pruebas', NULL, NULL, 'ACTIVA', 'PRUEBA', ?, ?, ?
         WHERE NOT EXISTS (SELECT 1 FROM fundaciones WHERE id = 1)
-    """, (now[:10], (datetime.now() + timedelta(days=3650)).date().isoformat(), now))
+        """, (now[:10], (datetime.now() + timedelta(days=3650)).date().isoformat(), now))
 
-    for rol in ROLES_SISTEMA:
-        cur.execute("""
+        for rol in ROLES_SISTEMA:
+            cur.execute("""
             INSERT INTO roles_sistema (nombre, descripcion, activo, fecha_creacion)
             SELECT ?, ?, 1, ? WHERE NOT EXISTS (SELECT 1 FROM roles_sistema WHERE nombre = ?)
-        """, (rol, f'Rol {rol}', now, rol))
+            """, (rol, f'Rol {rol}', now, rol))
 
-    permisos = sorted({perm for perms in PERMISOS_BASE.values() for perm in perms})
-    for perm in permisos:
-        cur.execute("""
+        permisos = sorted({perm for perms in PERMISOS_BASE.values() for perm in perms})
+        for perm in permisos:
+            cur.execute("""
             INSERT INTO permisos_sistema (codigo, descripcion, modulo, fecha_creacion)
             SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM permisos_sistema WHERE codigo = ?)
-        """, (perm, perm, perm.split('.')[0] if '.' in perm else 'GLOBAL', now, perm))
-    for rol, perms in PERMISOS_BASE.items():
-        for perm in perms:
-            cur.execute("""
+            """, (perm, perm, perm.split('.')[0] if '.' in perm else 'GLOBAL', now, perm))
+        for rol, perms in PERMISOS_BASE.items():
+            for perm in perms:
+                cur.execute("""
                 INSERT INTO rol_permiso (rol, permiso_codigo, fecha_creacion)
                 SELECT ?, ?, ? WHERE NOT EXISTS (
                     SELECT 1 FROM rol_permiso WHERE rol = ? AND permiso_codigo = ?
                 )
-            """, (rol, perm, now, rol, perm))
+                """, (rol, perm, now, rol, perm))
 
-    # La migración de registros históricos se ejecuta una sola vez, no en cada petición.
-    for table in MULTITENANT_TABLES:
-        if table_exists(cur, table) and 'fundacion_id' in table_columns(cur, table):
-            try:
-                cur.execute(f"UPDATE {table} SET fundacion_id = 1 WHERE fundacion_id IS NULL")
-            except Exception:
-                pass
-    conn.commit()
-    conn.close()
+        if not security_tables_complete:
+            for table in MULTITENANT_TABLES:
+                if table_exists(cur, table) and 'fundacion_id' in table_columns(cur, table):
+                    cur.execute(f"UPDATE {table} SET fundacion_id = 1 WHERE fundacion_id IS NULL")
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS seguridad_migraciones (
+                nombre TEXT PRIMARY KEY,
+                version INTEGER NOT NULL,
+                aplicada_en TEXT NOT NULL
+            )
+        """)
+        cur.execute(
+            """
+            INSERT INTO seguridad_migraciones(nombre, version, aplicada_en)
+            VALUES (?, ?, ?)
+            ON CONFLICT(nombre) DO UPDATE SET
+                version=excluded.version,
+                aplicada_en=excluded.aplicada_en
+            """,
+            (SECURITY_MIGRATION_NAME, SECURITY_SCHEMA_VERSION, now_iso()),
+        )
+        conn.commit()
+        print('[MIGRATION] security schema PASS', flush=True)
+    except Exception:
+        conn.rollback()
+        print('[MIGRATION] security schema FAILED', flush=True)
+        raise
+    finally:
+        conn.close()
 
 
 def password_policy_errors(password: str, minimum: int | None = None) -> list[str]:
@@ -497,7 +605,6 @@ def bootstrap_initial_admin(database_path: str, config: Mapping[str, Any]) -> di
     Después de la primera inicialización, las variables INITIAL_ADMIN_* pueden
     retirarse: nunca se restablece una contraseña ni se eleva una cuenta existente.
     """
-    ensure_security_schema(database_path)
     username = str(config.get('INITIAL_ADMIN_USERNAME', '')).strip()
     email = str(config.get('INITIAL_ADMIN_EMAIL', '')).strip()
     password = str(config.get('INITIAL_ADMIN_PASSWORD', ''))
@@ -1081,8 +1188,6 @@ def send_password_reset_email(recipient: str, reset_url: str) -> bool:
 
 
 def activate_security_guard(app, database_path: str) -> None:
-    ensure_security_schema(database_path)
-
     @app.before_request
     def _security_before_request():
         normalized_path = request.path.rstrip('/') or '/'

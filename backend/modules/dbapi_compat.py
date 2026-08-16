@@ -79,6 +79,12 @@ _TABLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 _TENANT_SCHEMA_CACHE: dict[str, bool] = {}
 
+
+def _postgres_error_detail(exc: BaseException) -> str:
+    """Conserva visible el tipo PostgreSQL sin romper excepciones legacy."""
+    original = getattr(exc, 'orig', None) or exc
+    return f'PostgreSQL {type(original).__module__}.{type(original).__name__}: {original}'
+
 def _table_has_tenant(table: str) -> bool:
     table = str(table or '').lower()
     if not _TABLE_NAME_RE.fullmatch(table):
@@ -508,11 +514,11 @@ class CompatCursor:
         try:
             result = self._owner._connection.execute(text(sql2), bind)
         except SAIntegrityError as exc:
-            raise _sqlite3.IntegrityError(str(getattr(exc, "orig", exc))) from exc
+            raise _sqlite3.IntegrityError(_postgres_error_detail(exc)) from exc
         except SAOperationalError as exc:
-            raise _sqlite3.OperationalError(str(getattr(exc, "orig", exc))) from exc
+            raise _sqlite3.OperationalError(_postgres_error_detail(exc)) from exc
         except DBAPIError as exc:
-            raise _sqlite3.DatabaseError(str(getattr(exc, "orig", exc))) from exc
+            raise _sqlite3.DatabaseError(_postgres_error_detail(exc)) from exc
         rows: list[CompatRow] = []
         lastrowid = 0
         if result.returns_rows:
@@ -548,11 +554,11 @@ class CompatCursor:
         try:
             result = self._owner._connection.execute(text(sql2), binds)
         except SAIntegrityError as exc:
-            raise _sqlite3.IntegrityError(str(getattr(exc, "orig", exc))) from exc
+            raise _sqlite3.IntegrityError(_postgres_error_detail(exc)) from exc
         except SAOperationalError as exc:
-            raise _sqlite3.OperationalError(str(getattr(exc, "orig", exc))) from exc
+            raise _sqlite3.OperationalError(_postgres_error_detail(exc)) from exc
         except DBAPIError as exc:
-            raise _sqlite3.DatabaseError(str(getattr(exc, "orig", exc))) from exc
+            raise _sqlite3.DatabaseError(_postgres_error_detail(exc)) from exc
         count = int(result.rowcount if result.rowcount is not None and result.rowcount >= 0 else len(rows))
         return self._set_rows([], count)
 

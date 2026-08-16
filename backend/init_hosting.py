@@ -68,6 +68,11 @@ def _postgres_startup_lock():
     si una migración falla. No bloquea el tráfico ordinario ni modifica datos.
     """
     url = str(os.getenv('DATABASE_URL') or '').strip()
+    if not url:
+        # En local, config carga .env; Railway ya entrega DATABASE_URL en el
+        # entorno. Resolver ambos antes del lock mantiene la misma secuencia.
+        from config import get_config
+        url = str(get_config(os.getenv('APP_ENV')).DATABASE_URL or '').strip()
     if not url.startswith(('postgresql://', 'postgres://', 'postgresql+psycopg://')):
         yield
         return
@@ -76,13 +81,17 @@ def _postgres_startup_lock():
     dsn = url.replace('postgresql+psycopg://', 'postgresql://', 1)
     conn = psycopg.connect(dsn, autocommit=True)
     lock_key = 807_202_601  # constante exclusiva del inicializador del proyecto
+    lock_timeout_seconds = max(5, min(120, int(os.getenv('MIGRATION_LOCK_TIMEOUT_SECONDS', '30'))))
     try:
-        conn.execute("SET lock_timeout = '120s'")
+        conn.execute(f"SET lock_timeout = '{lock_timeout_seconds}s'")
+        print('[MIGRATION] waiting for PostgreSQL startup advisory lock', flush=True)
         conn.execute('SELECT pg_advisory_lock(%s)', (lock_key,))
+        print('[MIGRATION] PostgreSQL startup advisory lock acquired', flush=True)
         yield
     finally:
         try:
             conn.execute('SELECT pg_advisory_unlock(%s)', (lock_key,))
+            print('[MIGRATION] PostgreSQL startup advisory lock released', flush=True)
         finally:
             conn.close()
 
@@ -123,13 +132,12 @@ def _main() -> int:
     # app configura el Engine central antes de registrar los módulos.
     import app as app_module
     from database import database, get_db_connection
-    from modules.seguridad.services import bootstrap_initial_admin, ensure_security_schema
+    from modules.seguridad.services import bootstrap_initial_admin
     from modules.seguridad.tenant_context import ensure_tenant_directories
     from services.rpp_minutas_service import seed_minuta_sanitizada_desde_json
     from services.uds_catalog import catalog_summary, ensure_catalog_units_sqlite, migrate_demo_units_sqlite
 
     app_module.init_db()
-    ensure_security_schema(config_class.DATABASE_PATH)
     if database.is_sqlite:
         from migrations.migrate_multitenant_phase3 import migrate as migrate_multitenant_phase3
         tenant_migration = migrate_multitenant_phase3(config_class.DATABASE_PATH)

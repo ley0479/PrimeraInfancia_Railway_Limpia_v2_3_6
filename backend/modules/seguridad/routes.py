@@ -22,7 +22,6 @@ from .services import (
     connect,
     create_session,
     create_login_session_atomic,
-    ensure_security_schema,
     extract_token,
     get_request_user_context,
     hash_token,
@@ -201,8 +200,6 @@ def _user_dependency_summary(conn: sqlite3.Connection, user_id: int) -> dict:
 
 
 def register_seguridad(app, database_path: str) -> None:
-    ensure_security_schema(database_path)
-
     def attach_auth_correlation_headers(response):
         """Permite demostrar que navegador y diagnóstico llegan a la misma instancia."""
         if request.path == '/api/auth/login':
