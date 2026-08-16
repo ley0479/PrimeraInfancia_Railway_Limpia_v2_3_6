@@ -6,6 +6,7 @@ import secrets
 from modules.dbapi_compat import sqlite3
 import string
 import time
+import unicodedata
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -75,6 +76,12 @@ def _normalize_username(value) -> str:
 
 def _normalize_email(value) -> str:
     return str(value or '').strip().lower()
+
+
+def _normalize_foundation_identity(value) -> str:
+    normalized = unicodedata.normalize('NFKD', str(value or ''))
+    without_marks = ''.join(char for char in normalized if not unicodedata.combining(char))
+    return ' '.join(without_marks.casefold().split())
 
 
 def _identity_error(username: str, email: str):
@@ -733,13 +740,23 @@ def register_seguridad(app, database_path: str) -> None:
         if not nombre:
             conn.close()
             return jsonify({'error': 'Nombre de fundación requerido.'}), 400
-        duplicate = conn.execute(
-            "SELECT id FROM fundaciones WHERE lower(trim(nombre))=lower(trim(?))",
-            (nombre,),
-        ).fetchone()
+        nombre_identidad = _normalize_foundation_identity(nombre)
+        duplicate = next((
+            row for row in conn.execute("SELECT * FROM fundaciones ORDER BY id").fetchall()
+            if _normalize_foundation_identity(row['nombre']) == nombre_identidad
+        ), None)
         if duplicate:
+            existing = dict(duplicate)
+            estado_existente = str(existing.get('estado') or 'ACTIVA').upper()
             conn.close()
-            return jsonify({'error': 'Ya existe una fundación con ese nombre.'}), 409
+            return jsonify({
+                'error': 'La fundación ya existe. Reutiliza el registro existente.',
+                'code': 'FUNDACION_EXISTENTE',
+                'fundacion_id': existing.get('id'),
+                'fundacion': existing,
+                'reutilizable': estado_existente == 'ACTIVA',
+                'accion': 'USAR_EXISTENTE' if estado_existente == 'ACTIVA' else 'REACTIVAR',
+            }), 409
         now = now_iso()
         try:
             cur = conn.execute("""

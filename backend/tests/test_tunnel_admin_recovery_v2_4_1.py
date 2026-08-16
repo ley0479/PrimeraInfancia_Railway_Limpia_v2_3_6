@@ -210,6 +210,18 @@ def main():
 
         register_seguridad(app, str(database))
 
+        # Una fundación existente se devuelve como entidad reutilizable; nunca
+        # se obliga a crear un duplicado para poder asignar usuarios.
+        set_request("POST", {"nombre": "  FUNDACIÓN PRUEBA B  "}, path="/api/fundaciones")
+        duplicate_foundation, status = unwrap(app.routes[("/api/fundaciones", "POST")]())
+        assert_true(status == 409, f"Duplicado de fundación no devolvió 409: {status} {duplicate_foundation}")
+        assert_true(
+            duplicate_foundation.get("code") == "FUNDACION_EXISTENTE"
+            and duplicate_foundation.get("fundacion_id") == 2
+            and duplicate_foundation.get("reutilizable") is True,
+            f"Duplicado no devolvió la fundación reutilizable: {duplicate_foundation}",
+        )
+
         # Crear usuarios en dos tenants y comprobar que sus credenciales funcionan.
         create_user = app.routes[("/api/usuarios", "POST")]
         set_request("POST", {

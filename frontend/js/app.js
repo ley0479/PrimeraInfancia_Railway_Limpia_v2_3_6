@@ -969,7 +969,10 @@ function manejarRespuestaJson(respuesta) {
             mostrarLogin('Sesión vencida. Ingrese nuevamente.');
         }
         return respuesta.json().then(json => {
-            throw new Error(json.error || 'Error en el servidor');
+            const error = new Error(json.error || 'Error en el servidor');
+            error.status = respuesta.status;
+            error.data = json;
+            throw error;
         });
     }
     return respuesta.json();
@@ -3165,8 +3168,14 @@ function renderFundaciones(fundaciones) {
     const select = document.getElementById('usuario-fundacion');
     if (select) {
         const active = fundaciones.filter(item => String(item.estado || '').toUpperCase() === 'ACTIVA');
-        const options = active.length ? active : fundaciones;
-        select.innerHTML = options.map(item => `<option value="${item.id}">${escaparHtml(item.nombre)}</option>`).join('');
+        const inactive = fundaciones.filter(item => String(item.estado || '').toUpperCase() !== 'ACTIVA');
+        const activeOptions = active.map(item => `<option value="${item.id}">${escaparHtml(item.nombre)}</option>`).join('');
+        const inactiveOptions = inactive.map(item => {
+            const estado = String(item.estado || 'INACTIVA').toUpperCase();
+            return `<option value="${item.id}" disabled>${escaparHtml(item.nombre)} — ${escaparHtml(estado)}</option>`;
+        }).join('');
+        const emptyOption = active.length ? '' : '<option value="">No hay fundaciones activas disponibles</option>';
+        select.innerHTML = `${emptyOption}${activeOptions}${inactiveOptions}`;
         select.disabled = !adminEsSuperadmin();
     }
     if (!tbody) return;
@@ -3311,6 +3320,25 @@ async function guardarFundacion() {
         limpiarFormularioFundacion();
         await cargarAdministracion();
     } catch (error) {
+        if (error?.data?.code === 'FUNDACION_EXISTENTE' && error.data.fundacion) {
+            await cargarAdministracion();
+            const existing = error.data.fundacion;
+            if (error.data.reutilizable) {
+                adminValor('usuario-fundacion', existing.id);
+                mostrarMensaje(
+                    'admin-message',
+                    `${existing.nombre} ya estaba registrada y quedó seleccionada para crear usuarios.`,
+                    'success'
+                );
+            } else {
+                mostrarMensaje(
+                    'admin-message',
+                    `${existing.nombre} ya existe con estado ${String(existing.estado || 'INACTIVA').toUpperCase()}. Reactívala desde la lista; no debes crearla nuevamente.`,
+                    'error'
+                );
+            }
+            return;
+        }
         mostrarMensaje('admin-message', error.message || 'No se pudo guardar la fundación.', 'error');
     }
 }
