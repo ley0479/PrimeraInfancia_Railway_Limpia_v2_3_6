@@ -1851,6 +1851,10 @@ function manejarErrorAuthProcesamiento(xhr, resultado) {
 
 function enviarFormularioProcesamientoCuentame(formData, textoCargando) {
     const token = authToken();
+    // El flujo interactivo siempre solicita el contrato síncrono. HTTP 202 queda
+    // reservado para una operación masiva que lo pida expresamente.
+    formData.set('sync', '1');
+    formData.set('modo_ejecucion', 'sincrono');
     const tablaCuerpo = document.getElementById('tabla-cuerpo');
     if (tablaCuerpo) {
         tablaCuerpo.innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-indigo-400 animate-pulse">Preparando los datos y generando únicamente los formatos y unidades seleccionados...</td></tr>`;
@@ -1891,7 +1895,7 @@ function enviarFormularioProcesamientoCuentame(formData, textoCargando) {
 
         if (xhr.status >= 400) {
             const mensaje524 = xhr.status === 524
-                ? 'El túnel agotó el tiempo de espera. La versión actual procesa la base en segundo plano; vuelve a intentar y espera el avance en pantalla.'
+                ? 'El procesamiento síncrono superó el tiempo disponible. Reduce la cantidad de UDS o formatos y vuelve a intentar.'
                 : (resultado.error || `Error técnico del servidor (${xhr.status}). Revisa el archivo o intenta nuevamente.`);
             mostrarMensaje('message-box', mensaje524, 'error');
             return;
