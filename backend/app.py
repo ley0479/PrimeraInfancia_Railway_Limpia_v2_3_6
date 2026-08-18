@@ -9,6 +9,7 @@ import calendar
 import copy
 import socket
 import traceback
+import uuid
 from pathlib import Path
 from difflib import SequenceMatcher
 
@@ -4758,6 +4759,24 @@ def api_jobs_detail(job_id):
     return jsonify({'job': job}), 200
 
 
+def _procesamiento_async_explicito(req):
+    """True únicamente cuando el cliente solicita expresamente segundo plano."""
+    sync_raw = str(req.args.get('sync') or req.form.get('sync') or '').strip().lower()
+    modo_raw = str(req.args.get('modo_ejecucion') or req.form.get('modo_ejecucion') or '').strip().lower()
+    async_raw = str(
+        req.args.get('async') or req.form.get('async')
+        or req.args.get('procesamiento_masivo') or req.form.get('procesamiento_masivo')
+        or ''
+    ).strip().lower()
+    valores_verdaderos = {'1', 'true', 'si', 'sí'}
+    modos_sincronos = {'sincrono', 'síncrono', 'synchronous'}
+    modos_asincronos = {'asincrono', 'asíncrono', 'segundo_plano', 'masivo', 'async', 'asynchronous'}
+    sincronico_explicito = sync_raw in valores_verdaderos or modo_raw in modos_sincronos
+    return not sincronico_explicito and (
+        async_raw in valores_verdaderos or modo_raw in modos_asincronos
+    )
+
+
 @app.route('/api/procesar', methods=['POST'])
 def procesar_sistema():
     """Carga Cuéntame, permite detectar unidades y procesa solo las seleccionadas.
@@ -4836,12 +4855,33 @@ def procesar_sistema():
             }), 400
         options['procesar_todo'] = '1'
 
-    modo_sincrono = str(request.args.get('sync') or request.form.get('sync') or '').lower() in {'1', 'true', 'si', 'sí'}
-    if modo_sincrono:
+    async_explicito = _procesamiento_async_explicito(request)
+
+    # ALPHA77: Railway procesa una operación normal en la misma solicitud.
+    # El motor de jobs se conserva para cargas masivas solicitadas expresamente.
+    if not async_explicito:
+        trace_id = uuid.uuid4().hex[:16]
         try:
-            return jsonify(_procesar_base_cuentame_core(ruta_cuentame, filename, options=options)), 200
-        except Exception as e:
-            return jsonify({'error': f'Error al procesar el archivo: {str(e)}'}), 500
+            resultado = _procesar_base_cuentame_core(
+                ruta_cuentame,
+                filename,
+                options=options,
+                update_job=None,
+            )
+            resultado['modo'] = 'sincrono'
+            resultado['modo_ejecucion'] = 'sincrono'
+            return jsonify(resultado), 200
+        except Exception as exc:
+            log_procesamiento_base_maestra(
+                'Error exacto del procesamiento síncrono', str(exc),
+                archivo=filename, trace_id=trace_id,
+            )
+            return jsonify({
+                'error': 'No fue posible completar el procesamiento.',
+                'detalle': str(exc),
+                'trace_id': trace_id,
+                'modo': 'sincrono',
+            }), 500
 
     descripcion = 'Procesamiento de base Cuéntame para unidades seleccionadas'
     if _valor_booleano(options.get('procesar_todo')):
@@ -4870,11 +4910,11 @@ def procesar_sistema():
         descripcion=descripcion
     )
     return jsonify({
-        'message': 'La base fue recibida. El procesamiento continúa en segundo plano para evitar timeout del túnel.',
+        'message': 'La operación masiva fue recibida y continuará en segundo plano por solicitud explícita.',
         'job_id': job['id'],
         'job': job,
         'status_url': f"/api/jobs/{job['id']}",
-        'modo': 'segundo_plano'
+        'modo': 'segundo_plano_explicito'
     }), 202
 
 
