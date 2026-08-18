@@ -28,29 +28,14 @@ if [[ "${APP_ENV}" == "production" ]]; then
   fi
   export DATABASE_URL="$RESOLVED_DATABASE_URL"
   unset RESOLVED_DATABASE_URL
-  python backend/tools/postgresql_preflight.py \
-    --postgres "$DATABASE_URL" \
-    --report "$DATA_DIR/integrity/postgresql_preflight.json"
 fi
 
-# Gate rápido y no destructivo: bloquea despliegues con capacidades críticas ausentes.
-python backend/tools/integrity_gate.py \
-  --root /app \
-  --report "$DATA_DIR/integrity/integrity_gate_startup.json" \
-  --skip-tests \
-  --skip-manifest
-
-# La única fase autorizada para DDL es el inicializador serializado. Se fuerza
-# explícitamente el modo de migración para que una variable persistida en
-# Railway no active por accidente el cortafuegos antes de terminar el esquema.
-export APP_SCHEMA_MIGRATION_MODE=1
-export SKIP_RUNTIME_SCHEMA_DDL=0
-python backend/init_hosting.py
-
-# Los workers sirven tráfico, no migran esquemas. Esta separación evita CREATE,
-# ALTER e introspecciones pesadas durante imports y solicitudes HTTP.
+# Pre-deploy ya validó y migró PostgreSQL. El contenedor web prepara solo el
+# volumen y arranca Gunicorn; nunca ejecuta DDL durante imports o requests.
 export APP_SCHEMA_MIGRATION_MODE=0
 export SKIP_RUNTIME_SCHEMA_DDL=1
+python backend/runtime_prepare.py
+echo "[STARTUP] Iniciando Gunicorn en 0.0.0.0:${PORT}"
 
 # PostgreSQL elimina la contención del archivo SQLite. Se conserva un worker por
 # omisión porque algunos jobs operativos aún son memoria local; puede aumentarse

@@ -8,15 +8,20 @@ no puedan quedar silenciosamente sin registrar.
 from __future__ import annotations
 
 import os
+import sqlite3 as native_sqlite3
 import sys
+import tempfile
 from pathlib import Path
+
+from flask import Flask
 
 ROOT = Path(__file__).resolve().parents[2]
 BACKEND = ROOT / "backend"
 sys.path.insert(0, str(BACKEND))
 
-from database import database  # noqa: E402
+from database import configure_database, database  # noqa: E402
 from modules.dbapi_compat import CompatConnection  # noqa: E402
+from modules.calendario_inteligente.repository import CalendarioInteligenteRepository  # noqa: E402
 
 
 def require(value, message: str) -> None:
@@ -87,13 +92,16 @@ def run() -> None:
     require(params == {"table_name": "gp_planeaciones"}, f"Parámetros inesperados: {params}")
     require("ORDER BY table_name" not in sql, "La consulta todavía ordena/carga todo el esquema")
 
+    predeploy = (ROOT / "predeploy_hosting.sh").read_text(encoding="utf-8")
     start = (ROOT / "start_hosting.sh").read_text(encoding="utf-8")
-    migration_pos = start.find("APP_SCHEMA_MIGRATION_MODE=1")
-    init_pos = start.find("python backend/init_hosting.py")
+    migration_pos = predeploy.find("APP_SCHEMA_MIGRATION_MODE=1")
+    init_pos = predeploy.find("python backend/init_hosting.py")
     runtime_pos = start.find("APP_SCHEMA_MIGRATION_MODE=0")
     gunicorn_pos = start.find("gunicorn")
-    require(-1 not in {migration_pos, init_pos, runtime_pos, gunicorn_pos}, "Faltan etapas del startup")
-    require(migration_pos < init_pos < runtime_pos < gunicorn_pos, "Orden migración/runtime/Gunicorn inválido")
+    require(-1 not in {migration_pos, init_pos, runtime_pos, gunicorn_pos}, "Faltan etapas de pre-deploy/runtime")
+    require(migration_pos < init_pos, "Orden de migración en pre-deploy inválido")
+    require(runtime_pos < gunicorn_pos, "Orden runtime/Gunicorn inválido")
+    require("python backend/init_hosting.py" not in start, "Runtime todavía ejecuta migraciones")
 
     init_source = (BACKEND / "init_hosting.py").read_text(encoding="utf-8")
     require("required_blueprints" in init_source and "missing_blueprints" in init_source, "Falta gate de módulos críticos")
@@ -129,6 +137,60 @@ def run() -> None:
         add_foundation >= 0 and calendar_index > add_foundation,
         "Calendario crea índices multi-tenant antes de migrar fundacion_id",
     )
+    alert_columns = calendar_source.find("alert_columns =")
+    alert_index = calendar_source.find("uq_cal_alerta_idempotente")
+    cronogramas_repair = calendar_source.find(
+        '"calendario_cronogramas", "calendario_actividades"'
+    )
+    require(
+        alert_columns >= 0 and alert_index > alert_columns,
+        "Alertas crea el índice tenant antes de reparar fundacion_id",
+    )
+    require(
+        cronogramas_repair >= 0,
+        "Cronogramas no participa en la reparación tenant histórica",
+    )
+
+    # Caracterización de una base anterior a multi-tenant: las tablas ya
+    # existen sin fundacion_id y la migración debe completar columnas antes de
+    # crear cualquiera de sus índices.
+    with tempfile.TemporaryDirectory(prefix="pi_calendar_legacy_") as temp_dir:
+        legacy_db = Path(temp_dir) / "legacy.sqlite3"
+        raw = native_sqlite3.connect(legacy_db)
+        try:
+            raw.executescript(
+                """
+                CREATE TABLE calendario_entregables (id INTEGER PRIMARY KEY, titulo TEXT, fecha_limite TEXT, clave_unica TEXT, coordinador TEXT, unidad TEXT);
+                CREATE TABLE calendario_cronogramas (id INTEGER PRIMARY KEY, nombre_archivo TEXT);
+                CREATE TABLE calendario_alertas (id INTEGER PRIMARY KEY, entregable_id INTEGER);
+                CREATE TABLE calendario_obligaciones (id INTEGER PRIMARY KEY, componente TEXT, activa INTEGER);
+                CREATE TABLE calendario_requisitos (id INTEGER PRIMARY KEY, obligacion_id INTEGER, orden INTEGER);
+                CREATE TABLE calendario_asignaciones (id INTEGER PRIMARY KEY, periodo TEXT, unidad TEXT, responsable_rol TEXT, estado TEXT);
+                CREATE TABLE calendario_evidencias (id INTEGER PRIMARY KEY, entidad_tipo TEXT, entidad_id INTEGER, requisito_id INTEGER, fecha_carga TEXT);
+                """
+            )
+            raw.commit()
+        finally:
+            raw.close()
+        calendar_app = Flask("calendar_legacy_migration")
+        calendar_app.config.update(
+            DATABASE_URL=f"sqlite:///{legacy_db.as_posix()}",
+            DATABASE_PATH=str(legacy_db),
+            SQLALCHEMY_ENGINE_OPTIONS={},
+        )
+        configure_database(calendar_app)
+        CalendarioInteligenteRepository(str(legacy_db), temp_dir).init_schema(force=True)
+        check = native_sqlite3.connect(legacy_db)
+        try:
+            for table in (
+                "calendario_entregables", "calendario_cronogramas", "calendario_alertas",
+                "calendario_obligaciones", "calendario_requisitos", "calendario_asignaciones",
+                "calendario_evidencias",
+            ):
+                columns = {row[1] for row in check.execute(f'PRAGMA table_info("{table}")')}
+                require("fundacion_id" in columns, f"{table} no migró fundacion_id")
+        finally:
+            check.close()
 
     app_source = (BACKEND / "app.py").read_text(encoding="utf-8")
     require("/api/system/version" in app_source, "Falta endpoint de huella exacta de versión")

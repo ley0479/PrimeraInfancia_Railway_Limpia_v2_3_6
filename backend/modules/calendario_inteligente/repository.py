@@ -221,15 +221,19 @@ class CalendarioInteligenteRepository:
                 """
             )
             conn.commit()
+            alert_columns = {
+                str(row[1])
+                for row in conn.execute('PRAGMA table_info("calendario_alertas")').fetchall()
+            }
             for column, definition in {
+                "fundacion_id": "INTEGER DEFAULT 1",
                 "evento": "TEXT", "usuario_id": "INTEGER", "tipo": "TEXT",
                 "fecha_programada": "TEXT", "fecha_enviada": "TEXT",
             }.items():
-                try:
+                if column not in alert_columns:
                     conn.execute(f'ALTER TABLE "calendario_alertas" ADD COLUMN "{column}" {definition}')
-                    conn.commit()
-                except Exception:
-                    conn.rollback()
+                    alert_columns.add(column)
+            conn.commit()
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_cal_alerta_idempotente ON calendario_alertas(fundacion_id,entregable_id,usuario_id,tipo,fecha_programada)")
             conn.execute(
                 """
@@ -262,7 +266,7 @@ class CalendarioInteligenteRepository:
             )
             # Completar aislamiento en instalaciones creadas por versiones previas.
             for table in (
-                "calendario_actividades", "calendario_entregas", "calendario_alertas",
+                "calendario_cronogramas", "calendario_actividades", "calendario_entregas", "calendario_alertas",
                 "calendario_archivos", "calendario_auditoria",
             ):
                 columns = {str(row[1]) for row in conn.execute(f'PRAGMA table_info("{table}")').fetchall()}
@@ -318,6 +322,16 @@ class CalendarioInteligenteRepository:
                     FOREIGN KEY(obligacion_id) REFERENCES calendario_obligaciones(id)
                 )"""
             )
+            for table in (
+                "calendario_obligaciones", "calendario_requisitos", "calendario_asignaciones",
+            ):
+                columns = {
+                    str(row[1])
+                    for row in conn.execute(f'PRAGMA table_info("{table}")').fetchall()
+                }
+                if "fundacion_id" not in columns:
+                    conn.execute(f'ALTER TABLE "{table}" ADD COLUMN fundacion_id INTEGER DEFAULT 1')
+            conn.commit()
             conn.execute("CREATE INDEX IF NOT EXISTS idx_cal_obligaciones_fund_comp ON calendario_obligaciones(fundacion_id, componente, activa)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_cal_requisitos_obligacion ON calendario_requisitos(fundacion_id, obligacion_id, orden)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_cal_asignaciones_periodo ON calendario_asignaciones(fundacion_id, periodo, unidad, responsable_rol, estado)")
@@ -352,6 +366,15 @@ class CalendarioInteligenteRepository:
                     fundacion_id INTEGER DEFAULT 1
                 )"""
             )
+            evidence_columns = {
+                str(row[1])
+                for row in conn.execute('PRAGMA table_info("calendario_evidencias")').fetchall()
+            }
+            if "fundacion_id" not in evidence_columns:
+                conn.execute(
+                    'ALTER TABLE "calendario_evidencias" ADD COLUMN fundacion_id INTEGER DEFAULT 1'
+                )
+                conn.commit()
             conn.execute("CREATE INDEX IF NOT EXISTS idx_cal_evidencias_entidad ON calendario_evidencias(fundacion_id, entidad_tipo, entidad_id, requisito_id, fecha_carga)")
             conn.commit()
 
