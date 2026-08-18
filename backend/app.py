@@ -469,6 +469,22 @@ def log_procesamiento_base_maestra(etapa, detalle='', **extra):
         pass
 
 
+def log_beneficiarios_sincronizacion_batch(registros):
+    """Escribe trazabilidad por registro con una sola apertura de archivo."""
+    if not registros:
+        return
+    try:
+        ruta = os.path.join(LOG_FOLDER, 'beneficiarios_sincronizacion.log')
+        os.makedirs(os.path.dirname(ruta), exist_ok=True)
+        fecha = datetime.now().isoformat(timespec='seconds')
+        with open(ruta, 'a', encoding='utf-8') as fh:
+            for registro in registros:
+                payload = {'fecha': fecha, **dict(registro or {})}
+                fh.write(json.dumps(payload, ensure_ascii=False, default=str)[:3000] + '\n')
+    except Exception:
+        pass
+
+
 def safe_executemany(conn, sql, rows, batch_size=500, logger=None):
     """Ejecuta operaciones masivas de forma compatible y por lotes.
 
@@ -3115,27 +3131,46 @@ def dividir_nombre(nombre):
     return ' '.join(partes[:mitad]), ' '.join(partes[mitad:])
 
 
-def guardar_beneficiarios_actuales(df):
+def guardar_beneficiarios_actuales(df, archivo_origen=''):
     conn = database_connection()
     cursor = conn.cursor()
     fundacion_id = fundacion_actual_id()
     cursor.execute("UPDATE beneficiarios SET estado = ? WHERE estado = ? AND COALESCE(fundacion_id, 1) = ?", (EstadoUsuario.RETIRADO, EstadoUsuario.ACTIVO, fundacion_id))
-    # La carga completa hacía un SELECT por cada beneficiario (N+1). Precargar
-    # únicamente id/documento conserva el mismo criterio de actualización y
-    # evita cientos de viajes adicionales a PostgreSQL por cada procesamiento.
+    # Precargar la clave que realmente protege PostgreSQL. Usar solo documento
+    # colapsaba unidades diferentes y permitía insertar dos veces la misma
+    # combinación dentro de un único Excel.
     cursor.execute(
-        "SELECT id, documento FROM beneficiarios WHERE COALESCE(fundacion_id, 1) = ?",
+        "SELECT id, documento, unidad FROM beneficiarios WHERE COALESCE(fundacion_id, 1) = ?",
         (fundacion_id,),
     )
-    beneficiarios_existentes = {
-        str(row['documento']).strip(): row['id']
+    claves_existentes = {
+        (str(row['documento']).strip(), normalize_unidad(row['unidad']))
         for row in cursor.fetchall()
-        if row['documento'] is not None
+        if row['documento'] is not None and normalize_unidad(row['unidad'])
     }
     ahora = datetime.now().isoformat()
 
+    filas_por_clave = {}
+    duplicados_archivo = {}
+    trazas_sync = []
     for _, fila in df.iterrows():
-        documento = str(fila['documento']).strip()
+        documento = str(fila.get('documento', '')).strip()
+        unidad = normalize_unidad(fila.get('unidad', ''))
+        if not documento or not unidad:
+            continue
+        clave = (documento, unidad)
+        if clave in filas_por_clave:
+            duplicados_archivo[clave] = duplicados_archivo.get(clave, 1) + 1
+        filas_por_clave[clave] = fila
+
+    for (documento, unidad), repeticiones in duplicados_archivo.items():
+        trazas_sync.append({
+            'documento': documento, 'unidad': unidad, 'archivo': archivo_origen,
+            'operacion': 'CONSOLIDADO_ULTIMO_REGISTRO', 'repeticiones': repeticiones,
+            'motivo': 'CLAVE_REPETIDA_DENTRO_DEL_ARCHIVO',
+        })
+
+    for (documento, unidad), fila in filas_por_clave.items():
         nombre = str(fila.get('nombre', '')).strip()
         nombres_fallback, apellidos_fallback = dividir_nombre(nombre)
         primer_nombre = limpiar_valor(fila.get('primer_nombre', ''))
@@ -3144,7 +3179,6 @@ def guardar_beneficiarios_actuales(df):
         segundo_apellido = limpiar_valor(fila.get('segundo_apellido', ''))
         nombres = unir_partes(primer_nombre, segundo_nombre) or nombres_fallback
         apellidos = unir_partes(primer_apellido, segundo_apellido) or apellidos_fallback
-        unidad = str(fila['unidad']).strip()
         estado = str(fila['estado']).strip().upper() or EstadoUsuario.ACTIVO
         if estado in ['FALLECIDO', 'FALLECIDA']:
             estado = EstadoUsuario.FALLECIDO
@@ -3153,7 +3187,7 @@ def guardar_beneficiarios_actuales(df):
         elif estado not in EstadoUsuario.ESTADOS_VALIDOS:
             estado = EstadoUsuario.ACTIVO
 
-        existente_id = beneficiarios_existentes.get(documento)
+        clave_existia = (documento, unidad) in claves_existentes
 
         datos_comunes = {
             'documento': documento,
@@ -3201,44 +3235,7 @@ def guardar_beneficiarios_actuales(df):
             'fecha_actualizacion': ahora
         }
 
-        if existente_id is not None:
-            cursor.execute("""
-                UPDATE beneficiarios
-                SET documento = :documento, nombres = :nombres, apellidos = :apellidos,
-                    fecha_nacimiento = :fecha_nacimiento, sexo = :sexo, unidad = :unidad,
-                    estado = :estado, tipo_beneficiario = :tipo_beneficiario, fecha_carga = :fecha_carga,
-                    fecha_ingreso = COALESCE(NULLIF(:fecha_ingreso, ''), fecha_ingreso),
-                    nui = :nui, tipo_documento = :tipo_documento,
-                    primer_nombre = :primer_nombre, segundo_nombre = :segundo_nombre,
-                    primer_apellido = :primer_apellido, segundo_apellido = :segundo_apellido,
-                    nombre_acudiente = :nombre_acudiente, documento_acudiente = :documento_acudiente,
-                    tipo_documento_acudiente = :tipo_documento_acudiente, parentesco = :parentesco,
-                    primer_nombre_acudiente = :primer_nombre_acudiente,
-                    segundo_nombre_acudiente = :segundo_nombre_acudiente,
-                    primer_apellido_acudiente = :primer_apellido_acudiente,
-                    segundo_apellido_acudiente = :segundo_apellido_acudiente,
-                    fecha_modificacion_cuentame = :fecha_modificacion_cuentame,
-                    edad_meses = :edad_meses,
-                    grupo_edad = :grupo_edad,
-                    telefono = :telefono,
-                    regional = :regional,
-                    centro_zonal = :centro_zonal,
-                    municipio = :municipio,
-                    modalidad = :modalidad,
-                    numero_contrato = :numero_contrato,
-                    vigencia = :vigencia,
-                    nombre_eas = :nombre_eas,
-                    nit_eas = :nit_eas,
-                    servicio_atencion = :servicio_atencion,
-                    direccion_unidad = :direccion_unidad,
-                    codigo_unidad_servicio = :codigo_unidad_servicio,
-                    fundacion_id = :fundacion_id,
-                    usuario_creador_id = COALESCE(usuario_creador_id, :usuario_creador_id),
-                    fecha_actualizacion = :fecha_actualizacion
-                WHERE id = :id
-            """, {**datos_comunes, 'id': existente_id})
-        else:
-            cursor.execute("""
+        cursor.execute("""
                 INSERT INTO beneficiarios
                 (documento, nombres, apellidos, fecha_nacimiento, sexo, unidad, estado,
                  tipo_beneficiario, fecha_ingreso, fecha_carga, nui, tipo_documento,
@@ -3261,7 +3258,51 @@ def guardar_beneficiarios_actuales(df):
                  :regional, :centro_zonal, :municipio, :modalidad, :numero_contrato,
                  :vigencia, :nombre_eas, :nit_eas, :servicio_atencion, :direccion_unidad, :codigo_unidad_servicio,
                  :fundacion_id, :usuario_creador_id, :fecha_creacion, :fecha_actualizacion)
+                ON CONFLICT DO NOTHING
             """, datos_comunes)
+        insertado = bool(getattr(cursor, 'rowcount', 0) == 1)
+        cursor.execute("""
+            UPDATE beneficiarios
+            SET nombres = :nombres, apellidos = :apellidos,
+                fecha_nacimiento = :fecha_nacimiento, sexo = :sexo,
+                estado = :estado, tipo_beneficiario = :tipo_beneficiario, fecha_carga = :fecha_carga,
+                fecha_ingreso = COALESCE(NULLIF(:fecha_ingreso, ''), fecha_ingreso),
+                nui = :nui, tipo_documento = :tipo_documento,
+                primer_nombre = :primer_nombre, segundo_nombre = :segundo_nombre,
+                primer_apellido = :primer_apellido, segundo_apellido = :segundo_apellido,
+                nombre_acudiente = :nombre_acudiente, documento_acudiente = :documento_acudiente,
+                tipo_documento_acudiente = :tipo_documento_acudiente, parentesco = :parentesco,
+                primer_nombre_acudiente = :primer_nombre_acudiente,
+                segundo_nombre_acudiente = :segundo_nombre_acudiente,
+                primer_apellido_acudiente = :primer_apellido_acudiente,
+                segundo_apellido_acudiente = :segundo_apellido_acudiente,
+                fecha_modificacion_cuentame = :fecha_modificacion_cuentame,
+                edad_meses = :edad_meses, grupo_edad = :grupo_edad, telefono = :telefono,
+                regional = :regional, centro_zonal = :centro_zonal, municipio = :municipio,
+                modalidad = :modalidad, numero_contrato = :numero_contrato,
+                vigencia = :vigencia, nombre_eas = :nombre_eas, nit_eas = :nit_eas,
+                servicio_atencion = :servicio_atencion, direccion_unidad = :direccion_unidad,
+                codigo_unidad_servicio = :codigo_unidad_servicio,
+                usuario_creador_id = COALESCE(usuario_creador_id, :usuario_creador_id),
+                fecha_actualizacion = :fecha_actualizacion
+            WHERE documento = :documento AND unidad = :unidad
+              AND COALESCE(fundacion_id, 1) = :fundacion_id
+        """, datos_comunes)
+        actualizado = bool(getattr(cursor, 'rowcount', 0) >= 1)
+        operacion = 'INSERTADO' if insertado else ('ACTUALIZADO' if actualizado or clave_existia else 'IGNORADO_CONFLICTO_OTRO_TENANT')
+        if actualizado:
+            claves_existentes.add((documento, unidad))
+        trazas_sync.append({
+            'documento': documento, 'unidad': unidad, 'archivo': archivo_origen,
+            'operacion': operacion, 'motivo': 'UPSERT_IDEMPOTENTE_DOCUMENTO_UNIDAD',
+        })
+
+    log_beneficiarios_sincronizacion_batch(trazas_sync)
+    log_procesamiento_base_maestra(
+        'Sincronización idempotente de beneficiarios finalizada',
+        archivo=archivo_origen, claves=len(filas_por_clave),
+        duplicados_consolidados=len(duplicados_archivo),
+    )
 
     unidades_detectadas = {normalize_unidad(u) for u in df['unidad'].dropna().unique()}
     unidades_catalogo = sorted({u for u in set(ConfiguracionSistema.UNIDADES) | unidades_detectadas if u})
@@ -4640,7 +4681,7 @@ def _procesar_base_cuentame_core(ruta_cuentame, filename, options=None, update_j
     guardar_usuarios_actuales(df)
     log_procesamiento_base_maestra('Fin de guardado de usuarios actuales', total=len(df))
     update(72, 'Actualizando beneficiarios actuales')
-    guardar_beneficiarios_actuales(df)
+    guardar_beneficiarios_actuales(df, archivo_origen=filename)
     movimientos_pendientes = cambios.pop('_movimientos_pendientes', [])
     if movimientos_pendientes:
         update(74, 'Registrando movimientos operativos', f'{len(movimientos_pendientes)} movimiento(s) después de sincronizar beneficiarios.')

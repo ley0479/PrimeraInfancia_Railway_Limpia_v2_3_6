@@ -18,7 +18,7 @@ def test_beneficiarios_sync_precarga_ids_fuera_del_bucle():
     function = _function_node('guardar_beneficiarios_actuales')
     source = ast.get_source_segment(APP_PATH.read_text(encoding='utf-8'), function)
 
-    assert 'SELECT id, documento FROM beneficiarios' in source
+    assert 'SELECT id, documento, unidad FROM beneficiarios' in source
 
     row_loop = next(
         node for node in ast.walk(function)
@@ -36,3 +36,5 @@ def test_beneficiarios_sync_conserva_transaccion_y_aislamiento_tenant():
     assert 'COALESCE(fundacion_id, 1) = ?' in source
     assert 'conn.commit()' in source
     assert 'conn.close()' in source
+    assert 'ON CONFLICT DO NOTHING' in source
+    assert 'WHERE documento = :documento AND unidad = :unidad' in source
