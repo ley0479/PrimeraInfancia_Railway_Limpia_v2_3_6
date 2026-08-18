@@ -38,7 +38,9 @@ PUBLIC_PATHS = {
     '/api/ready',
     '/api/integrity/health',
     '/api/integrity/metrics',
+    '/api/configuracion-publica',
 }
+PUBLIC_PATH_PREFIXES = ('/api/branding/global/',)
 PASSWORD_CHANGE_ALLOWED_PATHS = {
     '/api/auth/me',
     '/api/auth/logout',
@@ -80,6 +82,7 @@ PATH_ROLE_RULES = sorted([
     ('/api/acceso', MANAGEMENT),
     ('/api/backups', frozenset({'SUPERADMIN'})),
     ('/api/configuracion-institucional', MANAGEMENT),
+    ('/api/configuracion-global', MANAGEMENT),
     ('/api/integraciones-configuracion', MANAGEMENT),
     ('/api/institucional-archivos', ALL_ROLES),
     ('/api/identidad-visual', MANAGEMENT),
@@ -1224,7 +1227,9 @@ def activate_security_guard(app, database_path: str) -> None:
 
         if not request.path.startswith('/api/') or request.method == 'OPTIONS':
             return None
-        if normalized_path in PUBLIC_PATHS:
+        if normalized_path in PUBLIC_PATHS or any(
+            normalized_path.startswith(prefix) for prefix in PUBLIC_PATH_PREFIXES
+        ):
             return None
         token = extract_token()
         if not token:
