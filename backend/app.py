@@ -8546,20 +8546,27 @@ def _alpha68_generar_distribucion_alimentos(unidad, usuarios, mes, anio):
 
 
 def _alpha68_generar_complementarios_formato(unidad, usuarios, options, seleccionados, mes, anio):
-    if not seleccionados:
-        return []
+    # Una selección vacía significa "todos". Ese es el contrato histórico de
+    # la pantalla y también el valor normalizado de ``paquete_completo``.
+    # Antes se retornaba aquí y el paquete omitía justamente estos tres XLSX.
+    claves = set(seleccionados or {
+        'listado_usuarios',
+        'relacion_mensual',
+        'distribucion_alimentos',
+    })
     generados = []
     try:
-        if _alpha68_should_generar(seleccionados, 'listado_usuarios'):
+        if _alpha68_should_generar(claves, 'listado_usuarios'):
             generados.append(_alpha68_generar_listado_usuarios(unidad, usuarios, mes, anio))
-        if _alpha68_should_generar(seleccionados, 'relacion_mensual'):
+        if _alpha68_should_generar(claves, 'relacion_mensual'):
             generados.append(_alpha68_generar_relacion_mensual(unidad, usuarios, mes, anio))
-        if _alpha68_should_generar(seleccionados, 'distribucion_alimentos'):
+        if _alpha68_should_generar(claves, 'distribucion_alimentos'):
             generados.append(_alpha68_generar_distribucion_alimentos(unidad, usuarios, mes, anio))
         if generados:
-            _alpha68_log('COMPLEMENTARIOS_GENERADOS', unidad=unidad, mes=mes, anio=anio, archivos=generados, seleccion=list(seleccionados))
+            _alpha68_log('COMPLEMENTARIOS_GENERADOS', unidad=unidad, mes=mes, anio=anio, archivos=generados, seleccion=list(claves))
     except Exception as exc:
         _alpha68_log('COMPLEMENTARIOS_ERROR', unidad=unidad, mes=mes, anio=anio, error=str(exc), traceback=traceback.format_exc())
+        raise RuntimeError(f'No se pudieron generar los formatos complementarios de {unidad}: {exc}') from exc
     return generados
 
 
