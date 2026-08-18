@@ -516,7 +516,23 @@ def safe_executemany(conn, sql, rows, batch_size=500, logger=None):
 
 
 def usuario_actual():
-    return getattr(g, 'current_user', None) if 'g' in globals() else None
+    user = getattr(g, 'current_user', None) if 'g' in globals() else None
+    if user:
+        return user
+    # Los jobs se ejecutan fuera del request Flask. El gestor conserva allí el
+    # tenant autenticado mediante ContextVar; nunca debe caer a fundación 1.
+    try:
+        from modules.seguridad.tenant_context import current_tenant_context
+        context = current_tenant_context()
+        if context.tenant_id:
+            return {
+                'fundacion_id': int(context.tenant_id),
+                'username': context.username or 'sistema',
+                'rol': context.role or 'SYSTEM',
+            }
+    except Exception:
+        pass
+    return None
 
 
 def fundacion_actual_id():

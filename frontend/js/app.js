@@ -1528,7 +1528,7 @@ function esperarJobOperativo(jobId, onComplete, messageTarget = 'message-box') {
             });
     };
 
-    mostrarMensaje(messageTarget, 'La base fue recibida. El sistema sigue procesando en segundo plano para evitar error 524 del túnel.', 'success');
+    mostrarMensaje(messageTarget, 'La solicitud fue recibida. Puedes seguir el avance de la fundación actual sin mantener una conexión larga.', 'success');
     actualizarBarraProgreso(1);
     tick();
 }
@@ -1853,7 +1853,7 @@ function enviarFormularioProcesamientoCuentame(formData, textoCargando) {
     const token = authToken();
     const tablaCuerpo = document.getElementById('tabla-cuerpo');
     if (tablaCuerpo) {
-        tablaCuerpo.innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-indigo-400 animate-pulse">Procesando auditoría y generando formatos para las unidades seleccionadas...</td></tr>`;
+        tablaCuerpo.innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-indigo-400 animate-pulse">Preparando los datos y generando únicamente los formatos y unidades seleccionados...</td></tr>`;
     }
     limpiarMensajes();
     mostrarCargando(textoCargando || 'Procesando base de datos y formatos oficiales...');
