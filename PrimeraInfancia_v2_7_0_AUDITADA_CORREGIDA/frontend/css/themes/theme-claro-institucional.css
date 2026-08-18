@@ -1,7 +1,0 @@
-/* Recurso opcional cargado únicamente cuando se selecciona el tema Claro Institucional. */
-html.tm-active[data-theme-code="claro-institucional"] aside {
-    box-shadow: 12px 0 40px rgba(15, 23, 42, .08);
-}
-html.tm-active[data-theme-code="claro-institucional"] .bg-gradient-to-r {
-    filter: saturate(1.08);
-}
