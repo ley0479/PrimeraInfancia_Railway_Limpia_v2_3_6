@@ -93,6 +93,29 @@ class CalendarioInteligenteRepository:
                 )
                 """
             )
+            # CREATE TABLE IF NOT EXISTS no agrega columnas a una tabla
+            # histórica. Migrarlas antes de crear índices multi-tenant evita
+            # UndefinedColumn en instalaciones provenientes de versiones
+            # anteriores.
+            conn.commit()
+            entregable_columns = {
+                str(row[1])
+                for row in conn.execute('PRAGMA table_info("calendario_entregables")').fetchall()
+            }
+            for column, definition in {
+                "fundacion_id": "INTEGER DEFAULT 1",
+                "clave_unica": "TEXT",
+                "responsable_rol": "TEXT",
+                "recurrencia": "TEXT DEFAULT 'ninguna'",
+                "recurrencia_intervalo": "INTEGER DEFAULT 1",
+                "recurrencia_hasta": "TEXT",
+                "serie_id": "TEXT",
+                "instancia_numero": "INTEGER DEFAULT 1",
+            }.items():
+                if column not in entregable_columns:
+                    conn.execute(f'ALTER TABLE "calendario_entregables" ADD COLUMN "{column}" {definition}')
+                    entregable_columns.add(column)
+            conn.commit()
             conn.execute("DROP INDEX IF EXISTS idx_calendario_entregables_clave")
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_calendario_entregables_clave ON calendario_entregables(fundacion_id, clave_unica)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_calendario_fecha ON calendario_entregables(fecha_limite)")
@@ -102,7 +125,6 @@ class CalendarioInteligenteRepository:
             # en otra conexión. Liberar primero los locks DDL evita que una
             # migración aditiva se bloquee a sí misma durante el startup.
             conn.commit()
-            entregable_columns = {str(row[1]) for row in conn.execute('PRAGMA table_info("calendario_entregables")').fetchall()}
             for column, definition in {
                 "responsable_rol": "TEXT",
                 "recurrencia": "TEXT DEFAULT 'ninguna'",

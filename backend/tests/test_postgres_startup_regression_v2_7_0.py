@@ -98,6 +98,10 @@ def run() -> None:
     init_source = (BACKEND / "init_hosting.py").read_text(encoding="utf-8")
     require("required_blueprints" in init_source and "missing_blueprints" in init_source, "Falta gate de módulos críticos")
     require("Módulos críticos no registrados" in init_source, "El startup no bloquea despliegues parciales")
+    require(
+        "state = 'idle in transaction'" in init_source and "pg_terminate_backend" in init_source,
+        "El startup no limpia transacciones huérfanas de la propia aplicación",
+    )
 
     security_source = (BACKEND / "modules" / "seguridad" / "services.py").read_text(encoding="utf-8")
     require(
@@ -117,6 +121,14 @@ def run() -> None:
     ddl_commit = security_source.find("libera locks DDL")
     seed_start = security_source.find("now = now_iso()", ddl_commit)
     require(ddl_commit >= 0 and seed_start > ddl_commit, "La siembra no libera locks DDL antes de empezar")
+
+    calendar_source = (BACKEND / "modules" / "calendario_inteligente" / "repository.py").read_text(encoding="utf-8")
+    add_foundation = calendar_source.find('"fundacion_id": "INTEGER DEFAULT 1"')
+    calendar_index = calendar_source.find("idx_calendario_entregables_clave")
+    require(
+        add_foundation >= 0 and calendar_index > add_foundation,
+        "Calendario crea índices multi-tenant antes de migrar fundacion_id",
+    )
 
     app_source = (BACKEND / "app.py").read_text(encoding="utf-8")
     require("/api/system/version" in app_source, "Falta endpoint de huella exacta de versión")

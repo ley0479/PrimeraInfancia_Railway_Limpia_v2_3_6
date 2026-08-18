@@ -123,6 +123,30 @@ def _postgres_startup_lock():
         print('[MIGRATION] waiting for PostgreSQL startup advisory lock', flush=True)
         conn.execute('SELECT pg_advisory_lock(%s)', (lock_key,))
         print('[MIGRATION] PostgreSQL startup advisory lock acquired', flush=True)
+        # Un despliegue cancelado puede dejar temporalmente una conexión del
+        # worker anterior ``idle in transaction`` conservando locks DDL. Ya
+        # siendo el único migrador autorizado, cerrar solo esas sesiones
+        # huérfanas de esta aplicación evita bloquear el nuevo esquema. No se
+        # afectan peticiones activas, otros servicios ni transacciones nuevas.
+        stale_rows = conn.execute(
+            """
+            SELECT pid
+              FROM pg_stat_activity
+             WHERE datname = current_database()
+               AND usename = current_user
+               AND pid <> pg_backend_pid()
+               AND application_name = %s
+               AND state = 'idle in transaction'
+               AND xact_start < clock_timestamp() - interval '30 seconds'
+            """,
+            (str(os.getenv('DB_APPLICATION_NAME') or 'primera-infancia'),),
+        ).fetchall()
+        terminated = 0
+        for row in stale_rows:
+            result = conn.execute('SELECT pg_terminate_backend(%s)', (int(row[0]),)).fetchone()
+            terminated += int(bool(result and result[0]))
+        if terminated:
+            print(f'[MIGRATION] terminated stale application transactions: {terminated}', flush=True)
         yield
     finally:
         try:
