@@ -162,6 +162,8 @@ def guardar_manifest(templates_folder: str | os.PathLike[str], manifest: dict[st
 
 def tipo_normalizado(tipo_formato: str | None) -> str | None:
     raw = normalizar_texto(tipo_formato)
+    if raw in {"listado usuarios", "listado de usuarios", "listado oficial usuarios"}:
+        return "listado_usuarios"
     if raw in {"rpp"} or "rpp" in raw:
         return "rpp"
     if "bienestarina" in raw or "bienesterina" in raw:
@@ -747,21 +749,32 @@ def register_plantillas_oficiales(app: Any, templates_folder: str) -> None:
 
     @bp.route("", methods=["GET"])
     def listar():
-        return jsonify({"plantillas": listar_plantillas_oficiales(templates_folder)}), 200
+        plantillas = listar_plantillas_oficiales(templates_folder)
+        from services.listado_usuarios_docx_service import template_info
+        plantillas.append(template_info(app.config.get("DATA_DIR") or Path(templates_folder).parent))
+        return jsonify({"plantillas": plantillas}), 200
 
     @bp.route("/<tipo_formato>", methods=["POST"])
     def subir(tipo_formato: str):
         if "file" not in request.files:
             return jsonify({"error": "Falta el archivo de plantilla oficial."}), 400
         try:
-            plantilla = reemplazar_plantilla_oficial(templates_folder, tipo_formato, request.files["file"])
+            if tipo_normalizado(tipo_formato) == "listado_usuarios":
+                from services.listado_usuarios_docx_service import replace_template
+                plantilla = replace_template(app.config.get("DATA_DIR") or Path(templates_folder).parent, request.files["file"])
+            else:
+                plantilla = reemplazar_plantilla_oficial(templates_folder, tipo_formato, request.files["file"])
             return jsonify({"message": "Plantilla oficial actualizada.", "plantilla": plantilla}), 200
         except Exception as exc:
             return jsonify({"error": str(exc)}), 400
 
     @bp.route("/<tipo_formato>/descargar", methods=["GET"])
     def descargar(tipo_formato: str):
-        info = get_plantilla_oficial(templates_folder, tipo_formato)
+        if tipo_normalizado(tipo_formato) == "listado_usuarios":
+            from services.listado_usuarios_docx_service import template_info
+            info = template_info(app.config.get("DATA_DIR") or Path(templates_folder).parent)
+        else:
+            info = get_plantilla_oficial(templates_folder, tipo_formato)
         if not info or not info.get("existe"):
             return jsonify({"error": "No se encontró la plantilla oficial solicitada."}), 404
         return send_from_directory(str(Path(info["ruta"]).parent), Path(info["ruta"]).name, as_attachment=True)
@@ -769,7 +782,11 @@ def register_plantillas_oficiales(app: Any, templates_folder: str) -> None:
     @bp.route("/<tipo_formato>/restaurar", methods=["POST"])
     def restaurar(tipo_formato: str):
         try:
-            plantilla = restaurar_ultima_plantilla(templates_folder, tipo_formato)
+            if tipo_normalizado(tipo_formato) == "listado_usuarios":
+                from services.listado_usuarios_docx_service import restore_template
+                plantilla = restore_template(app.config.get("DATA_DIR") or Path(templates_folder).parent)
+            else:
+                plantilla = restaurar_ultima_plantilla(templates_folder, tipo_formato)
             return jsonify({"message": "Plantilla oficial restaurada.", "plantilla": plantilla}), 200
         except Exception as exc:
             return jsonify({"error": str(exc)}), 400

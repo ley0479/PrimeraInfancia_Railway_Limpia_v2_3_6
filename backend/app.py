@@ -8411,7 +8411,44 @@ def _alpha68_guardar_workbook_registrado(wb, nombre_archivo, formato, unidad, me
     return ruta
 
 
-def _alpha68_generar_listado_usuarios(unidad, usuarios, mes, anio):
+def _alpha68_generar_listado_usuarios(unidad, usuarios, mes, anio, options=None):
+    # Si la corporación cargó su formato oficial Word, se diligencia esa copia.
+    # La salida Excel histórica permanece como fallback compatible.
+    try:
+        from services.listado_usuarios_docx_service import generate_list, template_info
+        data_dir = app.config.get('DATA_DIR')
+        info = template_info(data_dir)
+        if info.get('existe'):
+            nombre_docx = secure_filename(f"{_alpha67_unidad_slug(unidad)}_LISTADO_USUARIOS_{int(anio)}_{int(mes):02d}.docx")
+            ruta_docx = os.path.join(OUTPUT_FOLDER, nombre_docx)
+            opts = dict(options or {})
+            metadata = {
+                'unidad': unidad,
+                'uca': unidad,
+                'mes': mes,
+                'anio': anio,
+                'tema': opts.get('tema') or '',
+                'fecha': opts.get('fecha') or '',
+                'hora_inicio': opts.get('hora_inicio') or '',
+                'hora_final': opts.get('hora_final') or '',
+                'profesional': opts.get('profesional') or _alpha68_docente_por_usuarios(unidad, usuarios),
+                'docente': _alpha68_docente_por_usuarios(unidad, usuarios),
+                'cargo': opts.get('cargo') or '',
+                'modalidad': opts.get('modalidad') or '',
+                'servicio': opts.get('servicio') or '',
+            }
+            os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+            generate_list(data_dir, ruta_docx, usuarios or [], metadata=metadata)
+            registrar_archivo_generado_alpha57(
+                'listado_usuarios', unidad, nombre_docx, ruta_docx,
+                mes=mes, anio=anio, extra={'usuarios': len(usuarios or []), 'plantilla_oficial': True},
+            )
+            return ruta_docx
+    except (FileNotFoundError, ModuleNotFoundError):
+        pass
+    except Exception as exc:
+        _alpha68_log('LISTADO_OFICIAL_DOCX_ERROR', unidad=unidad, error=str(exc), traceback=traceback.format_exc())
+        raise RuntimeError(f'No se pudo diligenciar el listado oficial Word de {unidad}: {exc}') from exc
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
     wb = Workbook()
@@ -8557,7 +8594,7 @@ def _alpha68_generar_complementarios_formato(unidad, usuarios, options, seleccio
     generados = []
     try:
         if _alpha68_should_generar(claves, 'listado_usuarios'):
-            generados.append(_alpha68_generar_listado_usuarios(unidad, usuarios, mes, anio))
+            generados.append(_alpha68_generar_listado_usuarios(unidad, usuarios, mes, anio, options))
         if _alpha68_should_generar(claves, 'relacion_mensual'):
             generados.append(_alpha68_generar_relacion_mensual(unidad, usuarios, mes, anio))
         if _alpha68_should_generar(claves, 'distribucion_alimentos'):

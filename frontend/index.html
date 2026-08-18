@@ -990,8 +990,8 @@
                 <section id="plantillas-oficiales" class="hidden space-y-8">
                     <div class="dashboard-current-datetime-bar">
                         <div class="dashboard-current-datetime-title">
-                            <h2 class="text-xl font-semibold text-slate-100 flex items-center gap-2"><i data-lucide="file-check-2" class="w-5 h-5 text-emerald-400"></i> Plantillas oficiales Excel</h2>
-                            <p class="text-xs text-slate-400">RPP y Bienestarina se generan desde estas planillas, conservando letra, colores, bordes, márgenes, escala y área de impresión.</p>
+                            <h2 class="text-xl font-semibold text-slate-100 flex items-center gap-2"><i data-lucide="file-check-2" class="w-5 h-5 text-emerald-400"></i> Plantillas oficiales</h2>
+                            <p class="text-xs text-slate-400">RPP y Bienestarina usan Excel; el listado de usuarios usa el Word oficial propio de cada corporación.</p>
                         </div>
                         <div data-current-datetime data-hour-format="12" aria-label="Fecha y hora actual"></div>
                     </div>
@@ -1010,6 +1010,22 @@
                                 <button onclick="poSubir('rpp')" class="rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2 text-sm font-medium text-white">Reemplazar plantilla RPP</button>
                                 <button onclick="poDescargar('rpp')" class="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">Descargar vigente</button>
                                 <button onclick="poRestaurar('rpp')" class="rounded-xl border border-amber-600/40 px-4 py-2 text-sm text-amber-300 hover:bg-amber-500/10">Restaurar anterior</button>
+                            </div>
+                        </div>
+
+                        <div class="mp-card">
+                            <div class="flex items-start justify-between gap-3">
+                                <div>
+                                    <h3 class="text-lg font-medium text-slate-100">Listado oficial de usuarios</h3>
+                                    <p class="text-sm text-slate-400">Carga el Word editable de esta corporación. Se generará una copia diligenciada por cada UDS.</p>
+                                </div>
+                                <span class="rounded-full bg-violet-500/20 px-3 py-1 text-xs text-violet-300">Por corporación</span>
+                            </div>
+                            <input id="po-listado-usuarios-file" type="file" accept=".docx" class="mp-input mt-4 w-full" />
+                            <div class="mt-4 flex flex-wrap gap-2">
+                                <button onclick="poSubir('listado_usuarios')" class="rounded-xl bg-violet-600 hover:bg-violet-500 px-4 py-2 text-sm font-medium text-white">Cargar formato Word</button>
+                                <button onclick="poDescargar('listado_usuarios')" class="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">Descargar vigente</button>
+                                <button onclick="poRestaurar('listado_usuarios')" class="rounded-xl border border-amber-600/40 px-4 py-2 text-sm text-amber-300 hover:bg-amber-500/10">Restaurar anterior</button>
                             </div>
                         </div>
 
@@ -3622,7 +3638,7 @@
     <script src="./js/modules/base-maestra-panel.js?v=2.3.0-alpha.31"></script>
     <script src="./js/modules/theme-manager.js?v=2.3.0-alpha.29"></script>
     <script src="./js/modules/motor-plantillas.js?v=2.3.0-ram-v3"></script>
-    <script src="./js/modules/plantillas-oficiales.js?v=2.3.0-alpha.14"></script>
+    <script src="./js/modules/plantillas-oficiales.js?v=2.7.0-listado-docx.1"></script>
     <script src="./js/modules/paquete-mensual.js?v=2.3.0-alpha.17"></script>
     <script src="./js/modules/reportes-gerenciales.js?v=2.2.7"></script>
     <script src="./js/modules/gerencia-general.js?v=2.3.0-alpha.18"></script>

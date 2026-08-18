@@ -48,13 +48,15 @@ function poRender() {
 }
 
 async function poSubir(tipo) {
-    const input = document.getElementById(tipo === 'rpp' ? 'po-rpp-file' : 'po-bienestarina-file');
+    const inputs = { rpp: 'po-rpp-file', bienestarina: 'po-bienestarina-file', listado_usuarios: 'po-listado-usuarios-file' };
+    const input = document.getElementById(inputs[tipo]);
     const file = input?.files?.[0];
     if (!file) {
-        poMostrarMensaje('Selecciona primero una plantilla Excel oficial.', 'error');
+        poMostrarMensaje('Selecciona primero la plantilla oficial.', 'error');
         return;
     }
-    const error = validarArchivo(file, ['.xlsx', '.xlsm'], 50);
+    const extensiones = tipo === 'listado_usuarios' ? ['.docx'] : ['.xlsx', '.xlsm'];
+    const error = validarArchivo(file, extensiones, 50);
     if (error) {
         poMostrarMensaje(error, 'error');
         return;
