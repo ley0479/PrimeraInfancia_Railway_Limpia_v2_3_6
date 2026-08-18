@@ -784,14 +784,14 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
         return response, 200
 
     @bp.route('/api/configuracion-global', methods=['GET'])
-    @require_roles('SUPERADMIN', 'ADMINISTRADOR_GENERAL')
+    @require_roles('SUPERADMIN', 'GERENTE')
     def obtener_configuracion_global():
         row = _global_row()
         return jsonify({'configuracion': dict(row) if row else None,
                         'efectiva': resolver_identidad_efectiva(database_path, base_dir, None, data_dir)}), 200
 
     @bp.route('/api/configuracion-global', methods=['POST'])
-    @require_roles('SUPERADMIN', 'ADMINISTRADOR_GENERAL')
+    @require_roles('SUPERADMIN', 'GERENTE')
     def guardar_configuracion_global():
         data = request.get_json(silent=True) or request.form.to_dict() or {}
         allowed = {
@@ -823,7 +823,7 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
                         'configuracion': resolver_identidad_efectiva(database_path, base_dir, None, data_dir)}), 200
 
     @bp.route('/api/configuracion-global/logo', methods=['POST'])
-    @require_roles('SUPERADMIN', 'ADMINISTRADOR_GENERAL')
+    @require_roles('SUPERADMIN', 'GERENTE')
     def subir_logo_global():
         tipo = (request.form.get('tipo') or 'principal').strip().lower()
         mapping = {
@@ -841,7 +841,7 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
         return jsonify({'message': 'Logo global actualizado correctamente.', 'configuracion': cfg}), 200
 
     @bp.route('/api/configuracion-global/foto-admin', methods=['POST'])
-    @require_roles('SUPERADMIN', 'ADMINISTRADOR_GENERAL')
+    @require_roles('SUPERADMIN', 'GERENTE')
     def subir_foto_admin_global():
         try:
             cfg = _save_global_asset('foto-admin', 'foto_administrador_general_key')
@@ -850,7 +850,7 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
         return jsonify({'message': 'Foto del administrador general actualizada correctamente.', 'configuracion': cfg}), 200
 
     @bp.route('/api/configuracion-global/favicon', methods=['POST'])
-    @require_roles('SUPERADMIN', 'ADMINISTRADOR_GENERAL')
+    @require_roles('SUPERADMIN', 'GERENTE')
     def subir_favicon_global():
         try:
             cfg = _save_global_asset('favicon', 'favicon_global_key')
