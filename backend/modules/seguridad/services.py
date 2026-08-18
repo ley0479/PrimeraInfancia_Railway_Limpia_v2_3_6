@@ -521,34 +521,48 @@ def ensure_security_schema(database_path: str) -> None:
                 for col, definition in MULTITENANT_COLUMNS.items():
                     ensure_column(cur, row['name'], col, definition)
 
+        # Las columnas aditivas ya son un estado válido y recuperable. Confirmar
+        # aquí libera locks DDL antes de sembrar catálogos. Esto es importante en
+        # Railway, donde la instancia anterior puede seguir atendiendo mientras
+        # arranca el nuevo despliegue.
+        conn.commit()
+
         now = now_iso()
-        cur.execute("""
-        INSERT INTO fundaciones
-        (id, nombre, nit, representante, estado, plan, fecha_inicio, fecha_vencimiento, fecha_creacion)
-        SELECT 1, 'Entorno de pruebas', NULL, NULL, 'ACTIVA', 'PRUEBA', ?, ?, ?
-        WHERE NOT EXISTS (SELECT 1 FROM fundaciones WHERE id = 1)
-        """, (now[:10], (datetime.now() + timedelta(days=3650)).date().isoformat(), now))
+        # No enviar INSERT ... WHERE NOT EXISTS contra una base madura: aunque
+        # finalmente no escriba, PostgreSQL adquiere RowExclusiveLock y puede
+        # quedar esperando locks de la instancia Railway anterior.
+        if not cur.execute("SELECT 1 FROM fundaciones WHERE id = 1").fetchone():
+            cur.execute("""
+            INSERT INTO fundaciones
+            (id, nombre, nit, representante, estado, plan, fecha_inicio, fecha_vencimiento, fecha_creacion)
+            VALUES (1, 'Entorno de pruebas', NULL, NULL, 'ACTIVA', 'PRUEBA', ?, ?, ?)
+            """, (now[:10], (datetime.now() + timedelta(days=3650)).date().isoformat(), now))
 
         for rol in ROLES_SISTEMA:
-            cur.execute("""
-            INSERT INTO roles_sistema (nombre, descripcion, activo, fecha_creacion)
-            SELECT ?, ?, 1, ? WHERE NOT EXISTS (SELECT 1 FROM roles_sistema WHERE nombre = ?)
-            """, (rol, f'Rol {rol}', now, rol))
+            if not cur.execute("SELECT 1 FROM roles_sistema WHERE nombre = ?", (rol,)).fetchone():
+                cur.execute(
+                    "INSERT INTO roles_sistema (nombre, descripcion, activo, fecha_creacion) VALUES (?, ?, 1, ?)",
+                    (rol, f'Rol {rol}', now),
+                )
 
         permisos = sorted({perm for perms in PERMISOS_BASE.values() for perm in perms})
         for perm in permisos:
-            cur.execute("""
-            INSERT INTO permisos_sistema (codigo, descripcion, modulo, fecha_creacion)
-            SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM permisos_sistema WHERE codigo = ?)
-            """, (perm, perm, perm.split('.')[0] if '.' in perm else 'GLOBAL', now, perm))
+            if not cur.execute("SELECT 1 FROM permisos_sistema WHERE codigo = ?", (perm,)).fetchone():
+                cur.execute(
+                    "INSERT INTO permisos_sistema (codigo, descripcion, modulo, fecha_creacion) VALUES (?, ?, ?, ?)",
+                    (perm, perm, perm.split('.')[0] if '.' in perm else 'GLOBAL', now),
+                )
         for rol, perms in PERMISOS_BASE.items():
             for perm in perms:
-                cur.execute("""
-                INSERT INTO rol_permiso (rol, permiso_codigo, fecha_creacion)
-                SELECT ?, ?, ? WHERE NOT EXISTS (
-                    SELECT 1 FROM rol_permiso WHERE rol = ? AND permiso_codigo = ?
-                )
-                """, (rol, perm, now, rol, perm))
+                exists = cur.execute(
+                    "SELECT 1 FROM rol_permiso WHERE rol = ? AND permiso_codigo = ?",
+                    (rol, perm),
+                ).fetchone()
+                if not exists:
+                    cur.execute(
+                        "INSERT INTO rol_permiso (rol, permiso_codigo, fecha_creacion) VALUES (?, ?, ?)",
+                        (rol, perm, now),
+                    )
 
         if not security_tables_complete:
             for table in MULTITENANT_TABLES:

@@ -99,6 +99,19 @@ def run() -> None:
     require("required_blueprints" in init_source and "missing_blueprints" in init_source, "Falta gate de módulos críticos")
     require("Módulos críticos no registrados" in init_source, "El startup no bloquea despliegues parciales")
 
+    security_source = (BACKEND / "modules" / "seguridad" / "services.py").read_text(encoding="utf-8")
+    require(
+        'SELECT 1 FROM fundaciones WHERE id = 1' in security_source,
+        "La fundación semilla no se consulta antes de intentar escribir",
+    )
+    require(
+        "SELECT 1, 'Entorno de pruebas'" not in security_source,
+        "Persistió INSERT...SELECT que toma RowExclusiveLock aunque la semilla exista",
+    )
+    ddl_commit = security_source.find("libera locks DDL")
+    seed_start = security_source.find("now = now_iso()", ddl_commit)
+    require(ddl_commit >= 0 and seed_start > ddl_commit, "La siembra no libera locks DDL antes de empezar")
+
     app_source = (BACKEND / "app.py").read_text(encoding="utf-8")
     require("/api/system/version" in app_source, "Falta endpoint de huella exacta de versión")
     require("RAILWAY_GIT_COMMIT_SHA" in app_source, "Falta SHA del commit en diagnóstico")
