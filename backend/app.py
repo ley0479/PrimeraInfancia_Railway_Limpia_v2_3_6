@@ -8956,7 +8956,7 @@ def buscar_archivo_generado(unidad, formato):
         if not os.path.isdir(OUTPUT_FOLDER):
             return []
         for nombre in os.listdir(OUTPUT_FOLDER):
-            if not nombre.lower().endswith(('.xlsx', '.xls', '.xlsm', '.pdf')):
+            if not nombre.lower().endswith(('.xlsx', '.xls', '.xlsm', '.pdf', '.docx')):
                 continue
             if not nombre_corresponde_unidad(nombre):
                 continue
@@ -9259,11 +9259,12 @@ def _alpha61_generar_rpp_grupo(unidad, grupo):
     grupo_cod = _alpha61_normalizar_grupo_rpp(grupo)
     if not grupo_cod:
         return None
-    _alpha61_generar_formatos_unidad(unidad)
     nombre = _alpha61_buscar_archivo_rpp_exacto(unidad, grupo_cod)
     if nombre:
         return nombre
-    # Respaldo oficial: genera solo el grupo solicitado con el motor oficial existente.
+    # Generación directa: nunca producir todo el paquete de la UDS para descargar
+    # un único grupo RPP. Esto mantiene rápidas las fundaciones nuevas, que aún no
+    # tienen artefactos previamente generados en su carpeta tenant.
     legacy = GRUPOS_RPP_ALPHA61[grupo_cod]['legacy']
     try:
         _alpha59_generar_oficial_desde_template('rpp', unidad, grupo=legacy)
@@ -9934,6 +9935,42 @@ def _alpha59_intentar_generar_faltante(unidad, formato):
     formato_norm = _alpha57_normalizar_formato_descarga(formato)
     try:
         usuarios = _alpha59_obtener_usuarios_unidad(unidad)
+        if not usuarios:
+            log_alpha56_formato('ALPHA76_GENERACION_DIRECTA_SIN_USUARIOS', unidad=unidad, formato=formato)
+            return None
+
+        # ALPHA76: los formatos solicitables desde el tablero tienen generadores
+        # directos. Atenderlos antes del fallback histórico evita generar RPP,
+        # RAM, Bienestarina y complementarios juntos para una sola descarga.
+        try:
+            mes = int(request.args.get('mes') or request.args.get('month') or datetime.now().month) if has_request_context() else datetime.now().month
+        except Exception:
+            mes = datetime.now().month
+        try:
+            anio = int(request.args.get('anio') or request.args.get('año') or request.args.get('year') or datetime.now().year) if has_request_context() else datetime.now().year
+        except Exception:
+            anio = datetime.now().year
+        mes = max(1, min(12, mes))
+        anio = max(2020, min(2100, anio))
+
+        directos = {
+            'listado_usuarios': lambda: _alpha68_generar_listado_usuarios(unidad, usuarios, mes, anio),
+            'relacion_mensual': lambda: _alpha68_generar_relacion_mensual(unidad, usuarios, mes, anio),
+            'distribucion_alimentos': lambda: _alpha68_generar_distribucion_alimentos(unidad, usuarios, mes, anio),
+        }
+        if formato_norm in directos:
+            ruta = directos[formato_norm]()
+            nombre = os.path.basename(os.fspath(ruta)) if ruta else None
+            log_alpha56_formato(
+                'ALPHA76_GENERACION_DIRECTA_OK', unidad=unidad, formato=formato_norm,
+                archivo=nombre, usuarios=len(usuarios), mes=mes, anio=anio,
+            )
+            return nombre
+        if str(formato).startswith('rpp_') or formato_norm == 'rpp':
+            return _alpha59_generar_oficial_desde_template('rpp', unidad, grupo=formato)
+        if formato_norm == 'bienestarina':
+            return _alpha65_generar_bienestarina_para_uds(unidad, mes=mes, anio=anio)
+
         if usuarios:
             try:
                 inyectar_datos_en_plantillas(unidad, usuarios, options={'mes': datetime.now().month, 'anio': datetime.now().year, 'año': datetime.now().year})
@@ -9943,10 +9980,6 @@ def _alpha59_intentar_generar_faltante(unidad, formato):
                     return nombre
             except Exception as exc:
                 log_alpha56_formato('ALPHA59_GENERAR_HISTORICO_ERROR', unidad=unidad, formato=formato, error=str(exc))
-        if str(formato).startswith('rpp_') or formato_norm == 'rpp':
-            return _alpha59_generar_oficial_desde_template('rpp', unidad, grupo=formato)
-        if formato_norm == 'bienestarina':
-            return _alpha59_generar_oficial_desde_template('bienestarina', unidad)
     except Exception as exc:
         log_alpha56_formato('ALPHA59_GENERAR_FALTANTE_ERROR', unidad=unidad, formato=formato, error=str(exc))
     return None
@@ -10181,17 +10214,9 @@ def _alpha64_generar_rpp_resiliente(unidad, grupo):
         if existente:
             return existente
 
-        # Ruta histórica: genera formatos de UDS, luego busca grupo exacto.
-        try:
-            _alpha61_generar_formatos_unidad(unidad)
-            nombre = _alpha61_buscar_archivo_rpp_exacto(unidad, grupo_cod)
-            if nombre:
-                _alpha64_log('RPP_GENERADO_CAMINO_HISTORICO', unidad=unidad, grupo=grupo_cod, archivo=nombre)
-                return nombre
-        except Exception as exc:
-            _alpha64_log('RPP_CAMINO_HISTORICO_ERROR', unidad=unidad, grupo=grupo_cod, error=str(exc), traceback=traceback.format_exc())
-
-        # Ruta oficial: genera solo el grupo solicitado.
+        # Ruta oficial directa: genera solo el grupo solicitado. El camino
+        # histórico generaba todos los formatos de la UDS y era la diferencia
+        # de rendimiento observable en fundaciones sin archivos previos.
         try:
             legacy = GRUPOS_RPP_ALPHA61[grupo_cod]['legacy']
             _alpha59_generar_oficial_desde_template('rpp', unidad, grupo=legacy)
