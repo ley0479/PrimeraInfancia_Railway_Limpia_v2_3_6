@@ -1,0 +1,53 @@
+{
+  "version": "2.3.7-railway-operativa",
+  "sanitizada": true,
+  "contiene_datos_reales": false,
+  "descripcion": "Semillas gestionadas para Railway: plantillas oficiales sanitizadas, RAM histórico versionado y sin beneficiarios, usuarios ni datos institucionales reales.",
+  "plantillas": [
+    {
+      "archivo": "informe_estadistico/logo_primera_infancia.png",
+      "sha256": "be5411020299e6c1a33d7bfa60332128d48cbac5331939aef51500d16f529c36",
+      "bytes": 3387
+    },
+    {
+      "archivo": "informe_estadistico/plantilla_informe_estadistico_primera_infancia.docx",
+      "sha256": "eb6f1219a7eab0352aced79fbb2bddb5f42dd557fc5b0ee20c914751155dde12",
+      "bytes": 41845
+    },
+    {
+      "archivo": "oficiales/plantilla_bienestarina_oficial.xlsx",
+      "sha256": "334a8dc7ffc1cb07336ae48f6d8eb88448688fa5d1439aa3931ef2fd76402f81",
+      "bytes": 11322
+    },
+    {
+      "archivo": "oficiales/plantilla_bienestarina_oficial_v2026.xlsx",
+      "sha256": "334a8dc7ffc1cb07336ae48f6d8eb88448688fa5d1439aa3931ef2fd76402f81",
+      "bytes": 11322
+    },
+    {
+      "archivo": "oficiales/plantilla_ram_oficial_v2_historica.xlsx",
+      "sha256": "69fabc7db8460c11a75a56eb7a382279c2673b49bdce602146fde7293444f666",
+      "bytes": 25357
+    },
+    {
+      "archivo": "oficiales/plantilla_ram_oficial_v3.xlsx",
+      "sha256": "a6b4c9412f7c72a19b9d5e842fa5ffd4b876c7d0f0c3d5c8e140b5287d700753",
+      "bytes": 45591
+    },
+    {
+      "archivo": "oficiales/plantilla_rpp_oficial.xlsx",
+      "sha256": "526fa8ad134676a7ce529838845d2e85c68d7eeabe794e5894dcc524e06a84da",
+      "bytes": 24123
+    },
+    {
+      "archivo": "oficiales/plantilla_rpp_oficial_v2026.xlsx",
+      "sha256": "526fa8ad134676a7ce529838845d2e85c68d7eeabe794e5894dcc524e06a84da",
+      "bytes": 24123
+    },
+    {
+      "archivo": "oficiales/templates_manifest.json",
+      "sha256": "541d90179689623eea3223c0993de1354a83c700658327ffa20d6a05db240245",
+      "bytes": 4050
+    }
+  ]
+}

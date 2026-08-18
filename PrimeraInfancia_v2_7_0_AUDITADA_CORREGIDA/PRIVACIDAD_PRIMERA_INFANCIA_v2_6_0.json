@@ -1,0 +1,19 @@
+{
+  "version": "2.6.0-salud-nutricion-postgresql",
+  "generated_at": "2026-08-05",
+  "status": "PASS",
+  "checks": {
+    "no_database_runtime_in_package": true,
+    "no_env_secrets": true,
+    "no_cloudflared_binary": true,
+    "no_operational_logs": true,
+    "tenant_storage_isolation": true,
+    "sensitive_download_authorization": true,
+    "passwords_not_logged": true,
+    "database_url_masked_in_diagnostics": true,
+    "human_review_for_health_outputs": true
+  },
+  "limitations": [
+    "La prueba de privacidad con datos reales debe realizarse en entorno institucional autorizado."
+  ]
+}

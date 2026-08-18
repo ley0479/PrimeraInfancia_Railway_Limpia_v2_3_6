@@ -1,0 +1,44 @@
+
+/* Estilos aislados del módulo Gestión Pedagógica */
+.gp-module .gp-tab-active {
+    background: rgba(79, 70, 229, 0.18);
+    color: rgb(129, 140, 248);
+    border-color: rgba(99, 102, 241, 0.35);
+}
+
+.gp-module .gp-card {
+    border: 1px solid rgb(30 41 59);
+    background: rgba(15, 23, 42, 0.76);
+    border-radius: 1rem;
+    padding: 1rem;
+}
+
+.gp-module .gp-input {
+    width: 100%;
+    border-radius: 0.75rem;
+    border: 1px solid rgb(51 65 85);
+    background: rgb(2 6 23);
+    color: rgb(226 232 240);
+    padding: 0.7rem 0.85rem;
+    font-size: 0.875rem;
+}
+
+.gp-module .gp-input:focus {
+    outline: none;
+    border-color: rgb(99 102 241);
+    box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.35);
+}
+
+.gp-module .gp-panel {
+    border: 1px solid rgb(30 41 59);
+    background: rgb(2 6 23);
+    border-radius: 1rem;
+    overflow: hidden;
+}
+
+.gp-module .gp-state {
+    border-radius: 9999px;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.7rem;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+}

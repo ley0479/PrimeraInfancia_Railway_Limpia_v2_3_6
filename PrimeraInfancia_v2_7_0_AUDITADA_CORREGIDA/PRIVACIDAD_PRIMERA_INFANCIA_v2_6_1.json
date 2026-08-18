@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "version": "2.6.1-postgresql-integrity-stability",
+  "generated_at": "2026-08-06",
+  "status": "PASS",
+  "checks": {
+    "runtime_databases_or_logs_in_package": [],
+    "env_file_in_package": false,
+    "example_uses_placeholders": true,
+    "postgresql_url_is_placeholder": true,
+    "observability_logs_request_bodies": false,
+    "observability_logs_cookies_or_tokens": false,
+    "observability_logs_full_client_ip": false,
+    "metrics_token_query_parameter_allowed": false,
+    "migration_reports_mask_database_password": true,
+    "safe_repair_modifies_business_data": false,
+    "official_template_hashes_preserved": true
+  },
+  "notes": [
+    "La línea base contiene nombres operativos de UDS, no participantes ni credenciales.",
+    "Los reportes de migración deben almacenarse en rutas privadas porque pueden revelar nombres de tablas y conteos.",
+    "No incluya DATABASE_URL real, dumps ni evidencias diligenciadas en Git o en el ZIP."
+  ]
+}

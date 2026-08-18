@@ -1,0 +1,96 @@
+{
+  "root": "PrimeraInfancia_Multifundacion_Operativa_v2_4_3",
+  "checks": 17,
+  "passed": 17,
+  "failed": 0,
+  "skipped": 0,
+  "results": [
+    {
+      "name": "Archivos obligatorios",
+      "status": "PASS",
+      "detail": "42 presentes; manifiesto íntegro"
+    },
+    {
+      "name": "Sin enlaces simbólicos",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Sin bytecode ni cachés Python",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Sin bases, .env, logs ni respaldos operativos",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Directorios runtime vacíos",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Sintaxis Python",
+      "status": "PASS",
+      "detail": "150 archivos"
+    },
+    {
+      "name": "JSON válido",
+      "status": "PASS",
+      "detail": "14 archivos"
+    },
+    {
+      "name": "Sintaxis Bash",
+      "status": "PASS",
+      "detail": "2 scripts"
+    },
+    {
+      "name": "Sintaxis JavaScript",
+      "status": "PASS",
+      "detail": "32 archivos"
+    },
+    {
+      "name": "Manifiesto SHA-256 de plantillas sanitizadas",
+      "status": "PASS",
+      "detail": "9 archivos"
+    },
+    {
+      "name": "Integridad Office y sin relaciones externas",
+      "status": "PASS",
+      "detail": "7 archivos"
+    },
+    {
+      "name": "Activos operativos UDS/RPP/RAM y diagnósticos",
+      "status": "PASS",
+      "detail": "32 UDS, 4 grupos/49 productos/17 equivalencias RPP, RAM V2/V3 y UI diagnóstica"
+    },
+    {
+      "name": "Cobertura de autorización por roles",
+      "status": "PASS",
+      "detail": "318 rutas API, 55 familias declaradas"
+    },
+    {
+      "name": "Configuración productiva y bootstrap seguro",
+      "status": "PASS",
+      "detail": "config multi-fundación, bootstrap, roles e integridad OK"
+    },
+    {
+      "name": "Invariantes de privacidad y seguridad",
+      "status": "PASS",
+      "detail": "sin datos runtime, secretos, tokens en URL ni fallbacks públicos a localhost"
+    },
+    {
+      "name": "Aislamiento multi-fundación fail-closed",
+      "status": "PASS",
+      "detail": "migración, SQLite, Core, JOIN, storage, administración, recuperación, login y Quick Tunnel 2.4.3 OK"
+    },
+    {
+      "name": "Configuración Railway/Docker",
+      "status": "PASS",
+      "detail": "Dockerfile, healthcheck, reinicio y OCR presentes"
+    }
+  ],
+  "version": "2.4.3-tunel-cloudflare-corregido",
+  "generated_at": "2026-08-04"
+}

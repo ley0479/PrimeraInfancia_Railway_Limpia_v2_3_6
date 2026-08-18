@@ -1,0 +1,21 @@
+{
+  "version": "2.5.1-auth-login-estable",
+  "generated_at": "2026-08-05",
+  "status": "PASS",
+  "checks": {
+    "databases_in_release": 0,
+    "env_files_with_secrets": 0,
+    "passwords_in_logs": 0,
+    "tokens_in_urls": 0,
+    "runtime_logs_in_release": 0,
+    "backups_in_release": 0,
+    "personal_data_added": false,
+    "schema_changed": false,
+    "roles_changed": false
+  },
+  "notes": [
+    "Las métricas de prueba usan usuarios y direcciones ficticias.",
+    "Las contraseñas nunca se registran en logs ni resultados.",
+    "Los identificadores de solicitud no contienen datos personales."
+  ]
+}

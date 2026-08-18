@@ -1,0 +1,36 @@
+{
+  "version": "2.5.1-auth-login-estable",
+  "generated_at": "2026-08-05",
+  "status": "PASS",
+  "metrics": {
+    "parallel_sessions": {
+      "requested": 8,
+      "active": 8,
+      "unique_tokens": 8,
+      "max_seconds": 0.0232,
+      "mean_seconds": 0.0104,
+      "max_db_retries": 0
+    },
+    "transient_lock": {
+      "hold_seconds": 0.35,
+      "login_seconds": 0.3726,
+      "db_retries": 2,
+      "result": "success"
+    },
+    "persistent_lock": {
+      "hold_seconds": 1.1,
+      "response_seconds": 0.4116,
+      "result": "sqlite_busy_bounded",
+      "false_rate_limit_rows": 0
+    },
+    "route_login": {
+      "devices": 2,
+      "distinct_tokens": 2,
+      "active_sessions_after": 11,
+      "result": "success"
+    },
+    "static_contract": {
+      "result": "success"
+    }
+  }
+}

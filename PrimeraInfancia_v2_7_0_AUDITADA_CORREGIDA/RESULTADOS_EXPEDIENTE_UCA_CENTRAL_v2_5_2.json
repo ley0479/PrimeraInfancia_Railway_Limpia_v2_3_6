@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "schema_version": 2,
+  "componentes_integrados": 8,
+  "pruebas": [
+    "vista única por UCA",
+    "aislamiento por fundación",
+    "lectura en vivo sin duplicación",
+    "índice documental idempotente",
+    "alertas",
+    "cronograma",
+    "indicadores",
+    "paquete de supervisión ampliado"
+  ],
+  "version": "2.5.2-expediente-uca-central",
+  "generated_at": "2026-08-05"
+}

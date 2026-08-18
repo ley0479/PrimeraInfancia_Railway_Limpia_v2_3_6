@@ -1,0 +1,153 @@
+{
+  "formato": "RAM",
+  "codigo": "F27.MT1.PP",
+  "version": "3",
+  "fecha_vigencia": "2026-08-01",
+  "hoja_fuente": "INSTRUCCIONES DILIGENCIAMIENTO",
+  "solo_lectura": true,
+  "campos": [
+    {
+      "id": "eas_pds",
+      "titulo": "Entidad Administradora del Servicio (EAS) o Prestador de Servicio (PDS)",
+      "aliases": ["EAS", "PDS", "entidad administradora"],
+      "reglas": [
+        "Registre el nombre completo y oficial de la Entidad Administradora del Servicio cuando aplique.",
+        "Cuando el servicio sea operado directamente por el ICBF, registre exactamente: Operación Directa."
+      ]
+    },
+    {
+      "id": "nit",
+      "titulo": "NIT",
+      "aliases": ["número de identificación tributaria"],
+      "reglas": [
+        "Diligencie el NIT completo de la EAS, sin puntos ni guiones.",
+        "Para Operación Directa del ICBF, registre el consecutivo asignado para operación directa de la UDS."
+      ]
+    },
+    {
+      "id": "tipo_documento",
+      "titulo": "Tipo de documento",
+      "aliases": ["tipo doc", "documento tipo"],
+      "valores_permitidos": ["RC", "TI", "CC", "CE", "PA", "SD"],
+      "reglas": ["Utilice únicamente los códigos oficiales RC, TI, CC, CE, PA o SD."]
+    },
+    {
+      "id": "numero_documento",
+      "titulo": "Número de documento",
+      "aliases": ["documento", "NUI", "CUÉNTAME"],
+      "reglas": [
+        "Registre el número completo del documento.",
+        "Conserve las letras exactamente como aparecen.",
+        "Para un participante sin documento, use el número asignado por CUÉNTAME."
+      ]
+    },
+    {
+      "id": "nombres",
+      "titulo": "Nombres del participante",
+      "aliases": ["primer nombre", "segundo nombre"],
+      "reglas": [
+        "Diligencie los nombres exactamente como aparecen en el documento.",
+        "No use abreviaturas.",
+        "El segundo nombre puede quedar en blanco.",
+        "En nombres compuestos con de o del, conserve ese componente en el segundo nombre."
+      ]
+    },
+    {
+      "id": "apellidos",
+      "titulo": "Apellidos del participante",
+      "aliases": ["primer apellido", "segundo apellido"],
+      "reglas": [
+        "Diligencie los apellidos exactamente como aparecen en el documento.",
+        "El segundo apellido puede quedar en blanco.",
+        "En apellidos compuestos con de o del, conserve ese componente en el segundo apellido."
+      ]
+    },
+    {
+      "id": "edad",
+      "titulo": "Edad del participante",
+      "aliases": ["años", "meses", "fecha de nacimiento"],
+      "reglas": [
+        "Calcule la edad cumplida al primer día del mes de diligenciamiento.",
+        "Si cumple años durante el mes, conserve la edad del primer día.",
+        "Registre años completos y meses adicionales por separado."
+      ]
+    },
+    {
+      "id": "control_asistencia",
+      "titulo": "Control diario de asistencia",
+      "aliases": ["asistencia", "inasistencia", "A", "I"],
+      "valores_permitidos": ["A", "I", "/", ""],
+      "reglas": [
+        "Registre A cuando el participante asista e I cuando no asista.",
+        "La explicación de cada inasistencia debe quedar en el registro de novedades.",
+        "El registro diario debe realizarse dentro de las tres primeras horas de atención."
+      ]
+    },
+    {
+      "id": "totales_mensuales",
+      "titulo": "Total mensual",
+      "aliases": ["total asistencias", "total inasistencias"],
+      "reglas": [
+        "Cuente por participante las marcas A e I al finalizar el mes.",
+        "Cada página debe contener totales independientes de asistencias e inasistencias."
+      ]
+    },
+    {
+      "id": "causa_retiro",
+      "titulo": "Causa de retiro",
+      "aliases": ["retiro", "motivo retiro"],
+      "valores_permitidos": ["D", "V", "T", "S", "I", "M", "O"],
+      "reglas": [
+        "Use únicamente D, V, T, S, I, M u O.",
+        "La explicación detallada debe quedar en el Formato de Novedades.",
+        "Desde la fecha de retiro hasta el final del mes registre una raya oblicua /."
+      ]
+    },
+    {
+      "id": "totales_finales",
+      "titulo": "Totales finales del mes",
+      "aliases": ["menores de 6 meses", "mayores de 6 meses", "gestantes"],
+      "reglas": [
+        "Diligencie estos campos únicamente al finalizar el mes.",
+        "Cuente participantes que asistieron al menos un día, según su categoría."
+      ]
+    },
+    {
+      "id": "paginacion",
+      "titulo": "Paginación para más de veinte participantes",
+      "aliases": ["página X de Y", "más de 20"],
+      "reglas": [
+        "Use una página adicional del mismo formato cuando existan más de veinte participantes.",
+        "Indique Hoja X de Y en la parte superior derecha.",
+        "No deje páginas sin totalizar."
+      ]
+    },
+    {
+      "id": "dias_no_atencion",
+      "titulo": "Días programados de no atención",
+      "aliases": ["festivos", "reflexión pedagógica", "cualificación"],
+      "reglas": [
+        "Sombree de gris la columna del día programado de no atención.",
+        "Registre claramente la novedad correspondiente."
+      ]
+    },
+    {
+      "id": "ingreso_mes",
+      "titulo": "Participantes que ingresan durante el mes",
+      "aliases": ["fecha de ingreso", "nuevo ingreso"],
+      "reglas": [
+        "Registre al participante desde el primer día de atención presencial.",
+        "Deje en blanco los días anteriores al ingreso."
+      ]
+    },
+    {
+      "id": "correccion_error",
+      "titulo": "Corrección de errores",
+      "aliases": ["nota aclaratoria", "error diligenciamiento"],
+      "reglas": [
+        "Anexe una nota aclaratoria al RAM con la descripción detallada del error.",
+        "La aclaración debe estar firmada por la coordinación del servicio."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+/* Motor maestro de impresión — PrimeraInfancia v2.3.0-alpha.13 */
+@media print {
+    .no-print,
+    button,
+    nav,
+    aside,
+    header,
+    .sidebar,
+    .topbar,
+    .menu,
+    .acciones,
+    .filtros,
+    .buscador,
+    #loading-overlay,
+    #login-screen {
+        display: none !important;
+    }
+
+    body {
+        background: #fff !important;
+        color: #000 !important;
+    }
+
+    main,
+    section,
+    .print-area {
+        background: #fff !important;
+        color: #000 !important;
+        box-shadow: none !important;
+    }
+
+    .print-area,
+    .print-target-active,
+    .formato-rpp,
+    .formato-bienestarina,
+    .formato-ram {
+        margin: 0 auto !important;
+        page-break-inside: avoid;
+    }
+
+    table {
+        border-collapse: collapse !important;
+        page-break-inside: auto;
+    }
+
+    tr {
+        page-break-inside: avoid;
+        page-break-after: auto;
+    }
+
+    thead {
+        display: table-header-group;
+    }
+
+    tfoot {
+        display: table-footer-group;
+    }
+}

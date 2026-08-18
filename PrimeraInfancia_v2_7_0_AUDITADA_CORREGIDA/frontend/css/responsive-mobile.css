@@ -1,0 +1,515 @@
+/*
+ * Primera Infancia — Capa responsiva para celulares y tabletas.
+ * Versión 2.3.3-responsive-1.
+ *
+ * Alcance: presentación y navegación móvil.
+ * No modifica rutas, permisos, formularios, IDs, lógica de negocio ni formatos.
+ */
+
+:root {
+    --pi-responsive-touch-target: 44px;
+    --pi-responsive-sidebar-width: min(86vw, 20rem);
+    --pi-responsive-safe-bottom: env(safe-area-inset-bottom, 0px);
+    --pi-responsive-safe-left: env(safe-area-inset-left, 0px);
+    --pi-responsive-safe-right: env(safe-area-inset-right, 0px);
+    --pi-responsive-safe-top: env(safe-area-inset-top, 0px);
+}
+
+html {
+    max-width: 100%;
+    overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+body {
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+#app-shell,
+#app-shell > main,
+#app-shell > main > div,
+#app-shell section,
+#app-shell article,
+#app-shell form,
+#app-shell fieldset,
+#app-shell .grid,
+#app-shell .flex {
+    min-width: 0;
+}
+
+img,
+video,
+iframe {
+    max-width: 100%;
+}
+
+img,
+video {
+    height: auto;
+}
+
+canvas {
+    max-width: 100%;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+label,
+button,
+a,
+span {
+    overflow-wrap: break-word;
+}
+
+/* Desplazamiento horizontal accesible para tablas estáticas y dinámicas. */
+.pi-responsive-table-scroll {
+    position: relative;
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto !important;
+    overflow-y: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(34, 211, 238, 0.55) rgba(15, 23, 42, 0.55);
+}
+
+.pi-responsive-table-scroll:focus-visible {
+    outline: 3px solid rgba(34, 211, 238, 0.45);
+    outline-offset: 2px;
+    border-radius: 0.75rem;
+}
+
+.pi-responsive-table-scroll::-webkit-scrollbar {
+    height: 0.65rem;
+}
+
+.pi-responsive-table-scroll::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.55);
+    border-radius: 999px;
+}
+
+.pi-responsive-table-scroll::-webkit-scrollbar-thumb {
+    background: rgba(34, 211, 238, 0.5);
+    border-radius: 999px;
+}
+
+.pi-responsive-table-scroll > table,
+table.pi-responsive-wide-table {
+    width: max(100%, var(--pi-responsive-table-min-width, 100%));
+    max-width: none;
+}
+
+.pi-responsive-scroll-hint {
+    display: none;
+    margin: 0.35rem 0 0;
+    color: rgb(148 163 184);
+    font-size: 0.72rem;
+    line-height: 1.2;
+}
+
+/* Calendarios amplios conservan sus siete columnas sin deformarlas. */
+.pi-responsive-calendar-scroll {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+.pi-responsive-calendar-scroll > .ci-calendar-grid {
+    min-width: 42rem;
+}
+
+/* Controles creados por la capa móvil. */
+#pi-mobile-menu-toggle,
+#pi-mobile-menu-overlay {
+    display: none;
+}
+
+#pi-mobile-menu-toggle {
+    flex: 0 0 auto;
+    width: var(--pi-responsive-touch-target);
+    height: var(--pi-responsive-touch-target);
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgb(51 65 85);
+    border-radius: 0.85rem;
+    background: rgba(15, 23, 42, 0.92);
+    color: rgb(226 232 240);
+    box-shadow: 0 8px 24px rgba(2, 6, 23, 0.3);
+    touch-action: manipulation;
+}
+
+#pi-mobile-menu-toggle:hover,
+#pi-mobile-menu-toggle:focus-visible {
+    border-color: rgba(34, 211, 238, 0.55);
+    color: rgb(165 243 252);
+}
+
+#pi-mobile-menu-toggle .pi-mobile-menu-icon {
+    position: relative;
+    width: 1.25rem;
+    height: 0.9rem;
+}
+
+#pi-mobile-menu-toggle .pi-mobile-menu-icon::before,
+#pi-mobile-menu-toggle .pi-mobile-menu-icon::after,
+#pi-mobile-menu-toggle .pi-mobile-menu-icon span {
+    content: '';
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    border-radius: 999px;
+    background: currentColor;
+    transition: transform 180ms ease, opacity 180ms ease, top 180ms ease;
+}
+
+#pi-mobile-menu-toggle .pi-mobile-menu-icon::before { top: 0; }
+#pi-mobile-menu-toggle .pi-mobile-menu-icon span { top: calc(50% - 1px); }
+#pi-mobile-menu-toggle .pi-mobile-menu-icon::after { top: calc(100% - 2px); }
+
+body.pi-mobile-menu-open #pi-mobile-menu-toggle .pi-mobile-menu-icon::before {
+    top: calc(50% - 1px);
+    transform: rotate(45deg);
+}
+
+body.pi-mobile-menu-open #pi-mobile-menu-toggle .pi-mobile-menu-icon span {
+    opacity: 0;
+}
+
+body.pi-mobile-menu-open #pi-mobile-menu-toggle .pi-mobile-menu-icon::after {
+    top: calc(50% - 1px);
+    transform: rotate(-45deg);
+}
+
+#pi-mobile-menu-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 79;
+    background: rgba(2, 6, 23, 0.72);
+    opacity: 0;
+    pointer-events: none;
+    backdrop-filter: blur(2px);
+    transition: opacity 180ms ease;
+}
+
+/* Celulares pequeños */
+@media (max-width: 480px) {
+    #login-screen {
+        padding: max(0.75rem, var(--pi-responsive-safe-top)) max(0.75rem, var(--pi-responsive-safe-right)) max(0.75rem, var(--pi-responsive-safe-bottom)) max(0.75rem, var(--pi-responsive-safe-left)) !important;
+        align-items: flex-start !important;
+        overflow-y: auto;
+    }
+
+    #login-screen > div {
+        margin-block: auto;
+        padding: 1.15rem !important;
+        border-radius: 1.25rem !important;
+    }
+
+    #login-screen h1 {
+        font-size: clamp(1.25rem, 7vw, 1.65rem) !important;
+    }
+
+    #app-shell > main > header {
+        gap: 0.35rem !important;
+        padding-inline: 0.45rem !important;
+    }
+
+    #app-shell > main > header h1 {
+        font-size: clamp(0.9rem, 4.4vw, 1.05rem) !important;
+    }
+
+    #app-shell > main > header > div:last-child {
+        gap: 0.25rem !important;
+    }
+
+    #app-shell > main > div {
+        padding: 0.65rem !important;
+        gap: 0.75rem;
+    }
+
+    #app-shell section > div,
+    #app-shell article,
+    #app-shell [class*="rounded-3xl"],
+    #app-shell [class*="rounded-2xl"] {
+        max-width: 100%;
+    }
+
+    .pi-responsive-scroll-hint {
+        display: block;
+    }
+
+    .ci-modal,
+    .alpha69-modal,
+    #alpha70-modal .a70-modal-card,
+    #tm-selector-modal .tm-modal-card {
+        border-radius: 0.85rem !important;
+    }
+}
+
+/* Celulares */
+@media (max-width: 767px) {
+    body.pi-mobile-menu-open {
+        overflow: hidden;
+    }
+
+    #app-shell > main > div {
+        padding: 0.75rem !important;
+    }
+
+    #app-shell main [class*="grid-cols-2"],
+    #app-shell main [class*="grid-cols-3"],
+    #app-shell main [class*="grid-cols-4"],
+    #app-shell main [class*="md:grid-cols-2"],
+    #app-shell main [class*="md:grid-cols-3"],
+    #app-shell main [class*="md:grid-cols-4"],
+    #app-shell main [class*="lg:grid-cols-2"],
+    #app-shell main [class*="lg:grid-cols-3"],
+    #app-shell main [class*="lg:grid-cols-4"],
+    #app-shell main [class*="xl:grid-cols-2"],
+    #app-shell main [class*="xl:grid-cols-3"],
+    #app-shell main [class*="xl:grid-cols-4"] {
+        grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    #app-shell main form .flex,
+    #app-shell main .pi-responsive-actions,
+    #app-shell main [class*="actions"] {
+        flex-wrap: wrap;
+    }
+
+    #app-shell main form input:not([type="checkbox"]):not([type="radio"]),
+    #app-shell main form select,
+    #app-shell main form textarea,
+    #login-screen input:not([type="checkbox"]):not([type="radio"]),
+    #login-screen select,
+    #login-screen textarea {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        font-size: 16px !important;
+    }
+
+    #app-shell main button,
+    #app-shell main a[class*="btn"],
+    #login-screen button,
+    .pi-menu-item,
+    .pi-menu-group-toggle {
+        min-height: var(--pi-responsive-touch-target);
+        touch-action: manipulation;
+    }
+
+    input[type="file"] {
+        max-width: 100%;
+        overflow: hidden;
+    }
+
+    .pi-responsive-scroll-hint {
+        display: block;
+    }
+
+    .ci-modal-backdrop,
+    .alpha69-modal-backdrop,
+    #alpha70-modal,
+    #tm-selector-modal {
+        padding: 0.5rem !important;
+        align-items: center !important;
+    }
+
+    .ci-modal,
+    .alpha69-modal,
+    #alpha70-modal .a70-modal-card,
+    #tm-selector-modal .tm-modal-card {
+        width: calc(100vw - 1rem) !important;
+        max-width: calc(100vw - 1rem) !important;
+        max-height: calc(100dvh - 1rem) !important;
+        overflow: auto !important;
+    }
+
+    #alpha70-modal .a70-modal-head,
+    .alpha69-modal header,
+    .ci-modal > .flex:first-child {
+        flex-wrap: wrap;
+    }
+
+    .a70-grid,
+    .alpha69-grid {
+        grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    .a70-table,
+    .ci-preview-table {
+        min-width: 44rem;
+    }
+
+    .dashboard-current-datetime-bar {
+        align-items: stretch !important;
+    }
+
+    [data-current-datetime] {
+        min-width: 0 !important;
+        width: 100%;
+    }
+}
+
+/* Tabletas */
+@media (min-width: 768px) and (max-width: 1024px) {
+    #app-shell > main > div {
+        padding: 1rem !important;
+    }
+
+    #app-shell main [class*="md:grid-cols-3"],
+    #app-shell main [class*="md:grid-cols-4"],
+    #app-shell main [class*="lg:grid-cols-3"],
+    #app-shell main [class*="lg:grid-cols-4"],
+    #app-shell main [class*="xl:grid-cols-3"],
+    #app-shell main [class*="xl:grid-cols-4"] {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    #app-shell main input,
+    #app-shell main select,
+    #app-shell main textarea,
+    #app-shell main button,
+    .pi-menu-item,
+    .pi-menu-group-toggle {
+        min-height: 42px;
+    }
+}
+
+/* Menú desplegable para celulares y tabletas. */
+@media (max-width: 1024px) {
+    #pi-mobile-menu-toggle {
+        display: inline-flex;
+    }
+
+    #pi-mobile-menu-overlay {
+        display: block;
+    }
+
+    body.pi-mobile-menu-open #pi-mobile-menu-overlay {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    #app-shell {
+        position: relative;
+        width: 100%;
+        max-width: 100%;
+    }
+
+    #sidebar-institucional {
+        position: fixed !important;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 80;
+        width: var(--pi-responsive-sidebar-width) !important;
+        max-width: 20rem;
+        padding-top: max(0.75rem, var(--pi-responsive-safe-top)) !important;
+        padding-bottom: max(0.75rem, var(--pi-responsive-safe-bottom)) !important;
+        padding-left: max(0.75rem, var(--pi-responsive-safe-left)) !important;
+        transform: translate3d(-105%, 0, 0);
+        visibility: hidden;
+        transition: transform 220ms ease, visibility 220ms step-end;
+        will-change: transform;
+    }
+
+    body.pi-mobile-menu-open #sidebar-institucional {
+        transform: translate3d(0, 0, 0);
+        visibility: visible;
+        transition: transform 220ms ease, visibility 0s step-start;
+    }
+
+    #app-shell > main {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    #app-shell > main > header {
+        display: grid !important;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        min-height: 4rem;
+        height: auto !important;
+        gap: 0.65rem;
+        padding: 0.55rem max(0.75rem, var(--pi-responsive-safe-right)) 0.55rem max(0.75rem, var(--pi-responsive-safe-left)) !important;
+    }
+
+    #app-shell > main > header > div:first-of-type {
+        min-width: 0;
+    }
+
+    #app-shell > main > header > div:last-of-type {
+        min-width: 0;
+        gap: 0.5rem !important;
+    }
+
+    #app-shell > main > header button {
+        flex: 0 0 auto;
+    }
+
+    .pi-menu-item span,
+    .pi-menu-placeholder span {
+        white-space: normal;
+    }
+}
+
+/* Computadores */
+@media (min-width: 1025px) {
+    #sidebar-institucional {
+        transform: none !important;
+        visibility: visible !important;
+    }
+
+    body.pi-mobile-menu-open {
+        overflow: auto;
+    }
+}
+
+@media (orientation: landscape) and (max-height: 600px) and (max-width: 1024px) {
+    #sidebar-institucional {
+        padding-top: 0.45rem !important;
+        padding-bottom: 0.45rem !important;
+    }
+
+    .pi-menu-group-toggle,
+    .pi-menu-item,
+    .pi-menu-placeholder {
+        min-height: 2.15rem;
+        padding-block: 0.35rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #sidebar-institucional,
+    #pi-mobile-menu-overlay,
+    #pi-mobile-menu-toggle .pi-mobile-menu-icon::before,
+    #pi-mobile-menu-toggle .pi-mobile-menu-icon::after,
+    #pi-mobile-menu-toggle .pi-mobile-menu-icon span {
+        transition-duration: 0.01ms !important;
+    }
+}
+
+@media print {
+    #pi-mobile-menu-toggle,
+    #pi-mobile-menu-overlay,
+    .pi-responsive-scroll-hint {
+        display: none !important;
+    }
+
+    .pi-responsive-table-scroll,
+    .pi-responsive-calendar-scroll {
+        overflow: visible !important;
+    }
+}

@@ -1,0 +1,355 @@
+(function () {
+    const api = () => `${window.backendUrl || window.getBackendUrl?.() || window.getConfiguredBackendUrl?.() || window.location.origin}/api/base-maestra`;
+    const state = { initialized: false, dashboard: null };
+
+    function el(id) { return document.getElementById(id); }
+
+    function esc(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function badge(text) {
+        const t = String(text || '').toUpperCase();
+        let cls = 'bm-badge-info';
+        if (['ACTIVA', 'VALIDADO', 'PUBLICADA', 'VERDE'].some(k => t.includes(k))) cls = 'bm-badge-ok';
+        if (['ADVERTENCIA', 'AMARILLO', 'BORRADOR', 'CARGADO'].some(k => t.includes(k))) cls = 'bm-badge-warn';
+        if (['CRITICA', 'CRÍTICA', 'ROJO', 'RECHAZADO', 'ERROR'].some(k => t.includes(k))) cls = 'bm-badge-danger';
+        return `<span class="bm-badge ${cls}">${esc(text || '—')}</span>`;
+    }
+
+    function setText(id, value) {
+        const node = el(id);
+        if (node) node.textContent = value ?? '0';
+    }
+
+    function mensaje(texto, tipo = 'info') {
+        const box = el('bm-alerta');
+        if (!box) return;
+        const styles = {
+            success: 'bg-emerald-500/10 text-emerald-200 border border-emerald-500/20',
+            error: 'bg-rose-500/10 text-rose-200 border border-rose-500/20',
+            warning: 'bg-amber-500/10 text-amber-200 border border-amber-500/20',
+            info: 'bg-cyan-500/10 text-cyan-200 border border-cyan-500/20'
+        };
+        box.className = `rounded-2xl px-4 py-3 text-sm ${styles[tipo] || styles.info}`;
+        box.textContent = texto;
+        box.classList.remove('hidden');
+    }
+
+
+    function renderResumenCargaFuente(data) {
+        const box = el('bm-carga-resumen-unidades');
+        if (!box) return;
+        const resumen = data?.resumen_unidades || {};
+        const unidades = resumen.unidades_detectadas || data?.unidades_detectadas || [];
+        const alertas = resumen.alertas || data?.alertas_unidades || [];
+        if (!resumen || !Object.keys(resumen).length) {
+            box.classList.add('hidden');
+            box.innerHTML = '';
+            return;
+        }
+        const preview = unidades.slice(0, 40).map(u => `
+            <tr class="hover:bg-slate-900/60">
+                <td class="px-3 py-2 text-slate-200">${esc(u.unidad || u.unidad_normalizada || 'SIN UNIDAD')}</td>
+                <td class="px-3 py-2 text-right text-cyan-200">${esc(u.registros || 0)}</td>
+            </tr>
+        `).join('');
+        const mas = unidades.length > 40 ? `<p class="mt-2 text-xs text-slate-500">Se muestran 40 de ${esc(unidades.length)} unidades detectadas.</p>` : '';
+        box.className = 'mt-4 rounded-2xl border border-cyan-500/20 bg-slate-950/80 p-4 text-sm text-slate-300';
+        box.innerHTML = `
+            <div class="flex flex-col gap-1 mb-3">
+                <strong class="text-cyan-200">Resumen de lectura de Base Maestra</strong>
+                <span class="text-xs text-slate-400">Hoja seleccionada: ${esc(resumen.hoja_seleccionada || '—')} · Unidades detectadas: ${esc(resumen.total_unidades_detectadas ?? unidades.length)} · Registros sin unidad: ${esc(resumen.registros_sin_unidad || 0)}</span>
+            </div>
+            ${alertas.length ? `<div class="mb-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-amber-200 text-xs">${alertas.map(esc).join('<br>')}</div>` : ''}
+            <div class="overflow-auto max-h-72 rounded-xl border border-slate-800">
+                <table class="w-full text-xs">
+                    <thead class="bg-slate-900 text-slate-400"><tr><th class="px-3 py-2 text-left">Unidad detectada</th><th class="px-3 py-2 text-right">Registros</th></tr></thead>
+                    <tbody>${preview || '<tr><td colspan="2" class="px-3 py-4 text-center text-slate-500">No se detectaron unidades.</td></tr>'}</tbody>
+                </table>
+            </div>
+            ${mas}
+        `;
+        box.classList.remove('hidden');
+    }
+
+    async function fetchJson(url, options = {}) {
+        const res = await fetch(url, options);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Error consultando Base Maestra');
+        return data;
+    }
+
+    async function download(url, filenameFallback) {
+        const res = await fetch(url);
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || 'No se pudo descargar el archivo.');
+        }
+        const blob = await res.blob();
+        const disposition = res.headers.get('Content-Disposition') || '';
+        const match = disposition.match(/filename="?([^";]+)"?/i);
+        const filename = match?.[1] || filenameFallback || 'base_maestra.xlsx';
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => {
+            URL.revokeObjectURL(link.href);
+            link.remove();
+        }, 500);
+    }
+
+    function renderCargas(cargas) {
+        const tbody = el('bm-cargas-list');
+        if (!tbody) return;
+        if (!cargas || !cargas.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="px-4 py-8 text-center text-slate-500">Sin cargas.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = cargas.map(c => `
+            <tr class="hover:bg-slate-900/60">
+                <td class="px-4 py-3 text-slate-300">${esc(c.id)}</td>
+                <td class="px-4 py-3">${esc(c.tipo_fuente)}</td>
+                <td class="px-4 py-3">${esc(c.total_registros || 0)}</td>
+                <td class="px-4 py-3">${badge(c.estado)}</td>
+                <td class="px-4 py-3">
+                    <button onclick="baseMaestraValidarCarga(${Number(c.id)})" class="rounded-lg border border-amber-500/40 px-3 py-1 text-xs text-amber-200 hover:bg-amber-500/10">Validar</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function renderBorradores(borradores) {
+        const select = el('bm-version-borrador');
+        if (!select) return;
+        const current = select.value;
+        select.innerHTML = '<option value="">Selecciona versión borrador</option>' + (borradores || []).map(v => {
+            let resumen = {};
+            try { resumen = JSON.parse(v.resumen_json || '{}'); } catch (_) {}
+            return `<option value="${esc(v.id)}">v${esc(v.version_numero)} · ${esc(v.estado)} · ${esc(resumen.total_ninos || 0)} niños · ${esc(v.fecha_creacion || '')}</option>`;
+        }).join('');
+        if (current) select.value = current;
+    }
+
+    function renderInconsistencias(items) {
+        const tbody = el('bm-inconsistencias-list');
+        if (!tbody) return;
+        if (!items || !items.length) {
+            tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-8 text-center text-slate-500">Sin inconsistencias.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = items.slice(0, 80).map(i => `
+            <tr class="hover:bg-slate-900/60">
+                <td class="px-4 py-3">${badge(i.severidad)}</td>
+                <td class="px-4 py-3 text-slate-300">${esc(i.tipo)}</td>
+                <td class="px-4 py-3">${esc(i.documento || '—')}</td>
+                <td class="px-4 py-3">${esc(i.descripcion)}</td>
+            </tr>
+        `).join('');
+    }
+
+    function renderMovimientos(items) {
+        const tbody = el('bm-movimientos-list');
+        if (!tbody) return;
+        if (!items || !items.length) {
+            tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-8 text-center text-slate-500">Sin movimientos.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = items.slice(0, 80).map(i => `
+            <tr class="hover:bg-slate-900/60">
+                <td class="px-4 py-3">${badge(i.tipo_movimiento)}</td>
+                <td class="px-4 py-3">${esc(i.documento || '—')}</td>
+                <td class="px-4 py-3 text-slate-300">${esc(i.nombre || '—')}</td>
+                <td class="px-4 py-3">${esc(i.detalle || '')}</td>
+            </tr>
+        `).join('');
+    }
+
+    function renderHistorial(items) {
+        const tbody = el('bm-historial-list');
+        if (!tbody) return;
+        if (!items || !items.length) {
+            tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-8 text-center text-slate-500">Sin historial.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = items.slice(0, 80).map(i => `
+            <tr class="hover:bg-slate-900/60">
+                <td class="px-4 py-3">${esc(i.documento || '—')}</td>
+                <td class="px-4 py-3 text-slate-300">${esc(i.campo)}</td>
+                <td class="px-4 py-3 text-rose-200">${esc(i.valor_anterior || '—')}</td>
+                <td class="px-4 py-3 text-emerald-200">${esc(i.valor_nuevo || '—')}</td>
+            </tr>
+        `).join('');
+    }
+
+    function renderResumen(data) {
+        const resumen = data?.resumen || {};
+        const version = data?.version_activa;
+        setText('bm-version', version ? `v${version.version_numero}` : 'Sin publicar');
+        setText('bm-total-ninos', resumen.total_ninos || 0);
+        setText('bm-total-unidades', resumen.total_unidades || 0);
+        setText('bm-total-coordinadores', resumen.total_coordinadores || 0);
+        setText('bm-total-alertas', resumen.total_alertas || 0);
+        setText('bm-calidad', `${resumen.calidad_porcentaje || 0}%`);
+        const box = el('bm-resumen-publicacion');
+        if (box) {
+            if (version) {
+                box.innerHTML = `
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                        <div>
+                            <div class="text-slate-100 font-semibold">Versión activa v${esc(version.version_numero)} ${badge(version.estado)}</div>
+                            <div class="text-xs text-slate-400 mt-1">Publicada: ${esc(version.fecha_publicacion || 'pendiente')} · Usuario: ${esc(version.usuario || 'sistema')}</div>
+                        </div>
+                        <div class="text-xs text-slate-400">Errores críticos: ${esc(resumen.errores_criticos || 0)} · Advertencias: ${esc(resumen.advertencias || 0)}</div>
+                    </div>`;
+            } else {
+                box.textContent = 'Sin versión activa publicada todavía. Puedes consolidar un borrador y publicarlo cuando la validación esté correcta.';
+            }
+        }
+        renderCargas(data?.cargas || []);
+        renderBorradores(data?.borradores || []);
+    }
+
+    async function baseMaestraCargarResumen() {
+        try {
+            const [dashboard, inconsistencias, movimientos, historial] = await Promise.all([
+                fetchJson(`${api()}/resumen`),
+                fetchJson(`${api()}/inconsistencias?limit=100`),
+                fetchJson(`${api()}/movimientos?limit=100`),
+                fetchJson(`${api()}/historial?limit=100`)
+            ]);
+            state.dashboard = dashboard;
+            renderResumen(dashboard);
+            renderInconsistencias(inconsistencias.inconsistencias || []);
+            renderMovimientos(movimientos.movimientos || []);
+            renderHistorial(historial.historial || []);
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        } catch (error) {
+            mensaje(error.message || 'No se pudo cargar Base Maestra.', 'error');
+        }
+    }
+
+    async function baseMaestraCargarFuente() {
+        const file = el('bm-file')?.files?.[0];
+        const tipo = el('bm-tipo-fuente')?.value || 'cuentame';
+        if (!file) {
+            mensaje('Selecciona primero un archivo para cargar.', 'warning');
+            return;
+        }
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('tipo_fuente', tipo);
+        try {
+            if (typeof mostrarCargando === 'function') mostrarCargando('Cargando fuente temporal de Base Maestra...');
+            const data = await fetchJson(`${api()}/cargar-fuente`, { method: 'POST', body: fd });
+            const totalUds = data.total_unidades_detectadas ?? data.resumen_unidades?.total_unidades_detectadas ?? 0;
+            const hoja = data.hoja_seleccionada || data.resumen_unidades?.hoja_seleccionada || '—';
+            mensaje(`${data.message} Carga #${data.carga_id} · ${data.registros_cargados} registros · ${totalUds} unidades detectadas · hoja: ${hoja}.`, totalUds && totalUds < 30 && tipo === 'cuentame' ? 'warning' : 'success');
+            renderResumenCargaFuente(data);
+            if (el('bm-file')) el('bm-file').value = '';
+            await baseMaestraCargarResumen();
+        } catch (error) {
+            mensaje(error.message || 'No se pudo cargar la fuente.', 'error');
+        } finally {
+            if (typeof ocultarCargando === 'function') ocultarCargando();
+        }
+    }
+
+    async function baseMaestraValidarCarga(cargaId) {
+        try {
+            if (typeof mostrarCargando === 'function') mostrarCargando('Validando datos de Base Maestra...');
+            const data = await fetchJson(`${api()}/validar`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ carga_id: Number(cargaId) })
+            });
+            const r = data.resumen || {};
+            mensaje(`Validación #${data.validacion_id}: ${r.semaforo} · ${r.registros_validos}/${r.total_registros} válidos · ${r.errores_criticos} críticos.`, r.errores_criticos ? 'warning' : 'success');
+            await baseMaestraCargarResumen();
+        } catch (error) {
+            mensaje(error.message || 'No se pudo validar.', 'error');
+        } finally {
+            if (typeof ocultarCargando === 'function') ocultarCargando();
+        }
+    }
+
+    async function baseMaestraValidarPendientes() {
+        try {
+            if (typeof mostrarCargando === 'function') mostrarCargando('Validando fuentes pendientes...');
+            const data = await fetchJson(`${api()}/validar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+            mensaje(`Validaciones ejecutadas: ${data.total_validaciones || 0}.`, 'success');
+            await baseMaestraCargarResumen();
+        } catch (error) {
+            mensaje(error.message || 'No se pudieron validar fuentes pendientes.', 'error');
+        } finally {
+            if (typeof ocultarCargando === 'function') ocultarCargando();
+        }
+    }
+
+    async function baseMaestraConsolidar() {
+        try {
+            if (typeof mostrarCargando === 'function') mostrarCargando('Consolidando Base Maestra en borrador...');
+            const data = await fetchJson(`${api()}/consolidar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+            mensaje(`${data.message} Versión borrador #${data.version_id}. ${data.puede_publicar ? 'Lista para publicar.' : 'Requiere corregir críticos.'}`, data.puede_publicar ? 'success' : 'warning');
+            await baseMaestraCargarResumen();
+            const select = el('bm-version-borrador');
+            if (select) select.value = String(data.version_id);
+        } catch (error) {
+            mensaje(error.message || 'No se pudo consolidar.', 'error');
+        } finally {
+            if (typeof ocultarCargando === 'function') ocultarCargando();
+        }
+    }
+
+    async function baseMaestraPublicarSeleccionada() {
+        const versionId = Number(el('bm-version-borrador')?.value || 0);
+        if (!versionId) {
+            mensaje('Selecciona primero una versión borrador para publicar.', 'warning');
+            return;
+        }
+        if (!confirm('¿Publicar esta versión como Base Maestra oficial activa? La versión anterior quedará archivada.')) return;
+        try {
+            if (typeof mostrarCargando === 'function') mostrarCargando('Publicando Base Maestra activa...');
+            const data = await fetchJson(`${api()}/publicar`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ version_id: versionId })
+            });
+            mensaje(data.message || 'Base Maestra publicada correctamente.', 'success');
+            await baseMaestraCargarResumen();
+        } catch (error) {
+            mensaje(error.message || 'No se pudo publicar.', 'error');
+        } finally {
+            if (typeof ocultarCargando === 'function') ocultarCargando();
+        }
+    }
+
+    async function baseMaestraDescargarInconsistencias() {
+        try {
+            await download(`${api()}/inconsistencias/descargar`, 'BASE_MAESTRA_INCONSISTENCIAS.xlsx');
+        } catch (error) {
+            mensaje(error.message || 'No se pudo descargar inconsistencias.', 'error');
+        }
+    }
+
+    function baseMaestraInit() {
+        if (!state.initialized) state.initialized = true;
+        baseMaestraCargarResumen();
+    }
+
+    window.baseMaestraInit = baseMaestraInit;
+    window.baseMaestraCargarResumen = baseMaestraCargarResumen;
+    window.baseMaestraCargarFuente = baseMaestraCargarFuente;
+    window.baseMaestraValidarCarga = baseMaestraValidarCarga;
+    window.baseMaestraValidarPendientes = baseMaestraValidarPendientes;
+    window.baseMaestraConsolidar = baseMaestraConsolidar;
+    window.baseMaestraPublicarSeleccionada = baseMaestraPublicarSeleccionada;
+    window.baseMaestraDescargarInconsistencias = baseMaestraDescargarInconsistencias;
+})();

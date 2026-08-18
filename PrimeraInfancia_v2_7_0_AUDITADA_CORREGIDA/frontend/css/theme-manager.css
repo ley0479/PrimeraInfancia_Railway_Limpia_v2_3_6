@@ -1,0 +1,180 @@
+/* ALPHA29 — Theme Manager centralizado.
+   Mantiene el dashboard actual como tema base y aplica variaciones por variables CSS. */
+:root {
+    --pi-font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+html.tm-active body {
+    font-family: var(--pi-font-family) !important;
+}
+
+html.tm-active[data-tm-mode="claro"] body {
+    background: var(--pi-bg) !important;
+    color: var(--pi-text) !important;
+}
+
+html.tm-active[data-tm-mode="claro"] .shadow-2xl,
+html.tm-active[data-tm-mode="claro"] .shadow-xl {
+    box-shadow: 0 18px 50px rgba(15, 23, 42, .12) !important;
+}
+
+html.tm-active[data-tm-contrast="alto"] *:focus-visible {
+    outline: 3px solid var(--pi-accent) !important;
+    outline-offset: 3px !important;
+}
+
+html.tm-active[data-tm-layout="compacto"] main .p-8 {
+    padding: 1.25rem !important;
+}
+
+html.tm-active[data-tm-layout="amplio"] main .p-8 {
+    padding: 2.5rem !important;
+}
+
+.tm-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    border-radius: calc(var(--pi-radius, 16px) * .75);
+    padding: .65rem 1rem;
+    font-size: .875rem;
+    font-weight: 600;
+    transition: .2s ease;
+}
+
+.tm-btn-primary {
+    background: var(--pi-primary, #4f46e5);
+    color: #fff;
+}
+.tm-btn-primary:hover { background: var(--pi-primary-hover, #4338ca); }
+.tm-btn-secondary {
+    border: 1px solid var(--pi-border, #334155);
+    color: var(--pi-text, #f8fafc);
+    background: color-mix(in srgb, var(--pi-surface, #0f172a) 90%, transparent);
+}
+.tm-btn-secondary:hover { background: var(--pi-surface-soft, #1e293b); }
+.tm-btn-danger {
+    border: 1px solid color-mix(in srgb, var(--pi-danger, #ef4444) 40%, transparent);
+    color: color-mix(in srgb, var(--pi-danger, #ef4444) 75%, white);
+    background: color-mix(in srgb, var(--pi-danger, #ef4444) 12%, transparent);
+}
+
+.tm-card,
+.tm-panel {
+    background: linear-gradient(135deg, var(--pi-surface, #0f172a), var(--pi-surface-soft, #1e293b));
+    border: 1px solid var(--pi-border, #334155);
+    color: var(--pi-text, #f8fafc);
+    border-radius: var(--pi-radius, 16px);
+}
+
+.tm-card { padding: 1rem; }
+.tm-panel { padding: 1.25rem; }
+.tm-label {
+    display: block;
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--pi-muted, #94a3b8);
+    font-weight: 700;
+}
+.tm-value {
+    margin-top: .25rem;
+    font-size: 1.65rem;
+    line-height: 1.1;
+    font-weight: 800;
+    color: var(--pi-text, #f8fafc);
+}
+.tm-input,
+.tm-select,
+.tm-textarea {
+    width: 100%;
+    border: 1px solid var(--pi-border, #334155);
+    background: var(--pi-bg, #020617);
+    color: var(--pi-text, #f8fafc);
+    border-radius: calc(var(--pi-radius, 16px) * .65);
+    padding: .72rem .9rem;
+    font-size: .875rem;
+}
+.tm-color {
+    width: 100%;
+    min-height: 2.75rem;
+    border: 1px solid var(--pi-border, #334155);
+    background: var(--pi-bg, #020617);
+    border-radius: calc(var(--pi-radius, 16px) * .65);
+    padding: .25rem;
+}
+.tm-table th {
+    background: color-mix(in srgb, var(--pi-surface-soft, #1e293b) 80%, transparent);
+    color: var(--pi-text, #f8fafc);
+    text-transform: uppercase;
+    font-size: .7rem;
+    letter-spacing: .05em;
+}
+.tm-table td,
+.tm-table th {
+    border-bottom: 1px solid var(--pi-border, #334155);
+    padding: .75rem 1rem;
+}
+.tm-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: .25rem .55rem;
+    font-size: .72rem;
+    border: 1px solid var(--pi-border, #334155);
+    color: var(--pi-muted, #94a3b8);
+}
+.tm-preview {
+    border: 1px solid var(--pi-border, #334155);
+    border-radius: var(--pi-radius, 16px);
+    background: var(--pi-bg, #020617);
+    padding: 1rem;
+    overflow: hidden;
+}
+.tm-preview-inner {
+    border-radius: calc(var(--pi-radius, 16px) * .75);
+    border: 1px solid var(--pi-border, #334155);
+    background: linear-gradient(135deg, var(--tm-preview-surface, var(--pi-surface)), var(--tm-preview-soft, var(--pi-surface-soft)));
+    color: var(--tm-preview-text, var(--pi-text));
+    padding: 1rem;
+}
+.tm-swatch {
+    height: 2.25rem;
+    border-radius: .75rem;
+    border: 1px solid rgba(255, 255, 255, .18);
+}
+
+#tm-selector-modal.hidden { display: none; }
+#tm-selector-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(2, 6, 23, .78);
+    backdrop-filter: blur(10px);
+    padding: 1.25rem;
+}
+#tm-selector-modal .tm-modal-card {
+    width: min(720px, 100%);
+    max-height: 92vh;
+    overflow-y: auto;
+    background: var(--pi-surface, #0f172a);
+    border: 1px solid var(--pi-border, #334155);
+    border-radius: 24px;
+    box-shadow: 0 25px 80px rgba(0,0,0,.38);
+}
+
+.tm-theme-option {
+    border: 1px solid var(--pi-border, #334155);
+    border-radius: 1rem;
+    padding: .85rem;
+    background: color-mix(in srgb, var(--pi-surface, #0f172a) 92%, transparent);
+    cursor: pointer;
+}
+.tm-theme-option[aria-selected="true"] {
+    border-color: var(--pi-accent, #06b6d4);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--pi-accent, #06b6d4) 18%, transparent);
+}

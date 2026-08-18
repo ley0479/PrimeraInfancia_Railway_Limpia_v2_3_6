@@ -1,0 +1,95 @@
+.rg-card,
+.rg-panel {
+    border: 1px solid rgba(51, 65, 85, 0.95);
+    background: rgba(2, 6, 23, 0.92);
+    border-radius: 1rem;
+    padding: 1.25rem;
+}
+
+.rg-card {
+    min-height: 6rem;
+}
+
+.rg-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    border-radius: .75rem;
+    padding: .6rem .95rem;
+    font-size: .82rem;
+    font-weight: 600;
+    transition: .2s ease;
+}
+
+.rg-btn-primary {
+    background: rgb(79, 70, 229);
+    color: white;
+}
+
+.rg-btn-primary:hover {
+    background: rgb(99, 102, 241);
+}
+
+.rg-btn-outline {
+    border: 1px solid rgba(99, 102, 241, .35);
+    background: rgba(79, 70, 229, .08);
+    color: rgb(165, 180, 252);
+}
+
+.rg-btn-outline:hover {
+    background: rgba(79, 70, 229, .18);
+}
+
+.rg-item {
+    border: 1px solid rgba(51, 65, 85, .8);
+    background: rgba(15, 23, 42, .55);
+    border-radius: .85rem;
+    padding: .85rem;
+    font-size: .84rem;
+    color: rgb(203, 213, 225);
+}
+
+.rg-item + .rg-item {
+    margin-top: .6rem;
+}
+
+.rg-item strong {
+    display: block;
+    color: rgb(226, 232, 240);
+    margin: .25rem 0;
+}
+
+.rg-item p {
+    color: rgb(148, 163, 184);
+    margin: 0;
+}
+
+.rg-badge {
+    display: inline-flex;
+    border-radius: 999px;
+    padding: .18rem .55rem;
+    background: rgba(239, 68, 68, .13);
+    color: rgb(252, 165, 165);
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .025em;
+}
+
+.rg-badge-warn {
+    background: rgba(245, 158, 11, .14);
+    color: rgb(252, 211, 77);
+}
+
+.rg-badge-ok {
+    background: rgba(16, 185, 129, .14);
+    color: rgb(110, 231, 183);
+}
+
+.rg-empty {
+    border: 1px dashed rgba(100, 116, 139, .65);
+    border-radius: .85rem;
+    padding: 1rem;
+    color: rgb(100, 116, 139);
+    font-size: .85rem;
+    text-align: center;
+}

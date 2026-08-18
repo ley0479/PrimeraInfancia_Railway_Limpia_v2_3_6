@@ -1,0 +1,55 @@
+.pm-card {
+    border: 1px solid rgba(148, 163, 184, .18);
+    background: rgba(15, 23, 42, .72);
+    border-radius: 1.25rem;
+    padding: 1rem;
+}
+.pm-kpi {
+    border: 1px solid rgba(99, 102, 241, .22);
+    background: linear-gradient(135deg, rgba(99,102,241,.12), rgba(14,165,233,.08));
+    border-radius: 1rem;
+    padding: .9rem;
+}
+.pm-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    border-radius: .85rem;
+    padding: .65rem .95rem;
+    font-size: .875rem;
+    font-weight: 600;
+    transition: .18s ease;
+}
+.pm-btn-primary {
+    color: white;
+    background: rgb(79, 70, 229);
+}
+.pm-btn-primary:hover {
+    background: rgb(99, 102, 241);
+}
+.pm-btn-outline {
+    color: rgb(203, 213, 225);
+    border: 1px solid rgba(148, 163, 184, .25);
+    background: rgba(2, 6, 23, .25);
+}
+.pm-btn-outline:hover {
+    border-color: rgba(99, 102, 241, .45);
+    color: white;
+}
+.pm-folder-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: .75rem;
+}
+.pm-folder {
+    border: 1px solid rgba(148, 163, 184, .16);
+    border-radius: .9rem;
+    padding: .75rem;
+    background: rgba(2, 6, 23, .28);
+}
+.pm-status-pill {
+    border-radius: 999px;
+    padding: .2rem .55rem;
+    font-size: .72rem;
+    font-weight: 700;
+}

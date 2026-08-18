@@ -1,0 +1,4 @@
+{
+  "nota": "Configure aquí los festivos/no laborables que RAM/RAN debe omitir. Formato fecha: YYYY-MM-DD.",
+  "festivos": []
+}

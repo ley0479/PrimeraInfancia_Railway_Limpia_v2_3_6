@@ -1,0 +1,194 @@
+/* ALPHA49 — Menú lateral institucional profesional.
+   Capa visual únicamente: no toca procesamiento, formatos ni rutas backend. */
+.pi-sidebar-institucional {
+    background:
+        radial-gradient(circle at 20% 0%, rgba(37, 99, 235, 0.18), transparent 32%),
+        linear-gradient(180deg, rgba(2, 6, 23, 0.98), rgba(15, 23, 42, 0.96));
+    box-shadow: inset -1px 0 0 rgba(34, 211, 238, 0.08), 18px 0 50px rgba(2, 6, 23, 0.35);
+}
+
+.pi-menu-institucional {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding-bottom: 0.5rem;
+}
+
+.pi-menu-group {
+    border: 1px solid rgba(148, 163, 184, 0.13);
+    background: rgba(15, 23, 42, 0.38);
+    border-radius: 1rem;
+    overflow: hidden;
+    transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.pi-menu-group[data-open="true"],
+.pi-menu-group.pi-menu-group-active {
+    border-color: rgba(34, 211, 238, 0.28);
+    background: rgba(8, 20, 37, 0.78);
+    box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.04), 0 12px 28px rgba(2, 6, 23, 0.22);
+}
+
+.pi-menu-group-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.62rem 0.7rem;
+    color: rgb(203, 213, 225);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.015em;
+    text-transform: uppercase;
+    transition: color 180ms ease, background 180ms ease;
+}
+
+.pi-menu-group-toggle:hover {
+    background: rgba(15, 23, 42, 0.72);
+    color: rgb(240, 249, 255);
+}
+
+.pi-menu-group-toggle span {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-width: 0;
+}
+
+.pi-menu-group-toggle svg,
+.pi-menu-item svg,
+.pi-menu-placeholder svg {
+    width: 1rem;
+    height: 1rem;
+    flex: none;
+}
+
+.pi-menu-group-toggle svg:first-child {
+    color: rgb(34, 211, 238);
+    filter: drop-shadow(0 0 8px rgba(34, 211, 238, 0.35));
+}
+
+.pi-menu-chevron {
+    color: rgb(100, 116, 139);
+    transition: transform 180ms ease, color 180ms ease;
+}
+
+.pi-menu-group[data-open="true"] .pi-menu-chevron {
+    transform: rotate(180deg);
+    color: rgb(34, 211, 238);
+}
+
+.pi-menu-group-items {
+    display: none;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.2rem 0.45rem 0.55rem;
+}
+
+.pi-menu-group[data-open="true"] .pi-menu-group-items {
+    display: flex;
+}
+
+.pi-menu-item,
+.pi-menu-placeholder {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    border-radius: 0.78rem;
+    min-height: 2.24rem;
+    padding: 0.48rem 0.62rem;
+    color: rgb(148, 163, 184);
+    font-size: 0.82rem;
+    text-align: left;
+    transition: background 180ms ease, color 180ms ease, transform 180ms ease, border-color 180ms ease;
+    border: 1px solid transparent;
+}
+
+.pi-menu-item:hover {
+    color: rgb(226, 232, 240);
+    background: rgba(15, 23, 42, 0.86);
+    border-color: rgba(148, 163, 184, 0.12);
+    transform: translateX(1px);
+}
+
+.pi-menu-item span,
+.pi-menu-placeholder span {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pi-menu-item small,
+.pi-menu-placeholder small {
+    flex: none;
+    border-radius: 999px;
+    padding: 0.08rem 0.38rem;
+    font-size: 0.58rem;
+    line-height: 1rem;
+    text-transform: uppercase;
+    color: rgb(103, 232, 249);
+    background: rgba(6, 182, 212, 0.12);
+    border: 1px solid rgba(6, 182, 212, 0.18);
+}
+
+.pi-menu-item-active,
+.pi-menu-item.bg-indigo-600\/10 {
+    color: rgb(255, 255, 255) !important;
+    background: linear-gradient(90deg, rgba(124, 58, 237, 0.88), rgba(37, 99, 235, 0.66), rgba(6, 182, 212, 0.42)) !important;
+    border-color: rgba(125, 211, 252, 0.35) !important;
+    box-shadow: 0 8px 22px rgba(37, 99, 235, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.pi-menu-item-active svg,
+.pi-menu-item.bg-indigo-600\/10 svg {
+    color: rgb(255, 255, 255) !important;
+    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.28));
+}
+
+.pi-menu-placeholder {
+    opacity: 0.68;
+    cursor: default;
+    background: rgba(2, 6, 23, 0.32);
+    border-color: rgba(148, 163, 184, 0.08);
+}
+
+.pi-menu-placeholder svg {
+    color: rgb(100, 116, 139);
+}
+
+.pi-menu-group.hidden,
+.pi-menu-item.hidden {
+    display: none !important;
+}
+
+#sidebar-institucional::-webkit-scrollbar {
+    width: 0.42rem;
+}
+
+#sidebar-institucional::-webkit-scrollbar-thumb {
+    background: rgba(34, 211, 238, 0.28);
+    border-radius: 999px;
+}
+
+#sidebar-institucional::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.3);
+}
+
+@media (max-width: 1024px) {
+    .pi-sidebar-institucional {
+        width: 16.5rem !important;
+    }
+    .pi-menu-group-toggle {
+        font-size: 0.68rem;
+        padding-left: 0.58rem;
+        padding-right: 0.58rem;
+    }
+    .pi-menu-item,
+    .pi-menu-placeholder {
+        font-size: 0.76rem;
+    }
+}

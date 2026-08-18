@@ -1,0 +1,113 @@
+{
+  "rpp": {
+    "nombre": "Formato RPP Oficial",
+    "archivo": "plantilla_rpp_oficial.xlsx",
+    "archivo_versionado": "plantilla_rpp_oficial_v2026.xlsx",
+    "hoja": "PLANTILLA O FORMADE RPP",
+    "tipo": "excel",
+    "preservar_estilos": true,
+    "preservar_impresion": true,
+    "version": "2026",
+    "area_impresion_si_falta": "A1:AA42",
+    "filas_usuarios": [
+      12,
+      31
+    ],
+    "descripcion": "Plantilla oficial RPP sanitizada; conserva diseño y cantidades, sin participantes ni datos institucionales reales.",
+    "hash_sha256": "526fa8ad134676a7ce529838845d2e85c68d7eeabe794e5894dcc524e06a84da",
+    "sanitizada": true,
+    "contiene_datos_reales": false
+  },
+  "bienestarina": {
+    "nombre": "Formato Bienestarina Oficial",
+    "archivo": "plantilla_bienestarina_oficial.xlsx",
+    "archivo_versionado": "plantilla_bienestarina_oficial_v2026.xlsx",
+    "hoja": "plantilla de bienestarina ",
+    "tipo": "excel",
+    "preservar_estilos": true,
+    "preservar_impresion": true,
+    "version": "2026",
+    "area_impresion_si_falta": "A1:T50",
+    "filas_usuarios": [
+      [
+        10,
+        23
+      ],
+      [
+        31,
+        46
+      ]
+    ],
+    "descripcion": "Plantilla oficial Bienestarina sanitizada; conserva diseño, sin beneficiarios ni datos institucionales reales.",
+    "hash_sha256": "334a8dc7ffc1cb07336ae48f6d8eb88448688fa5d1439aa3931ef2fd76402f81",
+    "sanitizada": true,
+    "contiene_datos_reales": false
+  },
+  "ram": {
+    "nombre": "Formato Asistencia Registro Mensual RAM V3",
+    "archivo": "plantilla_ram_oficial_v3.xlsx",
+    "archivo_versionado": "plantilla_ram_oficial_v3.xlsx",
+    "hoja": "FORMATO RAM",
+    "hoja_instrucciones": "INSTRUCCIONES DILIGENCIAMIENTO",
+    "tipo": "excel",
+    "preservar_estilos": true,
+    "preservar_impresion": true,
+    "version": "3",
+    "codigo": "F27.MT1.PP",
+    "fecha_vigencia": "2026-08-01",
+    "hash_sha256": "a6b4c9412f7c72a19b9d5e842fa5ffd4b876c7d0f0c3d5c8e140b5287d700753",
+    "area_impresion_si_falta": "A1:AO41",
+    "filas_usuarios": [
+      15,
+      34
+    ],
+    "capacidad_por_pagina": 20,
+    "descripcion": "RAM versionado por periodo: formato histórico V2 sanitizado hasta julio de 2026 y RAM V3 desde agosto de 2026.",
+    "sanitizada": true,
+    "contiene_datos_reales": false,
+    "versiones": [
+      {
+        "nombre": "Formato Registro Asistencia Mensual RAM V2 histórico sanitizado",
+        "archivo": "plantilla_ram_oficial_v2_historica.xlsx",
+        "archivo_versionado": "plantilla_ram_oficial_v2_historica.xlsx",
+        "hoja": "FORMATO RAM V2 HISTORICO",
+        "version": "2",
+        "codigo": "F27.MT1.PP",
+        "fecha_vigencia": "2000-01-01",
+        "fecha_vigencia_fin": "2026-07-31",
+        "hash_sha256": "69fabc7db8460c11a75a56eb7a382279c2673b49bdce602146fde7293444f666",
+        "area_impresion_si_falta": "A1:AK41",
+        "filas_usuarios": [
+          15,
+          34
+        ],
+        "capacidad_por_pagina": 20,
+        "descripcion": "Plantilla histórica RAM/RRAN V2 sanitizada; conserva estructura y estilos sin participantes ni datos institucionales.",
+        "sanitizada": true,
+        "contiene_datos_reales": false,
+        "hoja_instrucciones": null
+      },
+      {
+        "nombre": "Formato Asistencia Registro Mensual RAM V3",
+        "archivo": "plantilla_ram_oficial_v3.xlsx",
+        "archivo_versionado": "plantilla_ram_oficial_v3.xlsx",
+        "hoja": "FORMATO RAM",
+        "hoja_instrucciones": "INSTRUCCIONES DILIGENCIAMIENTO",
+        "version": "3",
+        "codigo": "F27.MT1.PP",
+        "fecha_vigencia": "2026-08-01",
+        "fecha_vigencia_fin": "",
+        "hash_sha256": "a6b4c9412f7c72a19b9d5e842fa5ffd4b876c7d0f0c3d5c8e140b5287d700753",
+        "area_impresion_si_falta": "A1:AO41",
+        "filas_usuarios": [
+          15,
+          34
+        ],
+        "capacidad_por_pagina": 20,
+        "descripcion": "Plantilla oficial RAM V3 sanitizada y sin participantes.",
+        "sanitizada": true,
+        "contiene_datos_reales": false
+      }
+    ]
+  }
+}
