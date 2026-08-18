@@ -89,6 +89,11 @@ def bootstrap_core_schema(config_class) -> None:
     from modules.base_maestra.repository import BaseMaestraRepository
     BaseMaestraRepository(str(config_class.DATABASE_PATH)).init_schema()
 
+    # La identidad global se migra exclusivamente durante init/pre-deploy.
+    # El Blueprint institucional no ejecuta DDL al importarse ni por request.
+    from migrations.migrate_identidad_global_v7 import migrate as migrate_identidad_global
+    migrate_identidad_global(str(config_class.DATABASE_PATH))
+
 
 def _safe_database_label(url: str, path: str) -> str:
     if str(url).startswith('postgresql'):

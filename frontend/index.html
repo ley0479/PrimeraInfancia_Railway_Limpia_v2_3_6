@@ -3219,6 +3219,14 @@
                             </div>
                         </div>
                         <div id="ci-message" class="hidden mt-4 rounded-xl border px-4 py-3 text-sm"></div>
+                        <div class="mt-5 rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-4">
+                            <label for="ci-scope" class="text-xs font-semibold uppercase tracking-wider text-cyan-200">Ámbito de configuración</label>
+                            <select id="ci-scope" class="pi-alpha41-input mt-2" aria-describedby="ci-scope-target">
+                                <option value="FUNDACION">Configuración de mi fundación</option>
+                                <option value="GLOBAL">Configuración global de toda la plataforma</option>
+                            </select>
+                            <p id="ci-scope-target" class="mt-2 text-xs text-slate-400">Esta modificación se aplicará a la fundación de la sesión actual.</p>
+                        </div>
                         <div class="mt-6 grid gap-4 xl:grid-cols-2">
                             <form id="ci-form" class="pi-alpha41-panel p-4 space-y-3">
                                 <h3 class="font-semibold text-slate-100">Datos de la corporación</h3>

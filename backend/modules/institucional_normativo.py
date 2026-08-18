@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import json
+import hashlib
 from modules.dbapi_compat import sqlite3
 import io
 import re
@@ -33,6 +34,7 @@ except Exception:  # pragma: no cover - fallback si seguridad no está inicializ
         return deco
 
 ALLOWED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico'}
+ALLOWED_GLOBAL_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.ico'}
 ALLOWED_MANUAL_EXTENSIONS = {'.pdf'}
 MAX_IMAGE_MB = 10
 MAX_MANUAL_MB = 60
@@ -201,6 +203,96 @@ def _row_to_dict(
         if data.get('archivo_path'):
             data['archivo_nombre'] = os.path.basename(str(data.get('archivo_path')))
     return data
+
+
+GLOBAL_FALLBACK = {
+    'nombre_plataforma': 'Primera Infancia',
+    'sigla': 'PI',
+    'nombre_admin': 'Administrador General',
+    'cargo_admin': 'Administrador Plataforma',
+    'color_primario': '#2563eb',
+    'color_secundario': '#06b6d4',
+}
+
+
+def _global_asset_url(tipo: str, version: int | str | None) -> str:
+    return f'/api/branding/global/{tipo}?v={version or 1}'
+
+
+def resolver_identidad_efectiva(
+    database_path: str,
+    base_dir: str,
+    fundacion_id: int | None,
+    data_dir: str | os.PathLike[str],
+) -> dict[str, Any]:
+    """Resuelve fundación -> global -> fallback, campo por campo."""
+    conn = _connect(database_path)
+    try:
+        global_row = conn.execute(
+            'SELECT * FROM configuracion_global_plataforma WHERE id=1 AND activo=1'
+        ).fetchone()
+        tenant_row = None
+        if fundacion_id:
+            tenant_row = conn.execute(
+                '''SELECT * FROM configuracion_institucional
+                   WHERE fundacion_id=? AND COALESCE(activo,1)=1
+                   ORDER BY id DESC LIMIT 1''',
+                (int(fundacion_id),),
+            ).fetchone()
+    finally:
+        conn.close()
+
+    global_cfg = dict(global_row) if global_row else {}
+    tenant_root = tenant_storage_root(data_dir, fundacion_id) / 'institutional' if fundacion_id else None
+    tenant_cfg = _row_to_dict(tenant_row, base_dir, tenant_root) or {}
+    version = max(int(global_cfg.get('identity_version') or 1), 1)
+
+    def choose(tenant_key: str, global_key: str, fallback_key: str | None = None):
+        value = tenant_cfg.get(tenant_key)
+        # Los valores demostrativos creados por versiones antiguas no deben
+        # impedir que una fundación herede la identidad global real.
+        if value not in (None, '', 'Organización de prueba', 'ORGDEMO'):
+            return value
+        value = global_cfg.get(global_key)
+        if value not in (None, ''):
+            return value
+        return GLOBAL_FALLBACK.get(fallback_key or tenant_key)
+
+    def asset(tenant_url: str, global_key: str, tipo: str):
+        if tenant_cfg.get(tenant_url):
+            return tenant_cfg[tenant_url]
+        return _global_asset_url(tipo, version) if global_cfg.get(global_key) else None
+
+    effective = dict(tenant_cfg)
+    effective.update({
+        'scope': 'FUNDACION' if fundacion_id else 'GLOBAL',
+        'fundacion_id': int(fundacion_id) if fundacion_id else None,
+        'nombre_plataforma': choose('nombre_plataforma', 'nombre_plataforma'),
+        'nombre_corporacion': choose('nombre_corporacion', 'nombre_plataforma'),
+        'sigla': choose('sigla', 'sigla_plataforma'),
+        'nombre_admin': choose('nombre_admin', 'nombre_administrador_general'),
+        'cargo_admin': choose('cargo_admin', 'cargo_administrador_general'),
+        'color_primario': choose('color_primario', 'color_primario_global'),
+        'color_secundario': choose('color_secundario', 'color_secundario_global'),
+        'logo_principal_url': asset('logo_principal_url', 'logo_global_key', 'logo'),
+        'logo_reportes_url': asset('logo_reportes_url', 'logo_reportes_global_key', 'logo-reportes'),
+        'logo_formatos_url': asset('logo_formatos_url', 'logo_formatos_global_key', 'logo-formatos'),
+        'favicon_url': asset('favicon_url', 'favicon_global_key', 'favicon'),
+        'foto_admin_url': asset('foto_admin_url', 'foto_administrador_general_key', 'foto-admin'),
+        'identity_version': version,
+        'updated_at': max(str(tenant_cfg.get('updated_at') or ''), str(global_cfg.get('updated_at') or '')),
+        'administrador_general': {
+            'nombre': global_cfg.get('nombre_administrador_general') or GLOBAL_FALLBACK['nombre_admin'],
+            'cargo': global_cfg.get('cargo_administrador_general') or GLOBAL_FALLBACK['cargo_admin'],
+            'foto_url': _global_asset_url('foto-admin', version) if global_cfg.get('foto_administrador_general_key') else None,
+        },
+        'administrador_fundacion': {
+            'nombre': tenant_cfg.get('nombre_admin'),
+            'cargo': tenant_cfg.get('cargo_admin'),
+            'foto_url': tenant_cfg.get('foto_admin_url'),
+        },
+    })
+    return effective
 
 
 def _safe_ext(filename: str) -> str:
@@ -563,8 +655,10 @@ def _count_pdf_pages(path: str) -> int | None:
 
 
 def register_institucional_normativo(app, database_path: str, base_dir: str) -> None:
-    init_schema(database_path)
     data_dir = Path(str(app.config.get('DATA_DIR') or (Path(base_dir).parent / 'data'))).resolve()
+    global_branding_root = (data_dir / 'global' / 'branding').resolve()
+    for folder in ('logo', 'admin', 'favicon'):
+        (global_branding_root / folder).mkdir(parents=True, exist_ok=True)
 
     def _build_tenant_dirs(fundacion_id: int) -> dict[str, Path]:
         root = (tenant_storage_root(data_dir, fundacion_id) / 'institutional').resolve()
@@ -605,12 +699,190 @@ def register_institucional_normativo(app, database_path: str, base_dir: str) -> 
 
     bp = Blueprint('institucional_normativo', __name__)
 
+    def _global_row():
+        conn = _connect(database_path)
+        try:
+            return conn.execute('SELECT * FROM configuracion_global_plataforma WHERE id=1').fetchone()
+        finally:
+            conn.close()
+
+    def _save_global_asset(tipo: str, column: str):
+        file = _require_file('file', ALLOWED_GLOBAL_IMAGE_EXTENSIONS, MAX_IMAGE_MB)
+        _, raw = _load_source_image(file)
+        extension = _safe_ext(file.filename)
+        token = uuid.uuid4().hex
+        folder = {'logo': 'logo', 'logo-reportes': 'logo', 'logo-formatos': 'logo', 'foto-admin': 'admin', 'favicon': 'favicon'}[tipo]
+        filename = f'{tipo.replace("-", "_")}_{token}{extension}'
+        destination = (global_branding_root / folder / filename).resolve()
+        if os.path.commonpath([str(destination), str(global_branding_root)]) != str(global_branding_root):
+            raise ValueError('Ruta global de identidad no autorizada.')
+        destination.write_bytes(raw)
+        storage_key = destination.relative_to(data_dir).as_posix()
+        digest = hashlib.sha256(raw).hexdigest()
+        mime = {'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.ico':'image/x-icon'}[extension]
+        user = _user()
+        conn = _connect(database_path)
+        now = _now()
+        try:
+            current = conn.execute('SELECT identity_version FROM configuracion_global_plataforma WHERE id=1').fetchone()
+            version = int(current[0] or 1) + 1
+            conn.execute('UPDATE identidad_global_archivos SET activo=0, updated_at=? WHERE tipo=?', (now, tipo))
+            conn.execute(
+                '''INSERT INTO identidad_global_archivos
+                   (tipo,storage_key,nombre_original,mime_type,tamano_bytes,sha256,version,activo,cargado_por,created_at,updated_at)
+                   VALUES (?,?,?,?,?,?,?,1,?,?,?)''',
+                (tipo, storage_key, secure_filename(file.filename), mime, len(raw), digest, version, user['username'], now, now),
+            )
+            conn.execute(
+                f'''UPDATE configuracion_global_plataforma
+                    SET {column}=?, identity_version=?, updated_by=?, updated_at=? WHERE id=1''',
+                (storage_key, version, user['username'], now),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            destination.unlink(missing_ok=True)
+            raise
+        finally:
+            conn.close()
+        return resolver_identidad_efectiva(database_path, base_dir, None, data_dir)
+
     @bp.before_request
     def _ensure_schema():
-        init_schema(database_path)
+        if request.endpoint in {
+            'institucional_normativo.configuracion_publica',
+            'institucional_normativo.servir_branding_global',
+        }:
+            return None
         directories = _tenant_dirs()
         _repair_missing_branding_references(database_path, _user()['fundacion_id'])
         g.institutional_tenant_dirs = directories
+
+    @bp.route('/api/configuracion-publica', methods=['GET'])
+    def configuracion_publica():
+        cfg = resolver_identidad_efectiva(database_path, base_dir, None, data_dir)
+        response = jsonify({'configuracion': {
+            'nombre_plataforma': cfg['nombre_plataforma'],
+            'sigla_plataforma': cfg['sigla'],
+            'logo_global_url': cfg['logo_principal_url'],
+            'favicon_global_url': cfg['favicon_url'],
+            'color_primario': cfg['color_primario'],
+            'color_secundario': cfg['color_secundario'],
+            'identity_version': cfg['identity_version'],
+            'updated_at': cfg['updated_at'],
+        }})
+        response.headers['Cache-Control'] = 'no-cache, must-revalidate'
+        return response, 200
+
+    @bp.route('/api/configuracion-institucional/efectiva', methods=['GET'])
+    def configuracion_institucional_efectiva():
+        user = _user()
+        response = jsonify({'configuracion': resolver_identidad_efectiva(
+            database_path, base_dir, user['fundacion_id'], data_dir
+        )})
+        response.headers['Cache-Control'] = 'no-cache, must-revalidate'
+        return response, 200
+
+    @bp.route('/api/configuracion-global', methods=['GET'])
+    @require_roles('SUPERADMIN', 'ADMINISTRADOR_GENERAL')
+    def obtener_configuracion_global():
+        row = _global_row()
+        return jsonify({'configuracion': dict(row) if row else None,
+                        'efectiva': resolver_identidad_efectiva(database_path, base_dir, None, data_dir)}), 200
+
+    @bp.route('/api/configuracion-global', methods=['POST'])
+    @require_roles('SUPERADMIN', 'ADMINISTRADOR_GENERAL')
+    def guardar_configuracion_global():
+        data = request.get_json(silent=True) or request.form.to_dict() or {}
+        allowed = {
+            'nombre_plataforma', 'sigla_plataforma', 'nombre_administrador_general',
+            'cargo_administrador_general', 'color_primario_global', 'color_secundario_global',
+        }
+        values = {key: str(data.get(key) or '').strip()[:240] for key in allowed if key in data}
+        for color_key in ('color_primario_global', 'color_secundario_global'):
+            if color_key in values and values[color_key] and not re.fullmatch(r'#[0-9a-fA-F]{6}', values[color_key]):
+                return jsonify({'error': f'{color_key} debe usar formato hexadecimal #RRGGBB.'}), 422
+        user = _user()
+        conn = _connect(database_path)
+        now = _now()
+        try:
+            if values:
+                assignments = ', '.join(f'{key}=?' for key in values)
+                conn.execute(
+                    f'''UPDATE configuracion_global_plataforma SET {assignments},
+                        identity_version=identity_version+1, updated_by=?, updated_at=? WHERE id=1''',
+                    [*values.values(), user['username'], now],
+                )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+        return jsonify({'message': 'Configuración global guardada correctamente.',
+                        'configuracion': resolver_identidad_efectiva(database_path, base_dir, None, data_dir)}), 200
+
+    @bp.route('/api/configuracion-global/logo', methods=['POST'])
+    @require_roles('SUPERADMIN', 'ADMINISTRADOR_GENERAL')
+    def subir_logo_global():
+        tipo = (request.form.get('tipo') or 'principal').strip().lower()
+        mapping = {
+            'principal': ('logo', 'logo_global_key'),
+            'reportes': ('logo-reportes', 'logo_reportes_global_key'),
+            'formatos': ('logo-formatos', 'logo_formatos_global_key'),
+        }
+        if tipo not in mapping:
+            return jsonify({'error': 'Tipo de logo global no admitido.'}), 422
+        try:
+            asset_type, column = mapping[tipo]
+            cfg = _save_global_asset(asset_type, column)
+        except ValueError as exc:
+            return jsonify({'error': str(exc)}), 422
+        return jsonify({'message': 'Logo global actualizado correctamente.', 'configuracion': cfg}), 200
+
+    @bp.route('/api/configuracion-global/foto-admin', methods=['POST'])
+    @require_roles('SUPERADMIN', 'ADMINISTRADOR_GENERAL')
+    def subir_foto_admin_global():
+        try:
+            cfg = _save_global_asset('foto-admin', 'foto_administrador_general_key')
+        except ValueError as exc:
+            return jsonify({'error': str(exc)}), 422
+        return jsonify({'message': 'Foto del administrador general actualizada correctamente.', 'configuracion': cfg}), 200
+
+    @bp.route('/api/configuracion-global/favicon', methods=['POST'])
+    @require_roles('SUPERADMIN', 'ADMINISTRADOR_GENERAL')
+    def subir_favicon_global():
+        try:
+            cfg = _save_global_asset('favicon', 'favicon_global_key')
+        except ValueError as exc:
+            return jsonify({'error': str(exc)}), 422
+        return jsonify({'message': 'Favicon global actualizado correctamente.', 'configuracion': cfg}), 200
+
+    @bp.route('/api/branding/global/<tipo>', methods=['GET'])
+    def servir_branding_global(tipo: str):
+        mapping = {
+            'logo': 'logo_global_key', 'logo-reportes': 'logo_reportes_global_key',
+            'logo-formatos': 'logo_formatos_global_key', 'foto-admin': 'foto_administrador_general_key',
+            'favicon': 'favicon_global_key',
+        }
+        column = mapping.get(tipo)
+        if not column:
+            return jsonify({'error': 'Recurso global no encontrado.'}), 404
+        row = _global_row()
+        storage_key = row[column] if row and column in row.keys() else None
+        if not storage_key:
+            return jsonify({'error': 'Recurso global no configurado.'}), 404
+        candidate = (data_dir / str(storage_key)).resolve()
+        try:
+            if os.path.commonpath([str(candidate), str(global_branding_root)]) != str(global_branding_root):
+                return jsonify({'error': 'Ruta global no autorizada.'}), 403
+        except ValueError:
+            return jsonify({'error': 'Ruta global no autorizada.'}), 403
+        if not candidate.is_file():
+            return jsonify({'error': 'Recurso global no disponible.'}), 404
+        response = send_file(candidate, conditional=True)
+        response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+        return response
 
     @bp.route('/api/institucional-archivos/<path:relative_path>', methods=['GET'])
     def servir_archivo_institucional(relative_path: str):

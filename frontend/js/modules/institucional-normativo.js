@@ -86,6 +86,16 @@
         if (el) el.textContent = value || '';
     }
 
+    function esAmbitoGlobal() {
+        return qs('ci-scope')?.value === 'GLOBAL';
+    }
+
+    function actualizarAvisoAmbito() {
+        setText('ci-scope-target', esAmbitoGlobal()
+            ? 'Esta modificación se aplicará a TODA LA PLATAFORMA y será heredada por fundaciones sin personalización.'
+            : 'Esta modificación se aplicará a la FUNDACIÓN de la sesión actual.');
+    }
+
     function backendBaseUrl() {
         const base = window.backendUrl || (typeof getBackendUrl === 'function' ? getBackendUrl() : window.getConfiguredBackendUrl?.() || window.location.origin);
         return String(base || '').replace(/\/$/, '');
@@ -103,7 +113,7 @@
         const resolved = resolveAssetUrl(url);
         if (!resolved) return '';
         const separator = resolved.includes('?') ? '&' : '?';
-        return `${resolved}${separator}v=${encodeURIComponent(version || Date.now())}`;
+        return `${resolved}${separator}v=${encodeURIComponent(version || 1)}`;
     }
 
     function isProtectedInstitutionalAsset(url) {
@@ -187,7 +197,7 @@
         setText('ci-preview-nombre', nombre);
         setText('ci-preview-admin', `${admin} · ${cargo}`);
 
-        const brandingVersion = configuracionActual.updated_at || configuracionActual.id || Date.now();
+        const brandingVersion = configuracionActual.identity_version || configuracionActual.updated_at || configuracionActual.id || 1;
         setImage('institucional-logo-sidebar', 'institucional-logo-sidebar-fallback', configuracionActual.logo_principal_url, brandingVersion);
         setImage('institucional-logo-login', 'institucional-logo-login-fallback', configuracionActual.logo_principal_url, brandingVersion);
         setImage('ci-preview-logo', 'ci-preview-logo-fallback', configuracionActual.logo_principal_url, brandingVersion);
@@ -204,21 +214,21 @@
 
     async function cargarConfiguracionInstitucional(silent = true) {
         try {
-            const data = await fetchJson('/api/configuracion-institucional');
-            const c = data.configuracion || {};
+            const data = await fetchJson(esAmbitoGlobal() ? '/api/configuracion-global' : '/api/configuracion-institucional');
+            const c = (esAmbitoGlobal() ? data.efectiva : data.configuracion) || data.configuracion || {};
             aplicarIdentidadInstitucional(c);
             setValue('ci-nombre-plataforma', c.nombre_plataforma);
-            setValue('ci-nombre-corporacion', c.nombre_corporacion);
-            setValue('ci-sigla', c.sigla);
+            setValue('ci-nombre-corporacion', c.nombre_corporacion || c.nombre_plataforma);
+            setValue('ci-sigla', c.sigla || c.sigla_plataforma);
             setValue('ci-nit', c.nit);
             setValue('ci-representante', c.representante_legal);
             setValue('ci-direccion', c.direccion);
             setValue('ci-telefono', c.telefono);
             setValue('ci-correo', c.correo);
-            setValue('ci-color-primario', c.color_primario);
-            setValue('ci-color-secundario', c.color_secundario);
-            setValue('ci-nombre-admin', c.nombre_admin);
-            setValue('ci-cargo-admin', c.cargo_admin);
+            setValue('ci-color-primario', c.color_primario || c.color_primario_global);
+            setValue('ci-color-secundario', c.color_secundario || c.color_secundario_global);
+            setValue('ci-nombre-admin', c.nombre_admin || c.nombre_administrador_general);
+            setValue('ci-cargo-admin', c.cargo_admin || c.cargo_administrador_general);
             configLoaded = true;
             if (!silent) mostrar('ci-message', 'Configuración institucional actualizada.', 'success');
         } catch (error) {
@@ -226,10 +236,52 @@
         }
     }
 
+    async function cargarIdentidadPublica(silent = true) {
+        try {
+            const data = await fetchJson('/api/configuracion-publica');
+            const visual = data.configuracion || data;
+            aplicarIdentidadInstitucional({
+                nombre_plataforma: visual.nombre_plataforma,
+                nombre_corporacion: visual.nombre_plataforma,
+                sigla: visual.sigla_plataforma,
+                logo_principal_url: visual.logo_global_url,
+                favicon_url: visual.favicon_global_url,
+                color_primario: visual.color_primario,
+                color_secundario: visual.color_secundario,
+                identity_version: visual.identity_version
+            });
+            return data;
+        } catch (error) {
+            if (!silent) mostrar('ci-message', error.message || 'No se pudo cargar la identidad pública.', 'error');
+            return null;
+        }
+    }
+
+    async function cargarIdentidadEfectiva(silent = true) {
+        try {
+            const data = await fetchJson('/api/configuracion-institucional/efectiva');
+            aplicarIdentidadInstitucional(data.configuracion || data.identidad || {});
+            return data;
+        } catch (error) {
+            if (!silent) mostrar('ci-message', error.message || 'No se pudo cargar la identidad institucional.', 'error');
+            return null;
+        }
+    }
+
+    async function limpiarIdentidadInstitucional() {
+        protectedAssetObjectUrls.forEach((objectUrl) => {
+            try { URL.revokeObjectURL(objectUrl); } catch (_) {}
+        });
+        protectedAssetObjectUrls.clear();
+        configuracionActual = null;
+        configLoaded = false;
+        return cargarIdentidadPublica(true);
+    }
+
     async function guardarConfiguracionInstitucional(event, soloAdmin = false) {
         event?.preventDefault();
         limpiarMensaje('ci-message');
-        const payload = soloAdmin ? {
+        let payload = soloAdmin ? {
             nombre_admin: qs('ci-nombre-admin')?.value.trim(),
             cargo_admin: qs('ci-cargo-admin')?.value.trim()
         } : {
@@ -244,8 +296,19 @@
             color_primario: qs('ci-color-primario')?.value.trim(),
             color_secundario: qs('ci-color-secundario')?.value.trim()
         };
+        if (esAmbitoGlobal()) {
+            payload = soloAdmin ? {
+                nombre_administrador_general: payload.nombre_admin,
+                cargo_administrador_general: payload.cargo_admin
+            } : {
+                nombre_plataforma: payload.nombre_plataforma,
+                sigla_plataforma: payload.sigla,
+                color_primario_global: payload.color_primario,
+                color_secundario_global: payload.color_secundario
+            };
+        }
         try {
-            const data = await fetchJson('/api/configuracion-institucional', {
+            const data = await fetchJson(esAmbitoGlobal() ? '/api/configuracion-global' : '/api/configuracion-institucional', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -272,7 +335,8 @@
         const form = new FormData();
         form.append('file', file, file.name);
         if (tipo === 'logo') form.append('tipo', qs('ci-logo-tipo')?.value || 'principal');
-        const endpoint = tipo === 'foto' ? '/api/configuracion-institucional/foto-admin' : (tipo === 'favicon' ? '/api/configuracion-institucional/favicon' : '/api/configuracion-institucional/logo');
+        const base = esAmbitoGlobal() ? '/api/configuracion-global' : '/api/configuracion-institucional';
+        const endpoint = tipo === 'foto' ? `${base}/foto-admin` : (tipo === 'favicon' ? `${base}/favicon` : `${base}/logo`);
         const oldHtml = submitter?.innerHTML;
         try {
             if (submitter) {
@@ -427,6 +491,15 @@
         const applyGenerated = qs('ci-generator-apply');
         if (applyGenerated && !applyGenerated.dataset.bound) { applyGenerated.addEventListener('click', aplicarLoteIdentidad); applyGenerated.dataset.bound = '1'; }
         const form = qs('ci-form');
+        const scope = qs('ci-scope');
+        if (scope && !scope.dataset.bound) {
+            scope.addEventListener('change', async () => {
+                actualizarAvisoAmbito();
+                await cargarConfiguracionInstitucional(true);
+            });
+            scope.dataset.bound = '1';
+            actualizarAvisoAmbito();
+        }
         if (form && !form.dataset.bound) {
             form.addEventListener('submit', (event) => guardarConfiguracionInstitucional(event, false));
             form.dataset.bound = '1';
@@ -558,12 +631,15 @@
         bindConfigForms();
         // Solo consulta datos livianos de configuración para pintar identidad.
         // No carga manuales ni PDFs en memoria al iniciar.
-        cargarConfiguracionInstitucional(true);
+        cargarIdentidadPublica(true);
     }
 
     window.descargarArchivoInstitucional = descargarArchivoInstitucional;
     window.aplicarIdentidadInstitucional = aplicarIdentidadInstitucional;
     window.cargarConfiguracionInstitucional = cargarConfiguracionInstitucional;
+    window.cargarIdentidadPublica = cargarIdentidadPublica;
+    window.cargarIdentidadEfectiva = cargarIdentidadEfectiva;
+    window.limpiarIdentidadInstitucional = limpiarIdentidadInstitucional;
     window.configInstitucionalInit = configInstitucionalInit;
     window.cargarCatalogoIdentidadVisual = cargarCatalogoIdentidadVisual;
     window.activarArchivoIdentidadVisual = activarArchivoIdentidadVisual;
@@ -572,6 +648,6 @@
     window.manualOperativoMarcarVigente = manualOperativoMarcarVigente;
 
     document.addEventListener('DOMContentLoaded', () => {
-        setTimeout(initLigero, 800);
+        initLigero();
     });
 })();

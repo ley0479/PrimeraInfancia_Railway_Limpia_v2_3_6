@@ -320,6 +320,9 @@ async function iniciarSesionDesdeToken() {
             mostrarCambioPasswordObligatorio();
             return false;
         }
+        if (typeof window.cargarIdentidadEfectiva === 'function') {
+            await window.cargarIdentidadEfectiva(true);
+        }
         mostrarAplicacion();
         aplicarPermisosFrontend();
         if (window.ThemeManager && typeof ThemeManager.initSessionTheme === 'function') {
@@ -692,6 +695,9 @@ window.cambiarPasswordObligatorio = cambiarPasswordObligatorio;
 
 async function cerrarSesion() {
     try { await fetch(`${backendUrl}/api/auth/logout`, { method: 'POST' }); } catch (_) {}
+    if (typeof window.limpiarIdentidadInstitucional === 'function') {
+        try { await window.limpiarIdentidadInstitucional(); } catch (_) {}
+    }
     limpiarSesionLocal();
     location.reload();
 }
