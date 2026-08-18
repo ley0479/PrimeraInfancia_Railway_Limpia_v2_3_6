@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime, date, timedelta
 from typing import Any, Iterable
 
@@ -86,10 +85,6 @@ class BillingRepository(CoreCompatRepository):
             cur.execute(normalize_ddl_for_engine(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
 
     def init_schema(self) -> None:
-        if os.getenv('SKIP_RUNTIME_SCHEMA_DDL', '').strip().lower() in {
-            '1', 'true', 'yes', 'si', 'sí', 'on',
-        }:
-            return
         conn = self.connect()
         try:
             cur = conn.cursor()
@@ -108,6 +103,7 @@ class BillingRepository(CoreCompatRepository):
     def _ensure_foundation_columns(self, cur: Any) -> None:
         if not self.table_exists(cur, 'fundaciones'):
             return
+        columns = self.cols('fundaciones')
         for col, definition in {
             'nit': 'TEXT',
             'representante': 'TEXT',
@@ -123,7 +119,12 @@ class BillingRepository(CoreCompatRepository):
             'creditos_disponibles': 'INTEGER DEFAULT 0',
             'fecha_actualizacion': 'TEXT',
         }.items():
-            self.ensure_column(cur, 'fundaciones', col, definition)
+            if col not in columns:
+                from modules.sqlalchemy_compat import normalize_ddl_for_engine
+                cur.execute(normalize_ddl_for_engine(
+                    f"ALTER TABLE fundaciones ADD COLUMN {col} {definition}"
+                ))
+                columns.add(col)
 
     def _seed_planes(self, cur: Any) -> None:
         for plan in DEFAULT_PLANES:

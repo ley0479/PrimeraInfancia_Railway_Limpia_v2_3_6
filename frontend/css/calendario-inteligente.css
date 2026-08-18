@@ -59,6 +59,34 @@
 .ci-rojo { border-color: rgba(239,68,68,.55); background: rgba(239,68,68,.18); color: rgb(252 165 165); }
 .ci-gris { border-color: rgba(148,163,184,.4); background: rgba(100,116,139,.16); color: rgb(203 213 225); }
 .ci-list-status { border-radius: 999px; padding: .25rem .6rem; font-size: .72rem; font-weight: 800; border: 1px solid transparent; display: inline-flex; align-items: center; gap: .35rem; }
+.ci-week-grid { display: grid; grid-template-columns: repeat(7, minmax(150px, 1fr)); gap: .65rem; overflow-x: auto; padding-bottom: .35rem; }
+.ci-week-column { min-height: 18rem; border: 1px solid rgb(30 41 59); border-radius: .9rem; background: rgba(15,23,42,.65); overflow: hidden; }
+.ci-week-today { border-color: rgba(96,165,250,.65); box-shadow: inset 0 0 0 1px rgba(96,165,250,.18); }
+.ci-week-heading { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: .7rem; color: rgb(203 213 225); background: rgba(2,6,23,.65); }
+.ci-week-heading span { display: grid; place-items: center; width: 1.8rem; height: 1.8rem; border-radius: 999px; background: rgba(59,130,246,.18); }
+.ci-week-events { display: grid; gap: .5rem; padding: .55rem; }
+.ci-week-events > p { color: rgb(100 116 139); font-size: .72rem; text-align: center; padding: 1rem .2rem; }
+.ci-week-event { border: 1px solid transparent; border-radius: .65rem; padding: .55rem; text-align: left; font-size: .72rem; }
+.ci-week-event strong, .ci-week-event span { display: block; }
+.ci-week-event span { margin-top: .2rem; opacity: .8; font-size: .66rem; }
+.ci-agenda { display: grid; gap: .8rem; }
+.ci-agenda-day { display: grid; grid-template-columns: 9rem 1fr; gap: .8rem; border-bottom: 1px solid rgb(30 41 59); padding-bottom: .8rem; }
+.ci-agenda-date { color: rgb(125 211 252); font-weight: 700; display: flex; align-items: flex-start; gap: .45rem; padding: .7rem .2rem; }
+.ci-agenda-item, .ci-personal-pending { width: 100%; display: flex; align-items: center; gap: .65rem; text-align: left; border: 1px solid rgb(30 41 59); background: rgba(2,6,23,.45); border-radius: .75rem; padding: .7rem; margin-bottom: .45rem; color: rgb(203 213 225); }
+.ci-agenda-item:hover, .ci-personal-pending:hover { background: rgba(30,41,59,.72); }
+.ci-agenda-item > span:nth-child(2), .ci-personal-pending > span:nth-child(2) { min-width: 0; flex: 1; }
+.ci-agenda-item strong, .ci-agenda-item small, .ci-personal-pending strong, .ci-personal-pending small { display: block; }
+.ci-agenda-item small, .ci-personal-pending small { color: rgb(100 116 139); margin-top: .18rem; }
+.ci-agenda-item em { font-size: .7rem; color: rgb(148 163 184); font-style: normal; }
+.ci-checklist-list { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.ci-checklist-card { border: 1px solid rgb(30 41 59); border-radius: 1rem; background: rgba(2,6,23,.48); padding: 1rem; }
+.ci-checklist-head { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; }
+.ci-checklist-head small, .ci-checklist-head strong, .ci-checklist-head span { display: block; }
+.ci-checklist-head small { color: rgb(52 211 153); text-transform: uppercase; font-size: .68rem; }
+.ci-checklist-head strong { color: rgb(226 232 240); margin-top: .2rem; }
+.ci-checklist-head div > span { color: rgb(100 116 139); font-size: .72rem; margin-top: .25rem; }
+.ci-checklist-reqs { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .8rem; }
+.ci-checklist-reqs span { display: inline-flex; align-items: center; gap: .3rem; border: 1px solid rgba(51,65,85,.9); border-radius: 999px; padding: .3rem .55rem; color: rgb(148 163 184); font-size: .7rem; }
 .ci-annual-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .ci-mini-month { border: 1px solid rgb(30 41 59); background: rgba(15, 23, 42, .72); border-radius: 1rem; padding: .8rem; }
 .ci-mini-title { text-align: center; font-weight: 800; color: rgb(226 232 240); margin-bottom: .55rem; }
@@ -74,7 +102,10 @@
 @media (max-width: 900px) {
     .ci-day { min-height: 5.5rem; padding: .45rem; }
     .ci-event-pill { font-size: .64rem; }
-    .ci-calendar-grid { font-size: .82rem; }
+    .ci-calendar-grid { font-size: .82rem; min-width: 720px; }
+    #ci-view-container { overflow-x: auto; }
+    .ci-agenda-day { grid-template-columns: 1fr; gap: 0; }
+    .ci-view-toggle { max-width: 100%; overflow-x: auto; }
 }
 
 /* ALPHA33: vista previa editable de cronogramas antes de guardar */

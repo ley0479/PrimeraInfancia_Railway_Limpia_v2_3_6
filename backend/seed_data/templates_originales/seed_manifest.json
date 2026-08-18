@@ -31,8 +31,8 @@
     },
     {
       "archivo": "oficiales/plantilla_ram_oficial_v3.xlsx",
-      "sha256": "52ae6d192acd678d282d851bbc43d0ebd042efe4e338c3761a4f87f207b14fdf",
-      "bytes": 47323
+      "sha256": "a6b4c9412f7c72a19b9d5e842fa5ffd4b876c7d0f0c3d5c8e140b5287d700753",
+      "bytes": 45591
     },
     {
       "archivo": "oficiales/plantilla_rpp_oficial.xlsx",
@@ -46,7 +46,7 @@
     },
     {
       "archivo": "oficiales/templates_manifest.json",
-      "sha256": "1847bb1d5830b63dbd3fee5ea7cf2e18e6fe5788f2f5361027262f911efae83b",
+      "sha256": "541d90179689623eea3223c0993de1354a83c700658327ffa20d6a05db240245",
       "bytes": 4050
     }
   ]

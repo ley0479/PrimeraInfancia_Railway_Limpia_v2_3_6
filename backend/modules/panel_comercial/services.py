@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import threading
 from datetime import date, datetime
 from typing import Any, Iterable
 
@@ -12,6 +13,7 @@ from openpyxl.styles import Font, PatternFill, Alignment
 
 from .schema import PANEL_COMERCIAL_SCHEMA_SQL, TICKET_ESTADOS, TICKET_PRIORIDADES, TICKET_CATEGORIAS
 from modules.sqlalchemy_compat import CoreConnection, CoreCompatRepository
+from modules.runtime_schema import runtime_schema_ddl_disabled
 
 
 def now_iso() -> str:
@@ -58,19 +60,32 @@ class PanelComercialService:
     crédito. No reemplaza el módulo de Suscripción y Pagos.
     """
 
+    _SCHEMA_LOCK = threading.RLock()
+    _SCHEMA_READY: set[str] = set()
+
     def __init__(self, database_path: str):
         self.database_path = database_path
 
-    def init_schema(self) -> None:
-        conn = connect(self.database_path)
-        try:
-            conn.executescript(PANEL_COMERCIAL_SCHEMA_SQL)
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
+    def init_schema(self, *, force: bool = False) -> None:
+        key = str(self.database_path or 'default')
+        if runtime_schema_ddl_disabled() and not force:
+            self._SCHEMA_READY.add(key)
+            return
+        if not force and key in self._SCHEMA_READY:
+            return
+        with self._SCHEMA_LOCK:
+            if not force and key in self._SCHEMA_READY:
+                return
+            conn = connect(self.database_path)
+            try:
+                conn.executescript(PANEL_COMERCIAL_SCHEMA_SQL)
+                conn.commit()
+                self._SCHEMA_READY.add(key)
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
 
     def context(self) -> dict[str, Any]:
         user = getattr(g, 'current_user', None) or {}

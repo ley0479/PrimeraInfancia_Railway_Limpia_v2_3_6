@@ -344,17 +344,87 @@ class UCAIntegrationEngine:
         }
 
     def _talent(self, conn: sqlite3.Connection, fundacion_id: int, unit_name: str, unit_code: str | None) -> dict[str, Any]:
-        assignments = self._scoped_rows(conn, "master_talento_humano", fundacion_id=fundacion_id, unit_name=unit_name, unit_code=unit_code, unit_columns=("unidad_servicio",), fields=("id", "documento", "unidad_servicio", "nombre_completo", "rol_normalizado", "cargo", "estado", "activo"))
-        people = {str(row.get("documento") or row.get("id")): row for row in assignments}
-        active_people = sum(1 for row in people.values() if _state(row.get("estado")) not in {"INACTIVO", "SUSPENDIDO", "RETIRADO", "ELIMINADO"})
-        active_assignments = sum(1 for row in assignments if _state(row.get("estado")) not in {"INACTIVO", "SUSPENDIDO", "RETIRADO", "ELIMINADO"})
+        """Resume el talento humano de la UCA sin duplicar fuentes.
+
+        La base maestra de talento es prioritaria cuando existe. Las versiones
+        actuales del módulo de Talento Humano utilizan ``th_personas`` y
+        ``th_asignaciones``; por eso se usa ese par como fuente canónica de
+        respaldo. Esta compatibilidad evita que el expediente central muestre
+        cero personas en instalaciones migradas que ya no conservan
+        ``master_talento_humano``.
+        """
+        legacy_rows = self._scoped_rows(
+            conn,
+            "master_talento_humano",
+            fundacion_id=fundacion_id,
+            unit_name=unit_name,
+            unit_code=unit_code,
+            unit_columns=("unidad_servicio",),
+            fields=("id", "documento", "unidad_servicio", "nombre_completo", "rol_normalizado", "cargo", "estado", "activo"),
+        )
+        if legacy_rows:
+            people = {str(row.get("documento") or row.get("id")): row for row in legacy_rows}
+            active_people = sum(
+                1 for row in people.values()
+                if int(row.get("activo") if row.get("activo") is not None else 1) == 1
+                and _state(row.get("estado")) not in {"INACTIVO", "SUSPENDIDO", "RETIRADO", "ELIMINADO"}
+            )
+            active_assignments = sum(
+                1 for row in legacy_rows
+                if int(row.get("activo") if row.get("activo") is not None else 1) == 1
+                and _state(row.get("estado")) not in {"INACTIVO", "SUSPENDIDO", "RETIRADO", "ELIMINADO"}
+            )
+            return {
+                "personas": len(people),
+                "personas_activas": active_people,
+                "asignaciones": len(legacy_rows),
+                "asignaciones_activas": active_assignments,
+                "semaforo": "VERDE" if active_people and active_assignments else ("AMARILLO" if active_people else "ROJO"),
+                "fuentes": ["master_talento_humano"],
+            }
+
+        people_rows = self._scoped_rows(
+            conn,
+            "th_personas",
+            fundacion_id=fundacion_id,
+            unit_name=unit_name,
+            unit_code=unit_code,
+            unit_columns=("unidad", "unidad_servicio", "uds", "uca", "codigo_unidad"),
+            fields=("id", "documento", "nombre", "nombre_completo", "unidad", "unidad_servicio", "rol_normalizado", "cargo", "estado", "activo"),
+        )
+        assignment_rows = self._scoped_rows(
+            conn,
+            "th_asignaciones",
+            fundacion_id=fundacion_id,
+            unit_name=unit_name,
+            unit_code=unit_code,
+            unit_columns=("unidad", "unidad_servicio", "uds", "uca", "codigo_unidad"),
+            fields=("id", "persona_id", "unidad", "unidad_servicio", "rol", "cargo", "estado", "fecha_inicio", "fecha_fin", "activo"),
+        )
+        people = {str(row.get("id") or row.get("documento")): row for row in people_rows}
+        active_people = sum(
+            1 for row in people.values()
+            if int(row.get("activo") if row.get("activo") is not None else 1) == 1
+            and _state(row.get("estado")) not in {"INACTIVO", "SUSPENDIDO", "RETIRADO", "ELIMINADO"}
+        )
+        active_assignments = sum(
+            1 for row in assignment_rows
+            if int(row.get("activo") if row.get("activo") is not None else 1) == 1
+            and _state(row.get("estado")) not in {"INACTIVO", "SUSPENDIDO", "RETIRADO", "ELIMINADO", "FINALIZADO", "VENCIDO"}
+        )
+        # Algunas bases históricas tienen personas con unidad pero aún no poseen
+        # filas de asignación. Se informa la cobertura real sin crear registros.
+        assignment_count = len(assignment_rows)
+        if people and not assignment_rows:
+            active_assignments = active_people
+            assignment_count = len(people)
         return {
             "personas": len(people),
             "personas_activas": active_people,
-            "asignaciones": len(assignments),
+            "asignaciones": assignment_count,
             "asignaciones_activas": active_assignments,
             "semaforo": "VERDE" if active_people and active_assignments else ("AMARILLO" if active_people else "ROJO"),
-            "fuentes": ["master_talento_humano"],
+            "fuentes": ["th_personas", "th_asignaciones"],
         }
 
     def _families_networks(self, conn: sqlite3.Connection, fundacion_id: int, unit_name: str, unit_code: str | None) -> dict[str, Any]:

@@ -55,7 +55,7 @@
     "version": "3",
     "codigo": "F27.MT1.PP",
     "fecha_vigencia": "2026-08-01",
-    "hash_sha256": "52ae6d192acd678d282d851bbc43d0ebd042efe4e338c3761a4f87f207b14fdf",
+    "hash_sha256": "a6b4c9412f7c72a19b9d5e842fa5ffd4b876c7d0f0c3d5c8e140b5287d700753",
     "area_impresion_si_falta": "A1:AO41",
     "filas_usuarios": [
       15,
@@ -97,7 +97,7 @@
         "codigo": "F27.MT1.PP",
         "fecha_vigencia": "2026-08-01",
         "fecha_vigencia_fin": "",
-        "hash_sha256": "52ae6d192acd678d282d851bbc43d0ebd042efe4e338c3761a4f87f207b14fdf",
+        "hash_sha256": "a6b4c9412f7c72a19b9d5e842fa5ffd4b876c7d0f0c3d5c8e140b5287d700753",
         "area_impresion_si_falta": "A1:AO41",
         "filas_usuarios": [
           15,

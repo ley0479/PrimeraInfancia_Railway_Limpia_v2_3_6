@@ -40,11 +40,17 @@ python backend/tools/integrity_gate.py \
   --skip-tests \
   --skip-manifest
 
-# Debe estar activa antes de que init_hosting importe Flask: registrar módulos
-# nunca puede ejecutar DDL. init_hosting habilita DDL únicamente dentro de su
-# fase explícita y protegida de migraciones.
-export SKIP_RUNTIME_SCHEMA_DDL=1
+# La única fase autorizada para DDL es el inicializador serializado. Se fuerza
+# explícitamente el modo de migración para que una variable persistida en
+# Railway no active por accidente el cortafuegos antes de terminar el esquema.
+export APP_SCHEMA_MIGRATION_MODE=1
+export SKIP_RUNTIME_SCHEMA_DDL=0
 python backend/init_hosting.py
+
+# Los workers sirven tráfico, no migran esquemas. Esta separación evita CREATE,
+# ALTER e introspecciones pesadas durante imports y solicitudes HTTP.
+export APP_SCHEMA_MIGRATION_MODE=0
+export SKIP_RUNTIME_SCHEMA_DDL=1
 
 # PostgreSQL elimina la contención del archivo SQLite. Se conserva un worker por
 # omisión porque algunos jobs operativos aún son memoria local; puede aumentarse

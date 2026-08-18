@@ -15,6 +15,7 @@ from openpyxl.styles import PatternFill, Alignment, Font, Border, Side
 from modules.print_master import aplicar_configuracion_impresion_libro
 from modules.plantillas_oficiales import get_plantilla_oficial, generar_desde_plantilla_oficial
 from modules.seguridad.tenant_context import current_tenant_id
+from modules.runtime_schema import schema_ddl_enabled
 from models import ConfiguracionSistema, EstadoUsuario
 
 
@@ -51,7 +52,8 @@ class GeneradorFormatos:
         try:
             from modules.calendario_inteligente.repository import CalendarioInteligenteRepository
             repo = CalendarioInteligenteRepository(self.db_path, self.output_path)
-            repo.init_schema()
+            if schema_ddl_enabled():
+                repo.init_schema()
             repo.sincronizar_entrega({
                 'titulo': titulo,
                 'fecha_entrega': f"{int(año):04d}-{int(mes):02d}-01",
@@ -72,22 +74,33 @@ class GeneradorFormatos:
             return False
 
     def _usuario_oficial(self, b):
+        """Normaliza un participante sin inventar valores ausentes."""
         return {
-            'NUI': b.get('nui') or b.get('documento') or '',
-            'Documento': b.get('documento') or b.get('nui') or '',
-            'TipoDocumento': b.get('tipo_documento') or b.get('tipo_doc') or 'RC',
-            'Nombre': b.get('nombres') or '',
+            'Id': b.get('id') or '',
+            'NUI': b.get('nui') or '',
+            'NumeroDocumento': b.get('numero_documento') or b.get('documento') or '',
+            'Documento': b.get('documento') or b.get('numero_documento') or '',
+            'TipoDocumento': b.get('tipo_documento') or b.get('tipo_doc') or '',
+            'Nombre': b.get('nombre') or b.get('nombre_completo') or b.get('nombres') or '',
+            'Nombres': b.get('nombres') or b.get('nombre_completo') or '',
+            'Apellidos': b.get('apellidos') or '',
             'PrimerNombre': b.get('primer_nombre') or '',
             'SegundoNombre': b.get('segundo_nombre') or '',
             'PrimerApellido': b.get('primer_apellido') or '',
             'SegundoApellido': b.get('segundo_apellido') or '',
+            'FechaNacimiento': b.get('fecha_nacimiento') or '',
+            'FechaIngreso': b.get('fecha_ingreso') or '',
+            'FechaRetiro': b.get('fecha_retiro') or '',
+            'CausaRetiro': b.get('causa_retiro') or b.get('motivo_retiro') or '',
             'Acudiente': b.get('nombre_acudiente') or '',
             'DocumentoAcudiente': b.get('documento_acudiente') or '',
             'Parentesco': b.get('parentesco') or '',
             'Telefono': b.get('telefono') or b.get('celular') or '',
-            'EdadMeses': b.get('edad_meses') or 0,
+            'EdadMeses': b.get('edad_meses') if b.get('edad_meses') not in (None, '') else '',
             'GrupoEdad': b.get('grupo_edad') or '',
             'TipoBeneficiario': b.get('tipo_beneficiario') or '',
+            'Unidad': b.get('unidad') or b.get('unidad_servicio') or '',
+            'Estado': b.get('estado') or '',
         }
 
     def _metadata_oficial(self, mes, año, unidad, coordinador=None):
@@ -160,10 +173,18 @@ class GeneradorFormatos:
 
         beneficiario_ref = {}
         unidad_db = {}
+        fundacion_db = {}
         talentos = []
         try:
             conn = self.get_db_connection()
             cursor = conn.cursor()
+
+            try:
+                fundacion_id = int(current_tenant_id(default=1) or 1)
+                fila_f = cursor.execute("SELECT * FROM fundaciones WHERE id=? LIMIT 1", (fundacion_id,)).fetchone()
+                fundacion_db = dict(fila_f) if fila_f else {}
+            except Exception:
+                fundacion_db = {}
 
             try:
                 filas_b = cursor.execute("SELECT * FROM beneficiarios WHERE unidad = ? LIMIT 1", (unidad,)).fetchall()
@@ -227,12 +248,12 @@ class GeneradorFormatos:
             except Exception:
                 responsable = ''
 
-        regional = row_value(beneficiario_ref, 'regional', 'Regional') or 'CHOCÓ'
-        centro_zonal = row_value(beneficiario_ref, 'centro_zonal', 'CentroZonal', 'Centro Zonal') or 'CZ Ciudad de prueba'
-        municipio = row_value(beneficiario_ref, 'municipio', 'Municipio') or 'Ciudad de prueba'
+        regional = row_value(beneficiario_ref, 'regional', 'Regional') or row_value(fundacion_db, 'departamento', 'regional')
+        centro_zonal = row_value(beneficiario_ref, 'centro_zonal', 'CentroZonal', 'Centro Zonal') or row_value(fundacion_db, 'centro_zonal')
+        municipio = row_value(beneficiario_ref, 'municipio', 'Municipio') or row_value(unidad_db, 'municipio') or row_value(fundacion_db, 'municipio')
         modalidad = row_value(beneficiario_ref, 'modalidad', 'Modalidad') or row_value(unidad_db, 'modalidad') or 'EDUCACIÓN INICIAL PROPIA DIARIA - PROPIA E INTERCULTURAL'
         servicio = row_value(beneficiario_ref, 'servicio_atencion', 'ServicioAtencion', 'servicio') or modalidad
-        eas = row_value(beneficiario_ref, 'nombre_eas', 'NombreEAS', 'entidad_administradora') or 'FUNDACIÓN PACÍFICO VIVE'
+        eas = row_value(beneficiario_ref, 'nombre_eas', 'NombreEAS', 'entidad_administradora') or row_value(fundacion_db, 'nombre')
         codigo_uds = row_value(beneficiario_ref, 'codigo_unidad_servicio', 'codigo_uds', 'CodigoUnidadServicio', 'codigo_unidad') or row_value(unidad_db, 'codigo_unidad_servicio', 'codigo_uds', 'codigo')
         direccion = row_value(unidad_db, 'direccion', 'Direccion') or row_value(beneficiario_ref, 'direccion_unidad', 'DireccionUnidad') or row_value(responsable_row, 'direccion')
         telefono_unidad = row_value(unidad_db, 'telefono', 'Telefono') or row_value(responsable_row, 'telefono', 'celular')
@@ -254,34 +275,42 @@ class GeneradorFormatos:
             'servicio_atencion': limpiar(servicio).upper(),
             'ServicioAtencion': limpiar(servicio).upper(),
             'eas': limpiar(eas).upper(),
+            'eas_pds': limpiar(eas).upper(),
             'NombreEAS': limpiar(eas).upper(),
+            'nit': limpiar(row_value(fundacion_db, 'nit')),
             'unidad': limpiar(unidad).upper(),
             'Unidad': limpiar(unidad).upper(),
             'unidad_origen': limpiar(unidad_origen).upper(),
             'NombreUnidadOrigen': limpiar(unidad_origen).upper(),
             'codigo_unidad': limpiar(codigo_uds),
             'codigo_uds': limpiar(codigo_uds),
+            'codigo_cuentame': limpiar(codigo_uds),
             'CodigoUnidadServicio': limpiar(codigo_uds),
             'codigo_origen': limpiar(codigo_origen),
             'CodigoUnidadOrigen': limpiar(codigo_origen),
             'direccion': limpiar(direccion).upper(),
             'direccion_unidad': limpiar(direccion).upper(),
+            'direccion_uds': limpiar(direccion).upper(),
             'DireccionUnidad': limpiar(direccion).upper(),
             'barrio': limpiar(barrio).upper(),
             'Barrio': limpiar(barrio).upper(),
             'telefono': limpiar(telefono_unidad),
+            'telefono_uds': limpiar(telefono_unidad),
             'Telefono': limpiar(telefono_unidad),
             'telefono_docente': limpiar(row_value(responsable_row, 'telefono', 'celular')) or limpiar(telefono_unidad),
             'responsable': responsable,
             'docente': responsable,
             'agente_educativo': responsable,
             'cedula_docente': limpiar(row_value(responsable_row, 'documento', 'cedula', 'identificacion')),
+            'documento_agente': limpiar(row_value(responsable_row, 'documento', 'cedula', 'identificacion')),
             'suplente': full_name(suplente_row),
             'telefono_suplente': limpiar(row_value(suplente_row, 'telefono', 'celular')),
             'coordinador': full_name(coordinador_row) or limpiar(row_value(responsable_row, 'coordinador')),
             'contrato': limpiar(contrato),
             'NumeroContrato': limpiar(contrato),
             'mes': mes_nombre,
+            'mes_nombre': mes_nombre,
+            'mes_numero': int(mes),
             'Mes': mes_nombre,
             'anio': año,
             'año': año,
@@ -291,56 +320,47 @@ class GeneradorFormatos:
         }
         return metadata
     
-    # ==================== ASISTENCIA ====================
+    # ==================== ASISTENCIA / RAM OFICIAL ====================
     def generar_asistencia(self, mes, año, unidad):
-        """Genera formato de asistencia para un mes"""
+        """Genera el listado oficial RAM V3 con participantes reales de la UDS.
+
+        Conserva la plantilla protegida, pagina 20 participantes por hoja y deja
+        vacías las marcas diarias cuando no existe un registro electrónico
+        verificable de asistencia.
+        """
         conn = self.get_db_connection()
-        cursor = conn.cursor()
-        
-        # Obtener beneficiarios de la unidad
-        cursor.execute("""
-            SELECT b.id, b.documento, b.nui, b.nombres, b.apellidos,
-                   b.primer_nombre, b.segundo_nombre,
-                   b.primer_apellido, b.segundo_apellido, b.fecha_carga
-            FROM beneficiarios b
-            WHERE b.unidad = ? AND b.estado = ?
-            ORDER BY COALESCE(NULLIF(b.primer_nombre, ''), b.nombres),
-                     COALESCE(NULLIF(b.primer_apellido, ''), b.apellidos)
-        """, (unidad, EstadoUsuario.ACTIVO))
-        
-        beneficiarios = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        
-        # Crear DataFrame
-        df = pd.DataFrame()
-        df['NUI'] = [b.get('nui', '') for b in beneficiarios]
-        df['DOCUMENTO'] = [b['documento'] for b in beneficiarios]
-        df['NOMBRES'] = [b['nombres'] for b in beneficiarios]
-        df['APELLIDOS'] = [b['apellidos'] for b in beneficiarios]
-        df['PRIMER NOMBRE'] = [b.get('primer_nombre', '') for b in beneficiarios]
-        df['SEGUNDO NOMBRE'] = [b.get('segundo_nombre', '') for b in beneficiarios]
-        df['PRIMER APELLIDO'] = [b.get('primer_apellido', '') for b in beneficiarios]
-        df['SEGUNDO APELLIDO'] = [b.get('segundo_apellido', '') for b in beneficiarios]
-        
-        # Agregar columnas para días del mes
-        import calendar
-        _, dias_mes = calendar.monthrange(año, mes)
-        for dia in range(1, dias_mes + 1):
-            df[f'DIA_{dia}'] = ''  # Vacío para llenar manualmente
-        
-        df['TOTAL_ASISTENCIAS'] = ''
-        df['OBSERVACIONES'] = ''
-        
-        # Guardar
-        fecha_str = f"{año}{mes:02d}"
-        nombre_archivo = f"ASISTENCIA_{unidad}_{fecha_str}.xlsx"
+        try:
+            fundacion_id = int(current_tenant_id(default=1) or 1)
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT b.*
+                  FROM beneficiarios b
+                 WHERE COALESCE(b.fundacion_id, 1) = ?
+                   AND LOWER(TRIM(COALESCE(b.unidad,''))) = LOWER(TRIM(?))
+                   AND UPPER(COALESCE(b.estado,'ACTIVO')) NOT IN ('INACTIVO','RETIRADO','FALLECIDO')
+                 ORDER BY COALESCE(NULLIF(b.primer_nombre,''), b.nombres, b.documento),
+                          COALESCE(NULLIF(b.primer_apellido,''), b.apellidos, '')
+                """,
+                (fundacion_id, unidad),
+            )
+            beneficiarios = [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+        metadata = self._metadata_oficial(mes, año, unidad)
+        metadata.update({'mes_numero': int(mes), 'mes_nombre': metadata.get('mes_nombre') or metadata.get('mes')})
+        nombre_archivo = f"RAM_V3_{re.sub(r'[^A-Za-z0-9_-]+', '_', str(unidad)).strip('_')}_{int(año):04d}_{int(mes):02d}.xlsx"
         ruta = os.path.join(self.output_path, nombre_archivo)
-        
-        df.to_excel(ruta, sheet_name='ASISTENCIA', index=False)
-        self._aplicar_impresion_y_guardar(ruta, 'ram_ran')
-        
-        return ruta
-    
+        resultado = generar_desde_plantilla_oficial(
+            'ram',
+            {'metadata': metadata, 'usuarios': [self._usuario_oficial(b) for b in beneficiarios]},
+            ruta,
+            self.templates_path,
+        )
+        self._sincronizar_calendario_entrega('ram', 'Listado de asistencia RAM', mes, año, unidad, resultado)
+        return resultado
+
     # ==================== BIENESTARINA ====================
     def generar_bienestarina(self, mes, año, unidad, bolsas_por_beneficiario=1):
         """Genera formato de entrega de Bienestarina"""

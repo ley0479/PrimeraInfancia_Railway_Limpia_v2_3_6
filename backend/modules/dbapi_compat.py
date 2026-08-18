@@ -27,8 +27,7 @@ from database import database
 from modules.seguridad.tenant_context import current_tenant_context, strict_tenant_mode
 from modules.seguridad.tenant_sql_guard import TenantIsolationError, rewrite_tenant_sql, tenant_script_is_schema_only
 
-_POSTGRES_SCHEMA_COLUMNS: dict[str, list[CompatRow]] | None = None
-_POSTGRES_PRIMARY_KEYS: dict[str, str | None] | None = None
+_POSTGRES_PRIMARY_KEYS: dict[str, str | None] = {}
 
 
 class CompatRow(Mapping[str, Any]):
@@ -328,33 +327,38 @@ def _split_script(script: str) -> list[str]:
 
 
 def _table_pk_name(table_name: str) -> str | None:
+    """Devuelve la PK simple de una tabla sin inspeccionar todo el esquema.
+
+    La implementación anterior recorría todas las restricciones de PostgreSQL
+    por cada worker. En bases grandes esa consulta agotaba ``statement_timeout``
+    durante el registro de módulos. Ahora la introspección está parametrizada y
+    limitada a la tabla solicitada.
+    """
     if not database.engine or not _TABLE_NAME_RE.fullmatch(table_name or ""):
         return None
+    if table_name in _POSTGRES_PRIMARY_KEYS:
+        return _POSTGRES_PRIMARY_KEYS[table_name]
     try:
         if os.getenv('SKIP_RUNTIME_SCHEMA_DDL', '').strip().lower() in {'1', 'true', 'yes', 'si', 'sí', 'on'}:
-            global _POSTGRES_PRIMARY_KEYS
-            if _POSTGRES_PRIMARY_KEYS is None:
-                keys: dict[str, list[str]] = {}
-                with database.engine.connect() as connection:
-                    result = connection.execute(text("""
-                        SELECT tc.table_name, kcu.column_name
-                          FROM information_schema.table_constraints tc
-                          JOIN information_schema.key_column_usage kcu
-                            ON tc.constraint_name = kcu.constraint_name
-                           AND tc.constraint_schema = kcu.constraint_schema
-                         WHERE tc.constraint_schema = current_schema()
-                           AND tc.constraint_type = 'PRIMARY KEY'
-                         ORDER BY tc.table_name, kcu.ordinal_position
-                    """))
-                    for item in result:
-                        keys.setdefault(item[0], []).append(item[1])
-                _POSTGRES_PRIMARY_KEYS = {
-                    name: columns[0] if len(columns) == 1 else None
-                    for name, columns in keys.items()
-                }
-            return _POSTGRES_PRIMARY_KEYS.get(table_name)
-        pk = inspect(database.engine).get_pk_constraint(table_name).get("constrained_columns") or []
-        return str(pk[0]) if len(pk) == 1 else None
+            with database.engine.connect() as connection:
+                result = connection.execute(text("""
+                    SELECT kcu.column_name
+                      FROM information_schema.table_constraints tc
+                      JOIN information_schema.key_column_usage kcu
+                        ON tc.constraint_name = kcu.constraint_name
+                       AND tc.constraint_schema = kcu.constraint_schema
+                     WHERE tc.constraint_schema = current_schema()
+                       AND tc.table_name = :table_name
+                       AND tc.constraint_type = 'PRIMARY KEY'
+                     ORDER BY kcu.ordinal_position
+                """), {"table_name": table_name})
+                columns = [str(item[0]) for item in result]
+            value = columns[0] if len(columns) == 1 else None
+        else:
+            pk = inspect(database.engine).get_pk_constraint(table_name).get("constrained_columns") or []
+            value = str(pk[0]) if len(pk) == 1 else None
+        _POSTGRES_PRIMARY_KEYS[table_name] = value
+        return value
     except Exception:
         return None
 
@@ -389,24 +393,37 @@ class CompatCursor:
             if cached is not None:
                 return self._set_rows(list(cached))
             if os.getenv('SKIP_RUNTIME_SCHEMA_DDL', '').strip().lower() in {'1', 'true', 'yes', 'si', 'sí', 'on'}:
-                global _POSTGRES_SCHEMA_COLUMNS
-                if _POSTGRES_SCHEMA_COLUMNS is None:
-                    grouped: dict[str, list[CompatRow]] = {}
-                    with database.engine.connect() as connection:
-                        result = connection.execute(text("""
-                            SELECT table_name, column_name, data_type, is_nullable, column_default, ordinal_position
-                              FROM information_schema.columns
-                             WHERE table_schema = current_schema()
-                             ORDER BY table_name, ordinal_position
-                        """))
-                        for item in result:
-                            grouped.setdefault(item[0], []).append(CompatRow(
-                                ['cid', 'name', 'type', 'notnull', 'dflt_value', 'pk'],
-                                [int(item[5]) - 1, item[1], item[2], 0 if item[3] == 'YES' else 1, item[4], 0],
-                            ))
-                    _POSTGRES_SCHEMA_COLUMNS = grouped
-                rows = list(_POSTGRES_SCHEMA_COLUMNS.get(table, []))
-                self._owner._table_info_cache[table] = rows
+                # Consulta estrictamente la tabla solicitada. La versión anterior
+                # recorría ``information_schema.columns`` completo y causaba los
+                # timeouts observados en Railway al registrar varios módulos.
+                with database.engine.connect() as connection:
+                    result = connection.execute(text("""
+                        SELECT c.column_name,
+                               c.data_type,
+                               c.is_nullable,
+                               c.column_default,
+                               c.ordinal_position,
+                               EXISTS (
+                                   SELECT 1
+                                     FROM information_schema.table_constraints tc
+                                     JOIN information_schema.key_column_usage kcu
+                                       ON tc.constraint_name = kcu.constraint_name
+                                      AND tc.constraint_schema = kcu.constraint_schema
+                                    WHERE tc.constraint_schema = c.table_schema
+                                      AND tc.table_name = c.table_name
+                                      AND tc.constraint_type = 'PRIMARY KEY'
+                                      AND kcu.column_name = c.column_name
+                               ) AS is_primary_key
+                          FROM information_schema.columns c
+                         WHERE c.table_schema = current_schema()
+                           AND c.table_name = :table_name
+                         ORDER BY c.ordinal_position
+                    """), {"table_name": table})
+                    rows = [CompatRow(
+                        ['cid', 'name', 'type', 'notnull', 'dflt_value', 'pk'],
+                        [int(item[4]) - 1, item[0], item[1], 0 if item[2] == 'YES' else 1, item[3], 1 if item[5] else 0],
+                    ) for item in result]
+                self._owner._table_info_cache[table] = list(rows)
                 return self._set_rows(rows)
             inspector = inspect(database.engine)
             cols = inspector.get_columns(table) if inspector.has_table(table) else []
@@ -436,7 +453,17 @@ class CompatCursor:
         if re.search(r"name\s*=\s*\?", lower) and values:
             wanted = str(values[0])
             if os.getenv('SKIP_RUNTIME_SCHEMA_DDL', '').strip().lower() in {'1', 'true', 'yes', 'si', 'sí', 'on'}:
-                return self._set_rows([CompatRow(['name'], [wanted])])
+                # No fingir que la tabla existe: verificar únicamente el nombre
+                # pedido sin cargar el catálogo completo.
+                with database.engine.connect() as connection:
+                    found = connection.execute(text("""
+                        SELECT table_name
+                          FROM information_schema.tables
+                         WHERE table_schema = current_schema()
+                           AND table_name = :table_name
+                         LIMIT 1
+                    """), {"table_name": wanted}).first()
+                return self._set_rows([CompatRow(['name'], [wanted])] if found else [])
         inspector = inspect(database.engine)
         if self._owner._table_names_cache is None:
             self._owner._table_names_cache = inspector.get_table_names()
@@ -514,10 +541,13 @@ class CompatCursor:
         try:
             result = self._owner._connection.execute(text(sql2), bind)
         except SAIntegrityError as exc:
+            self._owner.rollback()
             raise _sqlite3.IntegrityError(_postgres_error_detail(exc)) from exc
         except SAOperationalError as exc:
+            self._owner.rollback()
             raise _sqlite3.OperationalError(_postgres_error_detail(exc)) from exc
         except DBAPIError as exc:
+            self._owner.rollback()
             raise _sqlite3.DatabaseError(_postgres_error_detail(exc)) from exc
         rows: list[CompatRow] = []
         lastrowid = 0
@@ -532,6 +562,11 @@ class CompatCursor:
                 # sqlite INSERT no devuelve filas; ocultar RETURNING al llamador.
                 rows = []
         rowcount = int(result.rowcount if result.rowcount is not None and result.rowcount >= 0 else len(rows))
+        if re.match(r'^\s*(CREATE|ALTER|DROP)\b', translated, re.I):
+            self._owner._table_names_cache = None
+            self._owner._table_info_cache.clear()
+            _POSTGRES_PRIMARY_KEYS.clear()
+            _TENANT_SCHEMA_CACHE.clear()
         return self._set_rows(rows, rowcount, lastrowid)
 
     def executemany(self, sql: str, seq_of_params: Iterable[Sequence[Any] | Mapping[str, Any]]):
@@ -554,10 +589,13 @@ class CompatCursor:
         try:
             result = self._owner._connection.execute(text(sql2), binds)
         except SAIntegrityError as exc:
+            self._owner.rollback()
             raise _sqlite3.IntegrityError(_postgres_error_detail(exc)) from exc
         except SAOperationalError as exc:
+            self._owner.rollback()
             raise _sqlite3.OperationalError(_postgres_error_detail(exc)) from exc
         except DBAPIError as exc:
+            self._owner.rollback()
             raise _sqlite3.DatabaseError(_postgres_error_detail(exc)) from exc
         count = int(result.rowcount if result.rowcount is not None and result.rowcount >= 0 else len(rows))
         return self._set_rows([], count)
@@ -660,6 +698,23 @@ class CompatConnection:
         raise RuntimeError('iterdump no aplica a PostgreSQL. Use pg_dump.')
 
 
+class _ManagedSQLiteConnection(_sqlite3.Connection):
+    """Conexión SQLite cuyo contexto también libera el archivo.
+
+    ``sqlite3.Connection.__exit__`` solo confirma o revierte la transacción;
+    no cierra la conexión. Los repositorios históricos de la plataforma usan
+    ``with sqlite3.connect(...)`` como ciclo de vida completo. Hacer explícito
+    ese contrato evita descriptores retenidos y permite limpiar bases
+    temporales en Windows.
+    """
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            return super().__exit__(exc_type, exc, tb)
+        finally:
+            self.close()
+
+
 class _SQLiteProxy:
     # El atributo debe seguir siendo sqlite3.Row para que conexiones SQLite
     # explícitas (pruebas, migraciones y respaldos) conserven su row_factory.
@@ -686,6 +741,7 @@ class _SQLiteProxy:
         PostgreSQL.
         """
         if database.engine is None or database.is_sqlite:
+            kwargs.setdefault("factory", _ManagedSQLiteConnection)
             return _sqlite3.connect(database_arg, *args, **kwargs)
 
         # ``:memory:`` y rutas SQLite explícitas distintas del DATABASE_PATH
@@ -694,6 +750,7 @@ class _SQLiteProxy:
         if database_arg not in (None, ""):
             raw = str(database_arg)
             if raw == ":memory:" or raw.startswith("file:"):
+                kwargs.setdefault("factory", _ManagedSQLiteConnection)
                 return _sqlite3.connect(database_arg, *args, **kwargs)
             try:
                 from pathlib import Path
@@ -702,10 +759,12 @@ class _SQLiteProxy:
                 configured_raw = str(database.database_path or "").strip()
                 configured = Path(configured_raw).expanduser().resolve() if configured_raw else None
                 if configured is None or explicit != configured:
+                    kwargs.setdefault("factory", _ManagedSQLiteConnection)
                     return _sqlite3.connect(database_arg, *args, **kwargs)
             except (OSError, RuntimeError, ValueError):
                 # Una ruta no resoluble no debe convertirse silenciosamente en
                 # la base productiva. Mantener el comportamiento sqlite3.
+                kwargs.setdefault("factory", _ManagedSQLiteConnection)
                 return _sqlite3.connect(database_arg, *args, **kwargs)
 
         return CompatConnection()

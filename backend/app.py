@@ -4334,6 +4334,9 @@ def health():
             'database_backend': db_status.get('dialect'),
             'database_latency_ms': db_status.get('latency_ms'),
             'version': app.config.get('APP_VERSION', 'unknown'),
+            'git_sha': str(os.getenv('RAILWAY_GIT_COMMIT_SHA') or os.getenv('GIT_COMMIT_SHA') or os.getenv('BUILD_COMMIT') or 'unknown'),
+            'build_time': str(os.getenv('RAILWAY_DEPLOYMENT_START_TIME') or os.getenv('BUILD_TIME') or 'unknown'),
+            'schema_migration_mode': str(os.getenv('APP_SCHEMA_MIGRATION_MODE', '0')).strip().lower() in {'1', 'true', 'yes', 'si', 'sí', 'on'},
             'environment': app.config.get('APP_ENV', 'unknown'),
             'server_mode': app.config.get('SERVER_MODE', 'LOCAL'),
             'public_tunnel_mode': bool(app.config.get('PUBLIC_TUNNEL_MODE', False)),
@@ -4350,6 +4353,19 @@ def health():
             'logging': log_status,
         }), 503
 
+
+@app.route('/api/system/version', methods=['GET'])
+def system_version():
+    """Huella exacta del artefacto desplegado, sin secretos."""
+    return jsonify({
+        'app_version': app.config.get('APP_VERSION', 'unknown'),
+        'git_sha': str(os.getenv('RAILWAY_GIT_COMMIT_SHA') or os.getenv('GIT_COMMIT_SHA') or os.getenv('BUILD_COMMIT') or 'unknown'),
+        'build_time': str(os.getenv('RAILWAY_DEPLOYMENT_START_TIME') or os.getenv('BUILD_TIME') or 'unknown'),
+        'environment': app.config.get('APP_ENV', 'unknown'),
+        'database_backend': database.dialect_name,
+        'project_instance_id': project_instance_id(app.config),
+        'schema_runtime_ddl_disabled': str(os.getenv('SKIP_RUNTIME_SCHEMA_DDL', '0')).strip().lower() in {'1', 'true', 'yes', 'si', 'sí', 'on'},
+    }), 200
 
 
 def _valor_booleano(valor):

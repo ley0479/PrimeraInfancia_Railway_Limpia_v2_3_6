@@ -668,11 +668,19 @@ async function cambiarPasswordObligatorio() {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'No se pudo cambiar la contraseña.');
         limpiarSesionLocal();
+        // La clave nueva ya quedó persistida como hash en PostgreSQL. Retirar
+        // del DOM la clave inicial evita que el formulario o el autocompletado
+        // parezcan restaurarla al volver al login.
+        ['forced-current-password', 'forced-new-password', 'forced-new-password-confirm', 'login-password'].forEach((id) => {
+            const input = document.getElementById(id);
+            if (input) input.value = '';
+        });
         document.getElementById('forced-password-panel')?.classList.add('hidden');
         document.getElementById('login-form')?.classList.remove('hidden');
         if (msg) msg.textContent = '';
         const loginMsg = document.getElementById('login-message');
-        if (loginMsg) loginMsg.textContent = data.message || 'Contraseña cambiada. Inicia sesión nuevamente.';
+        if (loginMsg) loginMsg.textContent = 'Contraseña guardada permanentemente. Escribe la nueva clave para iniciar sesión; si el navegador sugiere la anterior, elimínala o actualízala en su gestor de contraseñas.';
+        document.getElementById('login-password')?.focus();
     } catch (error) {
         if (msg) msg.textContent = error.message || 'No se pudo cambiar la contraseña.';
     }

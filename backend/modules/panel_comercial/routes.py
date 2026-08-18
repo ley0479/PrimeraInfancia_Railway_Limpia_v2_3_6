@@ -3,6 +3,7 @@ from __future__ import annotations
 from flask import Blueprint, jsonify, request, send_file
 
 from .services import PanelComercialService
+from modules.runtime_schema import migration_mode
 
 
 def payload() -> dict:
@@ -16,6 +17,7 @@ def payload() -> dict:
 
 def register_panel_comercial(app, database_path: str) -> None:
     service = PanelComercialService(database_path)
+    service.init_schema(force=migration_mode())
     bp = Blueprint('panel_comercial', __name__, url_prefix='/api/panel-comercial')
 
     @bp.route('/dashboard', methods=['GET'])

@@ -11,6 +11,7 @@ from werkzeug.utils import secure_filename
 
 from .repository import BillingRepository, add_months, now_iso, parse_date, today_iso
 from .schema import CREDIT_COSTS, CREDIT_PATH_RULES, PATH_MODULE_MAP
+from modules.runtime_schema import migration_mode, runtime_schema_ddl_disabled, schema_ddl_enabled
 
 
 def normalize_estado_suscripcion(fecha_vencimiento: str, estado_actual: str = 'ACTIVA', dias_gracia: int = 5) -> str:
@@ -61,6 +62,11 @@ class BillingService:
         podía bloquear el login mientras el navegador cargaba el tablero.
         """
         key = str(getattr(self.repo, 'database_path', '') or 'default')
+        # En workers de producción el esquema ya fue migrado por init_hosting.
+        # No ejecutar DDL ni escrituras de catálogo en registro/before_request.
+        if runtime_schema_ddl_disabled() and not force:
+            self._INITIALIZED_DATABASES.add(key)
+            return
         if not force and key in self._INITIALIZED_DATABASES:
             return
         with self._INIT_LOCK:
@@ -266,7 +272,7 @@ class BillingService:
             """,
             (fid,),
         )
-        if not row:
+        if not row and schema_ddl_enabled():
             self.repo.init_schema()
             row = self.repo.fetch_one(
                 """
@@ -549,6 +555,7 @@ def _json_error(message: str, status: int = 403):
 def register_billing_middleware(app, database_path: str, upload_folder: str | None = None) -> None:
     repo = BillingRepository(database_path)
     service = BillingService(repo, upload_folder)
+    service.init(force=migration_mode())
 
     @app.before_request
     def _billing_before_request():

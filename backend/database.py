@@ -16,6 +16,7 @@ from typing import Any, Iterator
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import DBAPIError, OperationalError
+from sqlalchemy.pool import NullPool
 
 
 class DatabaseManager:
@@ -48,6 +49,12 @@ class DatabaseManager:
             connect_args = dict(options.pop("connect_args", {}) or {})
             connect_args.update({"check_same_thread": False, "timeout": self.sqlite_timeout})
             options["connect_args"] = connect_args
+            # SQLite usa un archivo local y no necesita conexiones ociosas. En
+            # Windows, mantenerlas dentro de QueuePool impide eliminar bases
+            # temporales al terminar pruebas, migraciones y tareas aisladas.
+            # NullPool cierra físicamente cada conexión al devolverla sin
+            # cambiar la concurrencia/pool de PostgreSQL.
+            options.setdefault("poolclass", NullPool)
             Path(database_path).parent.mkdir(parents=True, exist_ok=True)
         elif database_url.startswith("postgresql"):
             connect_args = dict(options.pop("connect_args", {}) or {})

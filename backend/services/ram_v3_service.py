@@ -14,6 +14,8 @@ import unicodedata
 from copy import copy, deepcopy
 from datetime import date, datetime
 from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
+import xml.etree.ElementTree as ET
 from typing import Any, Callable, Iterable
 
 from openpyxl import load_workbook
@@ -277,6 +279,70 @@ def attendance_cell_for_date(day: date) -> tuple[int, int] | None:
     if column not in ATTENDANCE_COLUMNS:
         return None
     return occurrence, column
+
+
+def _worksheet_xml_paths(xlsx_path: str | Path) -> dict[str, str]:
+    """Mapea títulos de hojas a sus XML internos sin depender del sheetId."""
+    main_ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+    rel_ns = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    pkg_ns = "http://schemas.openxmlformats.org/package/2006/relationships"
+    with ZipFile(xlsx_path, "r") as archive:
+        workbook = ET.fromstring(archive.read("xl/workbook.xml"))
+        rels = ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+    relation_targets = {
+        item.attrib.get("Id"): item.attrib.get("Target", "")
+        for item in rels.findall(f"{{{pkg_ns}}}Relationship")
+    }
+    result: dict[str, str] = {}
+    for sheet in workbook.findall(f".//{{{main_ns}}}sheet"):
+        title = sheet.attrib.get("name", "")
+        rel_id = sheet.attrib.get(f"{{{rel_ns}}}id")
+        target = relation_targets.get(rel_id, "").lstrip("/")
+        if target and not target.startswith("xl/"):
+            target = "xl/" + target
+        if title and target:
+            result[title] = target
+    return result
+
+
+def _restore_ram_column_xml(template_path: str | Path, generated_path: str | Path) -> None:
+    """Restaura el XML exacto de anchos de columnas del RAM oficial.
+
+    openpyxl elimina ``width="0"`` de columnas ocultas al guardar, aunque
+    visualmente sigan ocultas. La plantilla oficial exige preservación exacta,
+    por lo que se repone únicamente el bloque ``<cols>`` en las hojas RAM.
+    """
+    source_map = _worksheet_xml_paths(template_path)
+    target_map = _worksheet_xml_paths(generated_path)
+    source_xml_path = source_map.get(RAM_SHEET)
+    if not source_xml_path:
+        raise RamV3Error("No se pudo localizar el XML de la hoja RAM oficial.")
+    with ZipFile(template_path, "r") as archive:
+        source_xml = archive.read(source_xml_path)
+    match = re.search(br"<cols(?:\s[^>]*)?>.*?</cols>", source_xml, flags=re.DOTALL)
+    if not match:
+        raise RamV3Error("La plantilla RAM oficial no contiene definición de columnas.")
+    source_cols = match.group(0)
+
+    destination = Path(generated_path)
+    temporary = destination.with_suffix(destination.suffix + ".columns.tmp")
+    with ZipFile(destination, "r") as source_archive, ZipFile(temporary, "w", ZIP_DEFLATED) as target_archive:
+        ram_xml_paths = {path for title, path in target_map.items() if title == RAM_SHEET or title.startswith(RAM_SHEET + " ")}
+        for item in source_archive.infolist():
+            payload = source_archive.read(item.filename)
+            if item.filename in ram_xml_paths:
+                if re.search(br"<cols(?:\s[^>]*)?>.*?</cols>", payload, flags=re.DOTALL):
+                    payload = re.sub(
+                        br"<cols(?:\s[^>]*)?>.*?</cols>",
+                        lambda _match: source_cols,
+                        payload,
+                        count=1,
+                        flags=re.DOTALL,
+                    )
+                else:
+                    payload = payload.replace(b"<sheetData>", source_cols + b"<sheetData>", 1)
+            target_archive.writestr(item, payload)
+    temporary.replace(destination)
 
 
 def _copy_sheet_visuals(source, target) -> None:
@@ -660,6 +726,8 @@ def generate_ram_v3(
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     workbook.save(destination)
+    workbook.close()
+    _restore_ram_column_xml(source, destination)
     source_hash_after = sha256_file(source)
     if source_hash_after != source_hash_before:
         raise RamV3Error("La plantilla maestra fue modificada durante la generación.")

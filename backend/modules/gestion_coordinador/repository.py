@@ -62,9 +62,15 @@ class GestionCoordinadorRepository:
                 return set()
             return {row['name'] for row in cur.execute(f"PRAGMA table_info({table})").fetchall()}
 
+        columns_by_table = {
+            table: cols(table) for table in EXISTING_GP_TABLES if table_exists(table)
+        }
+
         def ensure_column(table: str, column: str, definition: str) -> None:
-            if table_exists(table) and column not in cols(table):
+            columns = columns_by_table.get(table)
+            if columns is not None and column not in columns:
                 cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+                columns.add(column)
 
         for table in EXISTING_GP_TABLES:
             for column, definition in MULTITENANT_COLUMNS.items():
@@ -83,7 +89,7 @@ class GestionCoordinadorRepository:
 
         # Etiqueta datos históricos con la fundación principal para que la FASE 1 siga operando.
         for table in EXISTING_GP_TABLES:
-            if table_exists(table) and 'fundacion_id' in cols(table):
+            if 'fundacion_id' in columns_by_table.get(table, set()):
                 try:
                     cur.execute(f"UPDATE {table} SET fundacion_id = 1 WHERE fundacion_id IS NULL")
                 except Exception:

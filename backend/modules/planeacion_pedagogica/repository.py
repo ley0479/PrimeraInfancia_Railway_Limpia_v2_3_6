@@ -70,16 +70,22 @@ class PlaneacionRepository:
 
     def _ensure_compatibility(self, cur: sqlite3.Cursor) -> None:
         # Asegura columnas mínimas en tablas de calendario/entregables ya creadas por fases previas.
+        columns_by_table: dict[str, set[str]] = {}
         for table in ['gp_calendario_eventos', 'gp_entregables', 'gp_documentos']:
             if not self._table_exists(cur, table):
                 continue
+            columns = self._cols(cur, table)
+            columns_by_table[table] = columns
             for col, definition in {
                 'fundacion_id': 'INTEGER',
                 'usuario_creador_id': 'INTEGER',
                 'fecha_actualizacion': 'TEXT',
             }.items():
-                self._ensure_column(cur, table, col, definition)
-        if self._table_exists(cur, 'gp_calendario_eventos'):
+                if col not in columns:
+                    cur.execute(f"ALTER TABLE {table} ADD COLUMN {col} {definition}")
+                    columns.add(col)
+        if 'gp_calendario_eventos' in columns_by_table:
+            columns = columns_by_table['gp_calendario_eventos']
             for col, definition in {
                 'unidad': 'TEXT',
                 'docente_id': 'INTEGER',
@@ -89,7 +95,9 @@ class PlaneacionRepository:
                 'evidencia_requerida': 'INTEGER DEFAULT 0',
                 'fecha_cumplimiento': 'TEXT',
             }.items():
-                self._ensure_column(cur, 'gp_calendario_eventos', col, definition)
+                if col not in columns:
+                    cur.execute(f"ALTER TABLE gp_calendario_eventos ADD COLUMN {col} {definition}")
+                    columns.add(col)
 
     def _tag_insert(self, cur: sqlite3.Cursor, sql: str, row_id: int) -> None:
         if not row_id:

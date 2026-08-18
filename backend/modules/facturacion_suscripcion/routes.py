@@ -7,6 +7,7 @@ from modules.seguridad.tenant_context import tenant_path
 from .repository import BillingRepository, now_iso
 from .schema import ALL_MODULES, CREDIT_COSTS, METODOS_PAGO, ESTADOS_SUSCRIPCION
 from .services import BillingService, register_billing_middleware
+from modules.runtime_schema import migration_mode
 
 
 def payload() -> dict:
@@ -29,10 +30,11 @@ def require_superadmin(repo: BillingRepository):
 
 
 def register_facturacion(app, database_path: str, upload_folder: str) -> None:
+    # TenantPath se resuelve de forma perezosa en el contexto autenticado.
     module_upload = tenant_path(upload_folder, 'facturacion')
-    os.makedirs(module_upload, exist_ok=True)
     repo = BillingRepository(database_path)
     service = BillingService(repo, module_upload)
+    service.init(force=migration_mode())
     register_billing_middleware(app, database_path, module_upload)
 
     bp = Blueprint('facturacion_suscripcion', __name__, url_prefix='/api/facturacion')

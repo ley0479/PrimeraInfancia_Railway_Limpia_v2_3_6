@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from flask import g, jsonify, request, send_file
 
 from modules.seguridad.services import require_roles
@@ -14,10 +16,18 @@ def current_user() -> dict:
 def register_backups(app, database_path: str, backups_folder: str) -> None:
     service = BackupService(database_path, backups_folder)
     service.init()
-    try:
-        service.create_daily_if_needed({'username': 'sistema', 'fundacion_id': 1})
-    except Exception as exc:
-        print(f'Backup diario no pudo crearse: {exc}')
+    # Durante init_hosting hay DDL pendiente en la misma aplicación. Lanzar
+    # pg_dump en ese punto intenta bloquear las tablas que el proceso padre aún
+    # está modificando y ambos procesos quedan esperándose. El backup diario se
+    # ejecuta únicamente en el worker ya inicializado.
+    migration_mode = os.getenv('APP_SCHEMA_MIGRATION_MODE', '').strip().lower() in {
+        '1', 'true', 'yes', 'si', 'sí', 'on',
+    }
+    if not migration_mode:
+        try:
+            service.create_daily_if_needed({'username': 'sistema', 'fundacion_id': 1})
+        except Exception as exc:
+            print(f'Backup diario no pudo crearse: {exc}')
 
     @app.route('/api/backups', methods=['GET'])
     @require_roles('SUPERADMIN', 'GERENTE')

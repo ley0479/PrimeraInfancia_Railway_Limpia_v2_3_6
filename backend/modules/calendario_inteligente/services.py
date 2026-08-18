@@ -6,10 +6,11 @@ sin depender de Flask para facilitar pruebas y evitar acoplamiento con otros mó
 """
 from __future__ import annotations
 
+import calendar
 import hashlib
 import re
 import unicodedata
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Iterable
 
 try:
@@ -42,6 +43,8 @@ MODULOS_PERMITIDOS = [
     "Cumplimiento ICBF",
 ]
 
+RECURRENCIAS_PERMITIDAS = ["ninguna", "diaria", "semanal", "mensual"]
+
 COLOR_BY_STATUS = {
     "programado": "azul",
     "pendiente": "azul",
@@ -62,13 +65,16 @@ COLUMN_SYNONYMS = {
     "descripcion": ["descripcion", "descripción", "detalle", "observacion", "observación", "observaciones"],
     "modulo": ["modulo", "módulo", "area", "área", "proceso", "menu", "menú"],
     "tipo_formato": ["formato", "tipo formato", "tipo de formato", "documento", "plantilla"],
-    "responsable_nombre": ["responsable", "encargado", "responsable nombre", "responsable_nombre", "persona responsable"],
+    "responsable_nombre": ["responsable", "encargado", "responsable nombre", "responsable_nombre", "persona responsable", "th a cargo", "talento humano a cargo"],
     "coordinador": ["coordinador", "coordinador responsable", "coordinadora", "coord"],
     "unidad": ["unidad", "uds", "sede", "unidad de servicio", "unidad servicio", "nombre uds", "comunidad"],
     "municipio": ["municipio", "ciudad", "localidad"],
     "prioridad": ["prioridad", "nivel", "urgencia"],
     "estado": ["estado", "estatus", "situacion", "situación"],
     "observaciones": ["observacion", "observación", "observaciones", "nota", "notas", "comentario"],
+    "componente": ["componente", "area componente", "componente institucional"],
+    "entregables": ["entrega", "entregas", "entregable requerido", "evidencia requerida", "soportes"],
+    "numero": ["n", "n°", "numero", "número", "item", "ítem"],
 }
 
 
@@ -186,6 +192,58 @@ def calcular_estado_color(fecha_limite: Any, estado: Any = "pendiente", hoy: dat
     return "programado", "azul", dias
 
 
+def fechas_recurrentes(
+    fecha_inicial: Any,
+    recurrencia: Any = "ninguna",
+    hasta: Any = None,
+    intervalo: Any = 1,
+    *,
+    max_instancias: int = 366,
+) -> list[str]:
+    """Expande una recurrencia finita sin inventar una fecha de terminación."""
+    inicial_iso = parse_fecha(fecha_inicial)
+    if not inicial_iso:
+        raise ValueError("La fecha inicial de la recurrencia es inválida.")
+    tipo = normalizar_texto(recurrencia).replace(" ", "_") or "ninguna"
+    if tipo not in RECURRENCIAS_PERMITIDAS:
+        raise ValueError("Recurrencia no permitida. Usa ninguna, diaria, semanal o mensual.")
+    if tipo == "ninguna":
+        return [inicial_iso]
+    hasta_iso = parse_fecha(hasta)
+    if not hasta_iso:
+        raise ValueError("recurrencia_hasta es obligatoria para una actividad recurrente.")
+    start = datetime.strptime(inicial_iso, "%Y-%m-%d").date()
+    end = datetime.strptime(hasta_iso, "%Y-%m-%d").date()
+    if end < start:
+        raise ValueError("recurrencia_hasta no puede ser anterior a fecha_limite.")
+    try:
+        step = int(intervalo or 1)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("recurrencia_intervalo debe ser un número entero.") from exc
+    if step < 1 or step > 52:
+        raise ValueError("recurrencia_intervalo debe estar entre 1 y 52.")
+
+    dates: list[str] = []
+    index = 0
+    while len(dates) < max_instancias:
+        if tipo == "diaria":
+            current = start + timedelta(days=index * step)
+        elif tipo == "semanal":
+            current = start + timedelta(days=index * step * 7)
+        else:
+            month_index = (start.month - 1) + index * step
+            year = start.year + month_index // 12
+            month = month_index % 12 + 1
+            current = date(year, month, min(start.day, calendar.monthrange(year, month)[1]))
+        if current > end:
+            break
+        dates.append(current.isoformat())
+        index += 1
+    if len(dates) >= max_instancias:
+        raise ValueError(f"La recurrencia supera el máximo de {max_instancias} instancias.")
+    return dates
+
+
 def clave_unica_entregable(data: dict[str, Any]) -> str:
     parts = [
         parse_fecha(data.get("fecha_limite")) or "",
@@ -240,21 +298,51 @@ def _dataframe_from_plain_text(texto: str):
 
 
 def _dataframe_from_docx(path: str):
+    """Lee cronogramas o listas de chequeo Word sin inventar fechas.
+
+    Las listas institucionales suelen traer ``N° / ACTIVIDAD / TH A CARGO /
+    ENTREGA`` y filas separadoras de componente. Se conservan todas las filas
+    como propuestas; las que no tienen fecha se marcan posteriormente para
+    revisión humana en lugar de descartarse.
+    """
     try:
         from docx import Document
     except Exception as exc:
         raise ValueError("Para leer Word se requiere python-docx instalado.") from exc
     doc = Document(path)
+    frames = []
     for table in doc.tables:
-        rows = [[cell.text.strip() for cell in row.cells] for row in table.rows]
-        rows = [row for row in rows if any(cell for cell in row)]
-        if len(rows) >= 2:
-            header = rows[0]
-            body = rows[1:]
-            if len(set(h for h in header if h)) >= 2:
-                df = pd.DataFrame(body, columns=header)
-                if "fecha_limite" in detectar_columnas(df.columns) and "titulo" in detectar_columnas(df.columns):
-                    return df
+        raw_rows = [[cell.text.strip() for cell in row.cells] for row in table.rows]
+        raw_rows = [row for row in raw_rows if any(str(cell or "").strip() for cell in row)]
+        if len(raw_rows) < 2:
+            continue
+        header = [str(value or "").strip() or f"COLUMNA_{idx + 1}" for idx, value in enumerate(raw_rows[0])]
+        if len(set(normalizar_texto(h) for h in header if h)) < 2:
+            continue
+        mapping = detectar_columnas(header)
+        if "titulo" not in mapping:
+            continue
+        current_component = ""
+        records = []
+        for values in raw_rows[1:]:
+            padded = list(values) + [""] * max(0, len(header) - len(values))
+            record = {header[idx]: str(padded[idx] or "").strip() for idx in range(len(header))}
+            nonempty = [normalizar_texto(value) for value in padded if str(value or "").strip()]
+            # Filas combinadas como "COMPONENTE PEDAGÓGICO" aparecen repetidas
+            # en todas las celdas. Se usan como contexto y no como actividad.
+            unique_nonempty = set(nonempty)
+            if unique_nonempty and len(unique_nonempty) == 1 and "componente" in next(iter(unique_nonempty)):
+                current_component = str(next(value for value in padded if str(value or "").strip())).strip()
+                continue
+            title_column = mapping.get("titulo")
+            if not title_column or not str(record.get(title_column) or "").strip():
+                continue
+            record["COMPONENTE"] = current_component
+            records.append(record)
+        if records:
+            frames.append(pd.DataFrame(records))
+    if frames:
+        return pd.concat(frames, ignore_index=True, sort=False)
     texto = "\n".join([p.text for p in doc.paragraphs if p.text and p.text.strip()])
     return _dataframe_from_plain_text(texto)
 
@@ -403,16 +491,16 @@ def construir_preview_cronograma(path: str, filename: str = "") -> dict[str, Any
     actividades: list[dict[str, Any]] = []
     errores: list[dict[str, Any]] = []
 
-    if "fecha_limite" not in mapping or "titulo" not in mapping:
+    if "titulo" not in mapping:
         return {
             "total_filas": int(len(df)),
             "actividades": [],
             "errores": [{
                 "fila": 0,
-                "error": "No se detectaron columnas suficientes. Debe existir una fecha y una actividad/entregable.",
+                "error": "No se detectó una columna de actividad/entregable.",
                 "columnas": [str(c) for c in df.columns],
             }],
-            "advertencias": ["Revisa el archivo: no fue posible identificar fecha y actividad."],
+            "advertencias": ["Revisa el archivo: no fue posible identificar las actividades."],
             "columnas_detectadas": mapping,
             "requiere_revision": True,
         }
@@ -436,6 +524,15 @@ def construir_preview_cronograma(path: str, filename: str = "") -> dict[str, Any
             claves_vistas.add(clave)
             if requiere_revision:
                 advertencias.append("Revisar antes de guardar: la lectura proviene de PDF/imagen/OCR.")
+            confianza = 100
+            if requiere_revision:
+                confianza -= 25
+            if not payload.get("fecha_limite"):
+                confianza -= 35
+            if not payload.get("responsable_nombre"):
+                confianza -= 10
+            if advertencias:
+                confianza -= min(15, len(advertencias) * 5)
             actividades.append({
                 "id_temp": len(actividades) + 1,
                 "fila_original": fila,
@@ -443,6 +540,9 @@ def construir_preview_cronograma(path: str, filename: str = "") -> dict[str, Any
                 "fecha_limite": payload.get("fecha_limite") or "",
                 "titulo": payload.get("titulo") or "",
                 "descripcion": payload.get("descripcion") or "",
+                "componente": payload.get("componente") or "",
+                "entregables": payload.get("entregables") or payload.get("tipo_formato") or "",
+                "numero": payload.get("numero") or "",
                 "responsable_nombre": payload.get("responsable_nombre") or "",
                 "coordinador": payload.get("coordinador") or "",
                 "unidad": payload.get("unidad") or "",
@@ -456,6 +556,8 @@ def construir_preview_cronograma(path: str, filename: str = "") -> dict[str, Any
                 "ok": not actividad_errores,
                 "errores": actividad_errores,
                 "advertencias": advertencias,
+                "confianza": max(0, min(100, confianza)),
+                "origen": filename or str(path),
             })
             if actividad_errores:
                 errores.append({"fila": fila, "error": "; ".join(actividad_errores)})

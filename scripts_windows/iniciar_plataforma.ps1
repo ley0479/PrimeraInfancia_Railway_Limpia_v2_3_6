@@ -60,18 +60,39 @@ Write-Host ''
 function Resolve-PythonCommand {
     $existingVenvPython = Join-Path $BackendDir '.venv\Scripts\python.exe'
     if (Test-Path $existingVenvPython) {
-        return [PSCustomObject]@{ File=$existingVenvPython; Prefix=@(); Label='Python del entorno virtual existente'; Version='Python 3.12 (entorno existente)' }
+        try {
+            $versionOutput = & $existingVenvPython --version 2>&1
+            $versionExitCode = $LASTEXITCODE
+            $version = $versionOutput | Select-Object -First 1
+            if ($versionExitCode -eq 0 -and $version -match 'Python 3\.(11|12)\.') {
+                return [PSCustomObject]@{ File=$existingVenvPython; Prefix=@(); Label='Python del entorno virtual existente'; Version=[string]$version }
+            }
+        } catch { }
     }
-    $candidates = @(
-        [PSCustomObject]@{ File='py.exe'; Prefix=@('-3.12'); Label='Python 3.12' },
-        [PSCustomObject]@{ File='py.exe'; Prefix=@('-3.11'); Label='Python 3.11' },
-        [PSCustomObject]@{ File='python.exe'; Prefix=@(); Label='Python en PATH' }
-    )
+
+    $candidates = [System.Collections.Generic.List[object]]::new()
+    $pyLauncher = Join-Path $env:WINDIR 'py.exe'
+    if (Test-Path $pyLauncher) {
+        $candidates.Add([PSCustomObject]@{ File=$pyLauncher; Prefix=@('-3.12'); Label='Python 3.12 (py launcher)' })
+        $candidates.Add([PSCustomObject]@{ File=$pyLauncher; Prefix=@('-3.11'); Label='Python 3.11 (py launcher)' })
+    }
+    foreach ($minor in @('312','311')) {
+        $directPython = Join-Path $env:LOCALAPPDATA "Programs\Python\Python$minor\python.exe"
+        if (Test-Path $directPython) {
+            $candidates.Add([PSCustomObject]@{ File=$directPython; Prefix=@(); Label="Python $($minor.Insert(1,'.'))" })
+        }
+    }
+    $candidates.Add([PSCustomObject]@{ File='python.exe'; Prefix=@(); Label='Python en PATH' })
+
     foreach ($candidate in $candidates) {
         try {
-            $version = & $candidate.File @($candidate.Prefix) --version 2>&1 | Select-Object -First 1
-            if ($LASTEXITCODE -eq 0 -and $version -match 'Python 3\.(11|12)\.') {
-                return [PSCustomObject]@{ File=$candidate.File; Prefix=$candidate.Prefix; Label=$candidate.Label; Version=[string]$version }
+            $candidateFile = [string]$candidate.File
+            $arguments = @($candidate.Prefix) + @('--version')
+            $versionOutput = & $candidateFile @arguments 2>&1
+            $versionExitCode = $LASTEXITCODE
+            $version = $versionOutput | Select-Object -First 1
+            if ($versionExitCode -eq 0 -and $version -match 'Python 3\.(11|12)\.') {
+                return [PSCustomObject]@{ File=$candidateFile; Prefix=$candidate.Prefix; Label=$candidate.Label; Version=[string]$version }
             }
         } catch { }
     }
@@ -93,7 +114,9 @@ if (Test-Path $VenvPython) {
 Write-Step '[2/8] Preparando entorno virtual...'
 if ($Recreate) {
     if (Test-Path $VenvDir) { Remove-Item -Recurse -Force $VenvDir }
-    & $Python.File @($Python.Prefix) -m venv $VenvDir
+    $venvArguments = @($Python.Prefix) + @('-m','venv',$VenvDir)
+    $pythonFile = [string]$Python.File
+    & $pythonFile @venvArguments
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $VenvPython)) { throw 'No se pudo crear backend\.venv.' }
     Write-Ok 'Entorno virtual creado.'
 } else { Write-Ok "Entorno virtual existente: $venvVersion" }
@@ -190,10 +213,17 @@ $env:DB_MAX_OVERFLOW = '12'
 $env:DB_POOL_TIMEOUT_SECONDS = '15'
 $env:DB_POOL_RECYCLE_SECONDS = '1200'
 $env:DB_CONNECT_TIMEOUT_SECONDS = '10'
-$env:DB_STATEMENT_TIMEOUT_MS = '30000'
+$env:DB_STATEMENT_TIMEOUT_MS = '120000'
 $env:DB_APPLICATION_NAME = 'primera-infancia-2.7.0'
 $env:PYTHONUTF8 = '1'
 $env:PYTHONIOENCODING = 'utf-8'
+
+# PostgreSQL instalado en Windows no siempre agrega sus herramientas al PATH.
+# Backups y restauraciones necesitan localizar pg_dump/pg_restore.
+$PostgresBin = 'C:\Program Files\PostgreSQL\18\bin'
+if (Test-Path (Join-Path $PostgresBin 'pg_dump.exe')) {
+    $env:PATH = "$PostgresBin;$($env:PATH)"
+}
 
 function Ensure-Secret([string]$Name) {
     $file = Join-Path $RuntimeDir "$Name.txt"

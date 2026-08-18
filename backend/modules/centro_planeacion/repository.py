@@ -690,8 +690,8 @@ class CentroPlaneacionRepository:
                 """INSERT INTO cpo_documentos_preparados
                 (fundacion_id,actividad_id,tipo_documento,nombre_archivo,ruta_archivo,mime_type,tamano_bytes,sha256,estado,
                  plantilla_codigo,plantilla_version,generado_por,fecha_generacion)
-                VALUES(?,?,?,?,?,?,?,?, 'BORRADOR','CPO-GENERICA','1',?,?)""",
-                (fundacion_id, activity_id, doc_type, path.name, str(path), mime, path.stat().st_size, digest, user.get("id"), now),
+                VALUES(?,?,?,?,?,?,?,?, 'BORRADOR',CASE WHEN ?='LISTADO_ASISTENCIA' THEN 'F27.MT1.PP' ELSE 'CPO-GENERICA' END,CASE WHEN ?='LISTADO_ASISTENCIA' THEN '3' ELSE '1' END,?,?)""",
+                (fundacion_id, activity_id, doc_type, path.name, str(path), mime, path.stat().st_size, digest, doc_type, doc_type, user.get("id"), now),
             )
             doc_id = int(cur.lastrowid)
             self.audit(fundacion_id, user, "GENERAR_DOCUMENTO", "cpo_documentos_preparados", doc_id, {"tipo": doc_type, "sha256": digest}, conn)
@@ -699,16 +699,66 @@ class CentroPlaneacionRepository:
         return self.document(fundacion_id, doc_id)
 
     def _write_attendance(self, path: Path, activity: dict[str, Any]) -> None:
-        wb = Workbook(); ws = wb.active; ws.title = "Asistencia"
-        ws.append(["LISTADO DE ASISTENCIA — BORRADOR PARA REVISIÓN HUMANA"])
-        ws.merge_cells("A1:H1"); ws["A1"].font = Font(bold=True, color="FFFFFF", size=14); ws["A1"].fill = PatternFill("solid", fgColor="0F766E")
-        ws.append(["Actividad", activity.get("titulo"), "Fecha", activity.get("fecha_limite"), "UCA", activity.get("unidad_nombre")])
-        ws.append(["No.", "Nombre", "Documento", "Tipo participante", "Teléfono", "Asistió", "Firma", "Observaciones"])
-        for idx in range(1, 41):
-            ws.append([idx, "", "", "", "", "", "", ""])
-        ws.freeze_panes = "A4"
-        for cell in ws[3]: cell.font = Font(bold=True, color="FFFFFF"); cell.fill = PatternFill("solid", fgColor="334155")
-        wb.save(path)
+        """Genera el formato oficial RAM V3, no una hoja genérica."""
+        from generador_formatos import GeneradorFormatos
+        from modules.plantillas_oficiales import generar_desde_plantilla_oficial
+
+        unit = str(activity.get("unidad_nombre") or activity.get("unidad") or "").strip()
+        if not unit:
+            raise ValueError("La actividad no tiene UDS/UCA asignada para generar el listado oficial.")
+        raw_date = str(activity.get("fecha_limite") or activity.get("fecha_inicio") or date.today().isoformat())[:10]
+        try:
+            period_date = date.fromisoformat(raw_date)
+        except ValueError:
+            period_date = date.today()
+        year, month = period_date.year, period_date.month
+        templates_dir = self.data_dir / "templates_originales"
+        packaged_templates = Path(__file__).resolve().parents[2] / "seed_data" / "templates_originales"
+        if not (templates_dir / "oficiales" / "plantilla_ram_oficial_v3.xlsx").is_file():
+            templates_dir = packaged_templates
+        generator = GeneradorFormatos(
+            self.database_path,
+            str(templates_dir),
+            str(path.parent),
+        )
+        rows = []
+        with self.connect() as conn:
+            beneficiary_columns = {str(row[1]) for row in conn.execute('PRAGMA table_info("beneficiarios")').fetchall()}
+            if beneficiary_columns:
+                rows = conn.execute(
+                    """
+                    SELECT b.* FROM beneficiarios b
+                     WHERE COALESCE(b.fundacion_id,1)=?
+                       AND LOWER(TRIM(COALESCE(b.unidad,'')))=LOWER(TRIM(?))
+                       AND UPPER(COALESCE(b.estado,'ACTIVO')) NOT IN ('INACTIVO','RETIRADO','FALLECIDO')
+                     ORDER BY COALESCE(NULLIF(b.primer_nombre,''), b.nombres, b.documento),
+                              COALESCE(NULLIF(b.primer_apellido,''), b.apellidos, '')
+                    """,
+                    (int(activity.get("fundacion_id") or 1), unit),
+                ).fetchall()
+            else:
+                master_columns = {str(row[1]) for row in conn.execute('PRAGMA table_info("master_ninos")').fetchall()}
+                if master_columns:
+                    rows = conn.execute(
+                        """
+                        SELECT n.* FROM master_ninos n
+                         WHERE COALESCE(n.fundacion_id,1)=?
+                           AND LOWER(TRIM(COALESCE(n.unidad_servicio,'')))=LOWER(TRIM(?))
+                           AND COALESCE(n.activo,1)=1
+                           AND UPPER(COALESCE(n.estado,'ACTIVO')) NOT IN ('INACTIVO','RETIRADO','FALLECIDO')
+                         ORDER BY COALESCE(n.nombre_completo,n.documento)
+                        """,
+                        (int(activity.get("fundacion_id") or 1), unit),
+                    ).fetchall()
+        users = [generator._usuario_oficial(dict(row)) for row in rows]
+        metadata = generator._metadata_oficial(month, year, unit)
+        metadata.update({"mes_numero": month, "mes_nombre": metadata.get("mes_nombre") or metadata.get("mes")})
+        generar_desde_plantilla_oficial(
+            "ram",
+            {"metadata": metadata, "usuarios": users},
+            str(path),
+            str(templates_dir),
+        )
 
     def _write_pdf(self, path: Path, activity: dict[str, Any], doc_type: str) -> None:
         styles = getSampleStyleSheet(); story = []

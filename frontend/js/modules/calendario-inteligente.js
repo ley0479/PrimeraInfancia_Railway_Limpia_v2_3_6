@@ -10,8 +10,11 @@
         anio: String(new Date().getFullYear()),
         vista: 'mes',
         dashboard: null,
+        misPendientes: [],
+        checklist: { asignaciones: [], resumen: {} }, checklistImport: null, cumplimiento: {por_uds:[]},
         filtros: {},
         selectedDate: null,
+        weekAnchor: new Date().toISOString().slice(0, 10),
         previewCronograma: null,
     };
 
@@ -81,7 +84,11 @@
             const dashboard = document.getElementById('nav-dashboard');
             dashboard?.insertAdjacentElement('afterend', btn) || nav.prepend(btn);
         }
-        const main = document.querySelector('main .p-8.space-y-8');
+        // El contenedor principal cambia de clases según la versión visual.
+        // El padre del dashboard es el anclaje estable compartido por todas
+        // las secciones de la SPA.
+        const main = document.getElementById('dashboard')?.parentElement
+            || document.querySelector('main > div[class*="space-y-"]');
         if (main && !document.getElementById('calendario-inteligente')) {
             main.insertAdjacentHTML('beforeend', calendarSectionHtml());
         }
@@ -121,6 +128,14 @@
                 <div class="ci-metric"><div class="flex items-center gap-3"><i data-lucide="percent" class="text-cyan-300"></i><p class="text-sm text-slate-400">Cumplimiento</p></div><p id="ci-stat-cumplimiento" class="text-3xl font-bold mt-3 text-cyan-300">0%</p><p class="text-xs text-slate-500 mt-1">Del mes</p></div>
             </div>
             <div class="ci-panel">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                    <div><h3 class="font-semibold text-slate-100 flex items-center gap-2"><i data-lucide="clipboard-check" class="w-5 h-5 text-emerald-300"></i> Lista de chequeo institucional</h3><p id="ci-checklist-summary" class="text-sm text-slate-400 mt-1">Sin obligaciones para el periodo.</p></div>
+                    <div class="flex flex-wrap gap-2"><label class="ci-btn ci-btn-success cursor-pointer"><i data-lucide="scan-text" class="w-4 h-4"></i> Importar checklist<input id="ci-checklist-file" type="file" accept=".xlsx,.xls,.docx,.pdf,.pptx" class="hidden" onchange="ciImportarChecklist()"></label><button onclick="ciNuevaObligacion()" class="ci-btn ci-btn-primary"><i data-lucide="plus" class="w-4 h-4"></i> Nueva obligación</button></div>
+                </div>
+                <div id="ci-checklist-list" class="ci-checklist-list mt-4"></div>
+                <div id="ci-compliance-board" class="mt-5"></div>
+            </div>
+            <div class="ci-panel">
                 <div class="grid gap-3 md:grid-cols-6">
                     <div><label class="text-xs text-slate-400">Mes</label><input id="ci-periodo" type="month" class="ci-input" onchange="ciSetPeriodo(this.value)"></div>
                     <div><label class="text-xs text-slate-400">Año</label><input id="ci-anio" type="number" min="2020" max="2100" class="ci-input" onchange="ciSetAnio(this.value)"></div>
@@ -133,8 +148,9 @@
                     <button onclick="ciLimpiarFiltros()" class="ci-btn ci-btn-muted"><i data-lucide="rotate-ccw" class="w-4 h-4"></i> Limpiar filtros</button>
                     <div class="ci-view-toggle">
                         <button id="ci-vista-mes" onclick="ciCambiarVista('mes')" class="ci-active">Mes</button>
+                        <button id="ci-vista-semana" onclick="ciCambiarVista('semana')">Semana</button>
                         <button id="ci-vista-anio" onclick="ciCambiarVista('anio')">Año</button>
-                        <button id="ci-vista-lista" onclick="ciCambiarVista('lista')">Lista</button>
+                        <button id="ci-vista-agenda" onclick="ciCambiarVista('agenda')">Agenda</button>
                     </div>
                 </div>
             </div>
@@ -151,6 +167,10 @@
                     <div class="ci-panel">
                         <h3 class="font-semibold text-slate-100 flex items-center gap-2"><i data-lucide="bell-ring" class="w-4 h-4 text-amber-300"></i> Pendientes y alertas</h3>
                         <div id="ci-alertas-list" class="mt-3 space-y-2"></div>
+                    </div>
+                    <div class="ci-panel">
+                        <h3 class="font-semibold text-slate-100 flex items-center gap-2"><i data-lucide="list-checks" class="w-4 h-4 text-cyan-300"></i> Mis pendientes</h3>
+                        <div id="ci-mis-pendientes" class="mt-3 space-y-2"></div>
                     </div>
                     <div class="ci-panel">
                         <h3 class="font-semibold text-slate-100 mb-3">Leyenda de estados</h3>
@@ -179,11 +199,19 @@
 
     async function init() {
         injectNavAndSection();
+        const section = document.getElementById('calendario-inteligente');
+        if (section && window.location.hash === '#calendario-inteligente') section.classList.remove('hidden');
         const periodo = document.getElementById('ci-periodo');
         const anio = document.getElementById('ci-anio');
         if (periodo && !periodo.value) periodo.value = state.periodo;
         if (anio && !anio.value) anio.value = state.anio;
-        await cargarDashboard();
+        try {
+            await cargarDashboard();
+        } catch (error) {
+            message(error?.message || 'No se pudo cargar la información del calendario. Recarga o inicia sesión nuevamente.', 'error');
+            const container = document.getElementById('ci-view-container');
+            if (container) container.innerHTML = '<div class="rounded-xl border border-rose-500/30 bg-rose-500/10 p-6 text-center text-rose-200">El calendario está visible, pero sus datos no pudieron cargarse. Revisa el mensaje superior o vuelve a iniciar sesión.</div>';
+        }
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
@@ -191,10 +219,25 @@
         const qs = new URLSearchParams({ periodo: state.periodo, anio: state.anio, ...state.filtros });
         const data = await api(`/dashboard?${qs.toString()}`);
         state.dashboard = data;
+        try {
+            const personal = await api('/mis-pendientes');
+            state.misPendientes = personal.pendientes || [];
+        } catch (_) {
+            state.misPendientes = [];
+        }
+        try {
+            state.checklist = await api(`/checklist?periodo=${encodeURIComponent(state.periodo)}`);
+        } catch (_) {
+            state.checklist = { asignaciones: [], resumen: {} };
+        }
+        try { state.cumplimiento = await api(`/cumplimiento?periodo=${encodeURIComponent(state.periodo)}`); } catch (_) { state.cumplimiento={por_uds:[]}; }
         renderStats(data.resumen || {});
         renderCatalogos(data.catalogos || {});
         renderVista();
         renderAlertas(data.alertas || []);
+        renderMisPendientes();
+        renderChecklist();
+        renderComplianceBoard();
         renderCumplimiento(data.cumplimiento_coordinador || []);
         renderDashboardWidget(data.resumen || {}, data.alertas || []);
     }
@@ -225,11 +268,43 @@
     function annual() { return state.dashboard?.annual || []; }
 
     function renderVista() {
-        document.querySelectorAll('#ci-vista-mes,#ci-vista-anio,#ci-vista-lista').forEach(b => b?.classList.remove('ci-active'));
+        document.querySelectorAll('#ci-vista-mes,#ci-vista-semana,#ci-vista-anio,#ci-vista-agenda').forEach(b => b?.classList.remove('ci-active'));
         document.getElementById(`ci-vista-${state.vista}`)?.classList.add('ci-active');
         if (state.vista === 'mes') renderMes();
+        if (state.vista === 'semana') renderSemana();
         if (state.vista === 'anio') renderAnio();
-        if (state.vista === 'lista') renderLista();
+        if (state.vista === 'agenda') renderAgenda();
+    }
+
+    function isoLocal(value) {
+        const d = new Date(value);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    function inicioSemana(iso) {
+        const d = new Date(`${iso}T12:00:00`);
+        const offset = (d.getDay() + 6) % 7;
+        d.setDate(d.getDate() - offset);
+        return d;
+    }
+
+    function renderSemana() {
+        const start = inicioSemana(state.weekAnchor || `${state.periodo}-01`);
+        const end = new Date(start); end.setDate(end.getDate() + 6);
+        setText('ci-cal-title', `Semana ${isoLocal(start)} al ${isoLocal(end)}`);
+        const allEvents = annual().length ? annual() : eventos();
+        const byDate = groupBy(allEvents, e => e.fecha_limite);
+        const today = new Date().toISOString().slice(0, 10);
+        const columns = [];
+        for (let i = 0; i < 7; i++) {
+            const day = new Date(start); day.setDate(start.getDate() + i);
+            const iso = isoLocal(day), evs = byDate[iso] || [];
+            columns.push(`<section class="ci-week-column ${iso === today ? 'ci-week-today' : ''}">
+                <button class="ci-week-heading" onclick="ciAbrirDia('${iso}')"><strong>${DIAS[day.getDay()]}</strong><span>${day.getDate()}</span></button>
+                <div class="ci-week-events">${evs.length ? evs.map(e => `<button onclick="ciAbrirEntregable(${Number(e.id)})" class="ci-week-event ci-${e.color || e.color_calculado || 'azul'}"><strong>${esc(e.titulo || e.modulo || '')}</strong><span>${esc(e.responsable_nombre || e.unidad || '')}</span></button>`).join('') : '<p>Sin actividades</p>'}</div>
+            </section>`);
+        }
+        document.getElementById('ci-view-container').innerHTML = `<div class="ci-week-grid">${columns.join('')}</div>`;
     }
 
     function renderMes() {
@@ -282,23 +357,80 @@
         document.getElementById('ci-view-container').innerHTML = html;
     }
 
-    function renderLista() {
-        setText('ci-cal-title', `Pendientes ${state.periodo}`);
-        const rows = eventos().map(e => `
-            <tr class="hover:bg-slate-900/60">
-                <td class="px-4 py-3">${esc(e.fecha_limite || '')}</td>
-                <td class="px-4 py-3 font-semibold text-slate-200">${esc(e.titulo || '')}<p class="text-xs text-slate-500">${esc(e.descripcion || '')}</p></td>
-                <td class="px-4 py-3">${esc(e.modulo || '')}</td>
-                <td class="px-4 py-3">${esc(e.coordinador || '')}<p class="text-xs text-slate-500">${esc(e.unidad || '')}</p></td>
-                <td class="px-4 py-3"><span class="ci-list-status ci-${e.color || e.color_calculado || 'azul'}">${esc(e.estado || '')}</span></td>
-                <td class="px-4 py-3 text-right"><button onclick="ciAbrirEntregable(${Number(e.id)})" class="text-cyan-300 text-xs">Ver</button></td>
-            </tr>`).join('') || '<tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">Sin entregables para el filtro seleccionado.</td></tr>';
-        document.getElementById('ci-view-container').innerHTML = `<div class="overflow-x-auto"><table class="w-full text-left text-sm text-slate-400"><thead class="bg-slate-950 text-xs uppercase text-slate-300"><tr><th class="px-4 py-3">Fecha</th><th class="px-4 py-3">Actividad</th><th class="px-4 py-3">Módulo</th><th class="px-4 py-3">Responsable</th><th class="px-4 py-3">Estado</th><th class="px-4 py-3"></th></tr></thead><tbody class="divide-y divide-slate-800">${rows}</tbody></table></div>`;
+    function renderAgenda() {
+        setText('ci-cal-title', `Agenda ${state.periodo}`);
+        const groups = groupBy(eventos(), e => e.fecha_limite || 'Sin fecha');
+        const html = Object.keys(groups).sort().map(fecha => `<section class="ci-agenda-day">
+            <button onclick="ciAbrirDia('${esc(fecha)}')" class="ci-agenda-date"><i data-lucide="calendar-day" class="w-4 h-4"></i>${esc(fecha)}</button>
+            <div>${groups[fecha].map(e => `<button onclick="ciAbrirEntregable(${Number(e.id)})" class="ci-agenda-item"><span class="ci-dot ci-${e.color || e.color_calculado || 'azul'}"></span><span><strong>${esc(e.titulo || '')}</strong><small>${esc(e.modulo || '')} · ${esc(e.responsable_nombre || e.unidad || 'Sin asignar')}</small></span><em>${esc(e.estado || '')}</em></button>`).join('')}</div>
+        </section>`).join('') || '<p class="py-8 text-center text-slate-500">Sin actividades para el filtro seleccionado.</p>';
+        document.getElementById('ci-view-container').innerHTML = `<div class="ci-agenda">${html}</div>`;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
     function renderAlertas(alertas) {
         const cont = document.getElementById('ci-alertas-list'); if (!cont) return;
         cont.innerHTML = alertas.length ? alertas.slice(0, 7).map(a => `<button onclick="ciAbrirEntregable(${Number(a.id)})" class="w-full text-left rounded-xl border ci-${a.nivel || 'azul'} p-3 text-xs"><strong>${esc(a.fecha_limite || '')}</strong><br>${esc(a.mensaje || '')}</button>`).join('') : '<p class="text-sm text-slate-500">Sin alertas críticas para el periodo.</p>';
+    }
+
+    function renderMisPendientes() {
+        const cont = document.getElementById('ci-mis-pendientes'); if (!cont) return;
+        const rows = state.misPendientes || [];
+        cont.innerHTML = rows.length ? rows.slice(0, 7).map(e => `<button onclick="ciAbrirEntregable(${Number(e.id)})" class="ci-personal-pending"><span class="ci-dot ci-${e.color || e.color_calculado || 'azul'}"></span><span><strong>${esc(e.titulo || '')}</strong><small>${esc(e.fecha_limite || '')} · ${esc(e.unidad || e.modulo || '')}</small></span></button>`).join('') : '<p class="text-sm text-slate-500">No tienes entregables pendientes asignados.</p>';
+    }
+
+    function renderChecklist() {
+        const box = document.getElementById('ci-checklist-list'); if (!box) return;
+        const data = state.checklist || {}, summary = data.resumen || {}, rows = data.asignaciones || [];
+        setText('ci-checklist-summary', `${summary.aprobadas || 0}/${summary.exigibles || 0} exigibles aprobadas · ${summary.no_aplica || 0} no aplica · ${summary.cumplimiento || 0}%`);
+        box.innerHTML = rows.length ? rows.map(item => {
+            const o = item.obligacion || {}, reqs = item.requisitos || [];
+            const hasAttendance=reqs.some(r=>/ram|asistencia|listado/i.test(String(r.nombre||'')));
+            return `<article class="ci-checklist-card"><div class="ci-checklist-head"><div><small>${esc(o.componente || '')} ${o.numero ? `· ${esc(o.numero)}` : ''}</small><strong>${esc(o.titulo || '')}</strong><span>${esc(item.unidad || 'Todas las UDS')} · ${esc(item.responsable_rol || item.responsable_nombre || 'Sin asignar')}</span></div><span class="ci-list-status ci-${item.estado === 'APROBADO' ? 'verde' : item.estado === 'NO_APLICA' ? 'gris' : item.estado === 'DEVUELTO' ? 'rojo' : 'azul'}">${esc(item.estado || '')}</span></div><div class="ci-checklist-reqs">${reqs.map(r => `<span><i data-lucide="square-check" class="w-3 h-3"></i>${esc(r.nombre)}${r.obligatorio ? '' : ' (opcional)'}</span>`).join('')}</div>${item.fecha_estado==='PENDIENTE_ASIGNACION'?'<p class="text-xs text-amber-300 mt-2">FECHA PENDIENTE DE ASIGNACIÓN</p>':''}${item.justificacion_no_aplica ? `<p class="text-xs text-slate-400 mt-2">No aplica: ${esc(item.justificacion_no_aplica)}</p>` : ''}<div class="flex flex-wrap gap-2 mt-3">${hasAttendance&&item.unidad?`<button onclick="ciGenerarRAM('${esc(item.unidad)}','${esc(item.periodo)}')" class="ci-btn ci-btn-primary"><i data-lucide="download" class="w-4 h-4"></i> Generar listado RAM</button>`:''}<button onclick="ciAbrirEvidencias('CHECKLIST',${Number(item.id)})" class="ci-btn ci-btn-success"><i data-lucide="paperclip" class="w-4 h-4"></i> Evidencias</button><button onclick="ciEstadoChecklist(${Number(item.id)},'EN_PROGRESO')" class="ci-btn ci-btn-muted">En progreso</button><button onclick="ciNoAplica(${Number(item.id)})" class="ci-btn ci-btn-muted">No aplica</button></div></article>`;
+        }).join('') : '<p class="text-sm text-slate-500">No hay obligaciones asignadas para este mes.</p>';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+    function renderComplianceBoard() { const box=document.getElementById('ci-compliance-board'); if(!box)return; const data=state.cumplimiento||{},rows=data.por_uds||[]; box.innerHTML=`<h4 class="font-semibold text-slate-100 mb-2">Cumplimiento por UDS</h4><p class="text-xs text-slate-400 mb-3">Aprobadas ÷ exigibles; NO APLICA justificado se excluye.</p>${rows.length?`<div class="ci-preview-table-wrap"><table class="ci-preview-table"><thead><tr><th>UDS/UCA</th><th>Aprobadas</th><th>Exigibles</th><th>No aplica</th><th>%</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.nombre)}</td><td>${Number(r.aprobadas)}</td><td>${Number(r.exigibles)}</td><td>${Number(r.no_aplica)}</td><td><strong>${Number(r.cumplimiento)}%</strong></td></tr>`).join('')}</tbody></table></div>`:'<p class="text-sm text-slate-500">Sin datos de cumplimiento para este periodo.</p>'}`; }
+
+    function nuevaObligacion() {
+        openModal('Nueva obligación institucional', `<div class="grid gap-3 md:grid-cols-2"><input id="ci-ob-componente" class="ci-input" placeholder="Componente"><input id="ci-ob-numero" class="ci-input" placeholder="Número"><input id="ci-ob-titulo" class="ci-input md:col-span-2" placeholder="Actividad u obligación"><input id="ci-ob-unidad" class="ci-input" placeholder="UDS/UCA"><select id="ci-ob-rol" class="ci-input"><option value="">Rol responsable</option><option>DOCENTE</option><option>COORDINADOR</option><option>PSICOSOCIAL</option><option>NUTRICIONISTA</option><option>AUXILIAR_ENFERMERIA</option></select><textarea id="ci-ob-requisitos" class="ci-input md:col-span-2" placeholder="Un requisito por línea: Acta, Listado, Fotografías..."></textarea></div><button onclick="ciCrearObligacion()" class="ci-btn ci-btn-primary mt-4">Crear obligación</button>`);
+    }
+
+    async function crearObligacion() {
+        const requirements = (document.getElementById('ci-ob-requisitos')?.value || '').split(/\n+/).map(x => x.trim()).filter(Boolean).map(nombre => ({ nombre, tipo: 'EVIDENCIA', obligatorio: true }));
+        const payload = { componente: val('ci-ob-componente'), numero: val('ci-ob-numero'), titulo: val('ci-ob-titulo'), unidad: val('ci-ob-unidad'), responsable_rol: val('ci-ob-rol'), periodo: state.periodo, requisitos: requirements };
+        await api('/checklist', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        closeModal(); message('Obligación institucional creada.'); await cargarDashboard();
+    }
+
+    async function estadoChecklist(id, estado, motivo = '') {
+        await api(`/checklist/${id}/estado`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ estado, motivo }) });
+        message('Estado de checklist actualizado.'); await cargarDashboard();
+    }
+
+    async function noAplica(id) {
+        const reason = prompt('Justificación obligatoria para NO APLICA:') || '';
+        if (!reason.trim()) return message('Debes escribir una justificación para NO APLICA.', 'error');
+        await estadoChecklist(id, 'NO_APLICA', reason.trim());
+    }
+
+    async function importarChecklist() {
+        const input=document.getElementById('ci-checklist-file'), file=input?.files?.[0];
+        if(!file)return;
+        const fd=new FormData(); fd.append('file',file);
+        try { const data=await api('/checklist/importar',{method:'POST',body:fd}); state.checklistImport=data; abrirPreviewChecklist(data); }
+        catch(err){ message(err.message||'No se pudo leer la lista de chequeo.','error'); }
+        finally { if(input)input.value=''; }
+    }
+    function abrirPreviewChecklist(data) {
+        const rows=(data.propuestas||[]).map((p,i)=>`<tr data-ci-check-import="${i}"><td><input class="ci-chk-use" type="checkbox" checked></td><td><input class="ci-input ci-chk-comp" value="${esc(p.componente||'')}"></td><td><input class="ci-input ci-chk-act" value="${esc(p.actividad||'')}"><small class="text-slate-400">Confianza ${Number(p.confianza||0)}%</small></td><td><input class="ci-input ci-chk-role" value="${esc(p.responsables_sugeridos||'')}"></td><td><textarea class="ci-input ci-chk-req">${esc(p.entregables||'')}</textarea></td><td><input type="date" class="ci-input ci-chk-date" value="${esc(p.fecha_sugerida||'')}">${p.fecha_sugerida?'':'<small class="text-amber-300">FECHA PENDIENTE DE ASIGNACIÓN</small>'}</td></tr>`).join('');
+        openModal(`<h3 class="text-xl font-semibold text-white mb-2">Actividades detectadas</h3><p class="text-sm text-slate-400 mb-3">Edita o desmarca propuestas antes de incorporarlas. Las fechas ausentes no se inventan.</p><div class="ci-preview-table-wrap"><table class="ci-preview-table"><thead><tr><th>Incluir</th><th>Componente</th><th>Actividad</th><th>TH a cargo</th><th>Entregables</th><th>Fecha</th></tr></thead><tbody>${rows}</tbody></table></div><button onclick="ciConfirmarChecklistImportado()" class="ci-btn ci-btn-success mt-4">Confirmar propuestas</button>`);
+    }
+    async function confirmarChecklistImportado() {
+        const data=state.checklistImport; if(!data)return;
+        const proposals=[...document.querySelectorAll('[data-ci-check-import]')].map(tr=>({ignorar:!tr.querySelector('.ci-chk-use').checked,componente:tr.querySelector('.ci-chk-comp').value,actividad:tr.querySelector('.ci-chk-act').value,responsable_nombre:tr.querySelector('.ci-chk-role').value,entregables:tr.querySelector('.ci-chk-req').value,fecha_sugerida:tr.querySelector('.ci-chk-date').value}));
+        const result=await api(`/checklist/importar/${data.importacion_id}/confirmar`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({periodo:state.periodo,propuestas:proposals})});
+        closeModal(); state.checklistImport=null; message(`${result.resultado?.creadas||0} obligaciones incorporadas.`); await cargarDashboard();
     }
 
     function renderCumplimiento(rows) {
@@ -344,9 +476,10 @@
                 <div><h4 class="font-bold text-slate-100">${esc(e.titulo || '')}</h4><p class="text-sm text-slate-400">${esc(e.descripcion || '')}</p><p class="text-xs text-slate-500 mt-1">${esc(e.modulo || '')} · ${esc(e.unidad || '')} · ${esc(e.coordinador || '')}</p></div>
                 <span class="ci-list-status ci-${e.color || e.color_calculado || 'azul'}">${esc(e.estado || '')}</span>
             </div>
-            <div class="grid gap-2 md:grid-cols-3 mt-3 text-sm text-slate-300"><p><strong>Fecha:</strong> ${esc(e.fecha_limite || '')}</p><p><strong>Responsable:</strong> ${esc(e.responsable_nombre || '')}</p><p><strong>Prioridad:</strong> ${esc(e.prioridad || '')}</p></div>
-            <div class="mt-3 flex flex-wrap gap-2"><button onclick="ciAbrirModulo('${esc(e.modulo || '')}')" class="ci-btn ci-btn-muted">Abrir módulo</button><button onclick="ciMarcarEntregado(${id})" class="ci-btn ci-btn-success">Marcar entregado</button><button onclick="ciEliminarEntregable(${id})" class="ci-btn ci-btn-danger">Eliminar</button></div>
-            <div class="mt-3 grid gap-2 md:grid-cols-[1fr_auto]"><input id="ci-evidencia-${id}" type="file" class="ci-input"><button onclick="ciSubirEvidencia(${id})" class="ci-btn ci-btn-primary">Subir evidencia</button></div>
+            <div class="grid gap-2 md:grid-cols-3 mt-3 text-sm text-slate-300"><p><strong>Fecha:</strong> ${esc(e.fecha_limite || '')}</p><p><strong>Responsable:</strong> ${esc(e.responsable_nombre || '')}${e.responsable_rol ? ` (${esc(e.responsable_rol)})` : ''}</p><p><strong>Prioridad:</strong> ${esc(e.prioridad || '')}</p></div>
+            ${e.serie_id ? `<p class="text-xs text-cyan-300 mt-2"><strong>Recurrencia:</strong> ${esc(e.recurrencia || '')} · instancia ${Number(e.instancia_numero || 1)} · hasta ${esc(e.recurrencia_hasta || '')}</p>` : ''}
+            <div class="mt-3 flex flex-wrap gap-2">${/ram|asistencia/i.test(String(e.modulo||e.tipo_formato||''))&&e.unidad?`<button onclick="ciGenerarRAM('${esc(e.unidad)}','${esc(String(e.fecha_limite||state.periodo).slice(0,7))}')" class="ci-btn ci-btn-primary"><i data-lucide="download" class="w-4 h-4"></i> Generar listado RAM</button>`:''}<button onclick="ciAbrirModulo('${esc(e.modulo || '')}')" class="ci-btn ci-btn-muted">Abrir módulo</button><button onclick="ciMarcarEntregado(${id})" class="ci-btn ci-btn-success">Marcar entregado</button><button onclick="ciEliminarEntregable(${id})" class="ci-btn ci-btn-danger">Eliminar</button></div>
+            <div class="mt-3 grid gap-2 md:grid-cols-[1fr_auto_auto]"><input id="ci-evidencia-${id}" type="file" multiple class="ci-input"><button onclick="ciSubirEvidencia(${id})" class="ci-btn ci-btn-primary">Subir archivos</button><button onclick="ciAbrirEvidencias('ENTREGABLE',${id})" class="ci-btn ci-btn-muted">Historial</button></div>
         </div>`;
     }
 
@@ -366,7 +499,11 @@
             <input id="ci-new-coordinador" class="ci-input" placeholder="Coordinador">
             <input id="ci-new-unidad" class="ci-input" placeholder="Unidad/UDS">
             <input id="ci-new-responsable" class="ci-input" placeholder="Responsable">
+            <select id="ci-new-responsable-rol" class="ci-input"><option value="">Rol responsable</option><option>DOCENTE</option><option>COORDINADOR</option><option>PSICOSOCIAL</option><option>NUTRICIONISTA</option><option>AUXILIAR_ENFERMERIA</option><option>AUXILIAR_ADMINISTRATIVO</option></select>
             <select id="ci-new-prioridad" class="ci-input"><option>Alta</option><option selected>Media</option><option>Baja</option></select>
+            <select id="ci-new-recurrencia" class="ci-input" onchange="ciActualizarRecurrencia()"><option value="ninguna">No repetir</option><option value="diaria">Diaria</option><option value="semanal">Semanal</option><option value="mensual">Mensual</option></select>
+            <input id="ci-new-recurrencia-intervalo" type="number" min="1" max="52" value="1" class="ci-input" aria-label="Intervalo de recurrencia" disabled>
+            <input id="ci-new-recurrencia-hasta" type="date" class="ci-input md:col-span-2" aria-label="Repetir hasta" disabled>
             <textarea id="ci-new-descripcion" class="ci-input md:col-span-2" placeholder="Descripción u observaciones"></textarea>
         </div><div class="mt-4"><button onclick="ciCrearEntregable()" class="ci-btn ci-btn-primary">Guardar entregable</button></div>`);
     }
@@ -380,12 +517,27 @@
             coordinador: document.getElementById('ci-new-coordinador')?.value,
             unidad: document.getElementById('ci-new-unidad')?.value,
             responsable_nombre: document.getElementById('ci-new-responsable')?.value,
+            responsable_rol: document.getElementById('ci-new-responsable-rol')?.value,
             prioridad: document.getElementById('ci-new-prioridad')?.value,
+            recurrencia: document.getElementById('ci-new-recurrencia')?.value || 'ninguna',
+            recurrencia_intervalo: Number(document.getElementById('ci-new-recurrencia-intervalo')?.value || 1),
+            recurrencia_hasta: document.getElementById('ci-new-recurrencia-hasta')?.value || null,
             descripcion: document.getElementById('ci-new-descripcion')?.value,
             requiere_evidencia: true,
         };
         await api('/entregables', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         closeModal(); message('Entregable creado correctamente.'); await cargarDashboard();
+    }
+
+    function actualizarRecurrencia() {
+        const active = (document.getElementById('ci-new-recurrencia')?.value || 'ninguna') !== 'ninguna';
+        const interval = document.getElementById('ci-new-recurrencia-intervalo');
+        const until = document.getElementById('ci-new-recurrencia-hasta');
+        if (interval) interval.disabled = !active;
+        if (until) {
+            until.disabled = !active;
+            if (active && !until.value) until.value = document.getElementById('ci-new-fecha')?.value || '';
+        }
     }
 
     async function cargarCronograma() {
@@ -457,7 +609,7 @@
             <td><input class="ci-input ci-prev-unidad" value="${esc(a.unidad || '')}"></td>
             <td><input class="ci-input ci-prev-modulo" value="${esc(a.modulo || 'General')}"></td>
             <td><select class="ci-input ci-prev-estado"><option value="programado" ${a.estado === 'programado' ? 'selected' : ''}>Programado</option><option value="pendiente" ${a.estado === 'pendiente' ? 'selected' : ''}>Pendiente</option><option value="entregado" ${a.estado === 'entregado' ? 'selected' : ''}>Entregado</option><option value="cerrado" ${a.estado === 'cerrado' ? 'selected' : ''}>Cerrado</option></select></td>
-            <td><input class="ci-input ci-prev-observacion" value="${esc(a.observaciones || a.observacion || '')}"></td>
+            <td><input class="ci-input ci-prev-observacion" value="${esc(a.observaciones || a.observacion || '')}"><small class="block text-slate-400 mt-1">Confianza ${Number(a.confianza || 0)}%</small></td>
         </tr>`;
     }
 
@@ -513,12 +665,26 @@
 
     async function subirEvidencia(id) {
         const input = document.getElementById(`ci-evidencia-${id}`);
-        const file = input?.files?.[0];
-        if (!file) { message('Selecciona un archivo de evidencia.', 'error'); return; }
-        const fd = new FormData(); fd.append('file', file); fd.append('entregable_id', id); fd.append('marcar_entregado', '1');
+        const files = [...(input?.files || [])];
+        if (!files.length) { message('Selecciona al menos un archivo de evidencia.', 'error'); return; }
+        const fd = new FormData(); files.forEach(file => fd.append('files', file)); fd.append('entregable_id', id);
         await api('/evidencias/upload', { method: 'POST', body: fd });
-        closeModal(); message('Evidencia cargada y entregable marcado como entregado.'); await cargarDashboard();
+        message(`${files.length} evidencia(s) cargada(s). Ahora puedes enviarlas a revisión.`); await abrirEvidencias('ENTREGABLE', id);
     }
+
+    async function abrirEvidencias(entity, id) {
+        try {
+            const data = await api(`/evidencias/${entity}/${id}`);
+            const rows = data.evidencias || [];
+            const history = rows.length ? rows.map(e => `<div class="ci-checklist-card"><div class="flex justify-between gap-3"><div><strong>${esc(e.nombre_original)}</strong><p class="text-xs text-slate-400">Versión ${Number(e.version)} · ${Math.max(1, Math.ceil(Number(e.tamano_bytes || 0)/1024))} KB · SHA-256 ${esc(String(e.sha256 || '').slice(0,12))}…</p></div><span class="ci-list-status ci-${e.estado === 'APROBADA' ? 'verde' : e.estado === 'DEVUELTA' ? 'rojo' : 'azul'}">${esc(e.estado)}</span></div>${e.observacion_revision ? `<p class="text-sm text-amber-200 mt-2">${esc(e.observacion_revision)}</p>` : ''}<button onclick="ciDescargarEvidencia(${Number(e.id)})" class="ci-btn ci-btn-muted mt-2">Descargar</button></div>`).join('') : '<p class="text-slate-400">Todavía no hay evidencias cargadas.</p>';
+            openModal(`<h3 class="text-xl font-semibold text-white mb-2">Evidencias e historial</h3><p class="text-sm text-slate-400 mb-4">Los originales se conservan con versión e integridad verificable.</p><div class="grid gap-2 md:grid-cols-[1fr_auto]"><input id="ci-evidence-files" type="file" multiple class="ci-input"><button onclick="ciSubirEvidenciasEntidad('${entity}',${id})" class="ci-btn ci-btn-primary">Cargar</button></div><div class="flex flex-wrap gap-2 my-4"><button onclick="ciEnviarEvidencias('${entity}',${id})" class="ci-btn ci-btn-success">Enviar a revisión</button><button onclick="ciRevisarEvidencias('${entity}',${id},'APROBADA')" class="ci-btn ci-btn-primary">Aprobar</button><button onclick="ciRevisarEvidencias('${entity}',${id},'DEVUELTA')" class="ci-btn ci-btn-muted">Devolver</button></div><div class="grid gap-3">${history}</div>`);
+        } catch (err) { message(err.message || 'No se pudo abrir el historial.', 'error'); }
+    }
+    async function subirEvidenciasEntidad(entity, id) { const files=[...(document.getElementById('ci-evidence-files')?.files||[])]; if(!files.length){message('Selecciona al menos un archivo.','error');return;} const fd=new FormData(); files.forEach(f=>fd.append('files',f)); await api(`/evidencias/${entity}/${id}`,{method:'POST',body:fd}); message('Evidencias cargadas.'); await abrirEvidencias(entity,id); }
+    async function enviarEvidencias(entity,id) { await api(`/evidencias/${entity}/${id}/enviar`,{method:'POST'}); closeModal(); message('Evidencias enviadas a revisión.'); await cargarDashboard(); }
+    async function revisarEvidencias(entity,id,decision) { const observacion=decision==='DEVUELTA' ? prompt('Indica qué debe corregirse:') : ''; if(decision==='DEVUELTA' && !observacion)return; await api(`/evidencias/${entity}/${id}/revision`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({decision,observacion})}); closeModal(); message(decision==='APROBADA'?'Evidencias aprobadas.':'Evidencias devueltas para corrección.'); await cargarDashboard(); }
+    function descargarEvidencia(id) { window.descargarArchivoAutenticado(`${API}/evidencias/${id}/descargar`).catch(error=>message(error.message,'error')); }
+    function generarRAM(unidad,periodo) { const parts=String(periodo||state.periodo).split('-'); if(!unidad){message('Selecciona una UDS/UCA antes de generar el listado.','error');return;} window.descargarArchivoAutenticado(`/api/descargar/${encodeURIComponent(unidad)}/ram?mes=${Number(parts[1])}&anio=${Number(parts[0])}`).then(()=>message('Listado RAM oficial generado. Las asistencias diarias permanecen vacías.')).catch(error=>message(error.message,'error')); }
 
     async function marcarEntregado(id) { await api(`/entregables/${id}/entregar`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({}) }); closeModal(); message('Entregable marcado como entregado.'); await cargarDashboard(); }
     async function eliminarEntregable(id) { if (!confirm('¿Eliminar este entregable del calendario?')) return; await api(`/entregables/${id}`, { method: 'DELETE' }); closeModal(); message('Entregable eliminado.'); await cargarDashboard(); }
@@ -534,10 +700,23 @@
         return mostrarSeccion('formatos');
     }
 
-    function setPeriodo(value) { if (value) { state.periodo = value; state.anio = value.slice(0,4); const anio = document.getElementById('ci-anio'); if (anio) anio.value = state.anio; cargarDashboard(); } }
+    function setPeriodo(value) { if (value) { state.periodo = value; state.anio = value.slice(0,4); state.weekAnchor = `${value}-01`; const anio = document.getElementById('ci-anio'); if (anio) anio.value = state.anio; cargarDashboard(); } }
     function setAnio(value) { if (value) { state.anio = value; cargarDashboard(); } }
-    function moverMes(delta) { const [y, m] = state.periodo.split('-').map(Number); const d = new Date(y, m - 1 + delta, 1); state.periodo = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; state.anio = String(d.getFullYear()); setText('ci-periodo', state.periodo); const p=document.getElementById('ci-periodo'); if(p)p.value=state.periodo; const a=document.getElementById('ci-anio'); if(a)a.value=state.anio; cargarDashboard(); }
-    function cambiarVista(vista) { state.vista = vista; renderVista(); }
+    function moverMes(delta) {
+        if (state.vista === 'semana') {
+            const d = new Date(`${state.weekAnchor}T12:00:00`); d.setDate(d.getDate() + (delta * 7));
+            state.weekAnchor = isoLocal(d); state.periodo = state.weekAnchor.slice(0, 7); state.anio = state.weekAnchor.slice(0, 4);
+        } else {
+            const [y, m] = state.periodo.split('-').map(Number); const d = new Date(y, m - 1 + delta, 1);
+            state.periodo = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; state.anio = String(d.getFullYear());
+        }
+        const p=document.getElementById('ci-periodo'); if(p)p.value=state.periodo; const a=document.getElementById('ci-anio'); if(a)a.value=state.anio; cargarDashboard();
+    }
+    function cambiarVista(vista) {
+        state.vista = vista;
+        if (vista === 'semana' && !String(state.weekAnchor).startsWith(state.periodo)) state.weekAnchor = `${state.periodo}-01`;
+        renderVista();
+    }
     function aplicarFiltros() { state.filtros = { coordinador: val('ci-filtro-coordinador'), unidad: val('ci-filtro-unidad'), modulo: val('ci-filtro-modulo'), estado: val('ci-filtro-estado') }; Object.keys(state.filtros).forEach(k => { if (!state.filtros[k]) delete state.filtros[k]; }); cargarDashboard(); }
     function limpiarFiltros() { ['ci-filtro-coordinador','ci-filtro-unidad','ci-filtro-modulo','ci-filtro-estado'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; }); state.filtros = {}; cargarDashboard(); }
     function val(id) { return document.getElementById(id)?.value || ''; }
@@ -553,11 +732,24 @@
     window.ciAbrirEntregable = abrirEntregable;
     window.ciAbrirModalNuevo = abrirModalNuevo;
     window.ciCrearEntregable = crearEntregable;
+    window.ciActualizarRecurrencia = actualizarRecurrencia;
+    window.ciNuevaObligacion = nuevaObligacion;
+    window.ciCrearObligacion = crearObligacion;
+    window.ciEstadoChecklist = estadoChecklist;
+    window.ciNoAplica = noAplica;
+    window.ciImportarChecklist = importarChecklist;
+    window.ciConfirmarChecklistImportado = confirmarChecklistImportado;
     window.ciCargarCronograma = cargarCronograma;
     window.ciConfirmarCronograma = confirmarCronograma;
     window.ciExportarExcel = exportarExcel;
     window.ciExportarPdf = exportarPdf;
     window.ciSubirEvidencia = subirEvidencia;
+    window.ciAbrirEvidencias = abrirEvidencias;
+    window.ciSubirEvidenciasEntidad = subirEvidenciasEntidad;
+    window.ciEnviarEvidencias = enviarEvidencias;
+    window.ciRevisarEvidencias = revisarEvidencias;
+    window.ciDescargarEvidencia = descargarEvidencia;
+    window.ciGenerarRAM = generarRAM;
     window.ciMarcarEntregado = marcarEntregado;
     window.ciEliminarEntregable = eliminarEntregable;
     window.ciCerrarModal = closeModal;

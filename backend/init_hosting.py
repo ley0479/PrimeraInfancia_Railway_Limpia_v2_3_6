@@ -54,24 +54,46 @@ def verify_seed_manifest(seed_dir: Path) -> None:
             raise RuntimeError(f'Hash inválido para plantilla {name}.')
 
 
+def bootstrap_core_schema(config_class) -> None:
+    """Crea el esquema núcleo antes de importar módulos que dependen de él.
+
+    ``app.py`` registra módulos durante su importación y algunos crean tablas
+    con claves foráneas hacia ``fundaciones`` y ``usuarios_app``. En una base
+    PostgreSQL vacía esas tablas deben existir antes de registrar las rutas.
+    """
+    from flask import Flask
+    from database import configure_database, database, get_db_connection
+    from models import Schema
+    from modules.dbapi_compat import (
+        _split_script,
+        _translate_ddl,
+        order_schema_statements_by_foreign_keys,
+    )
+
+    bootstrap_app = Flask('primera_infancia_schema_bootstrap')
+    bootstrap_app.config.from_object(config_class)
+    configure_database(bootstrap_app)
+    schema = Schema.get_schema_sql()
+    if database.is_postgresql:
+        statements = order_schema_statements_by_foreign_keys(_split_script(schema))
+        schema = ';\n'.join(_translate_ddl(statement) for statement in statements) + ';\n'
+    with get_db_connection() as connection:
+        connection.cursor().executescript(schema)
+        connection.commit()
+
+    # Los módulos comerciales y operativos referencian estas tablas durante
+    # su propio registro. Prepararlas aquí evita depender de efectos laterales
+    # del orden de imports de ``app.py``.
+    from modules.seguridad.services import ensure_security_schema
+    ensure_security_schema(str(config_class.DATABASE_PATH))
+    from modules.base_maestra.repository import BaseMaestraRepository
+    BaseMaestraRepository(str(config_class.DATABASE_PATH)).init_schema()
+
+
 def _safe_database_label(url: str, path: str) -> str:
     if str(url).startswith('postgresql'):
         return 'postgresql://***'
     return str(path)
-
-
-@contextmanager
-def _explicit_schema_ddl():
-    """Habilita DDL solo durante la fase explícita de migraciones."""
-    previous = os.environ.get('SKIP_RUNTIME_SCHEMA_DDL')
-    os.environ['SKIP_RUNTIME_SCHEMA_DDL'] = '0'
-    try:
-        yield
-    finally:
-        if previous is None:
-            os.environ['SKIP_RUNTIME_SCHEMA_DDL'] = '1'
-        else:
-            os.environ['SKIP_RUNTIME_SCHEMA_DDL'] = previous
 
 
 @contextmanager
@@ -112,10 +134,27 @@ def _postgres_startup_lock():
 
 def _main() -> int:
     os.environ.setdefault('APP_ENV', 'production')
+    # El inicializador es la única fase autorizada para modificar el esquema.
+    # Se asignan (no setdefault) para neutralizar valores heredados de Railway.
+    os.environ['APP_SCHEMA_MIGRATION_MODE'] = '1'
+    os.environ['SKIP_RUNTIME_SCHEMA_DDL'] = '0'
+    git_sha = str(
+        os.getenv('RAILWAY_GIT_COMMIT_SHA')
+        or os.getenv('GIT_COMMIT_SHA')
+        or os.getenv('BUILD_COMMIT')
+        or 'unknown'
+    ).strip()
+    build_time = str(os.getenv('RAILWAY_DEPLOYMENT_START_TIME') or os.getenv('BUILD_TIME') or '').strip()
     from config import get_config
     from services.seed_sync import sync_managed_seed_tree
 
     config_class = get_config(os.environ.get('APP_ENV'))
+    bootstrap_core_schema(config_class)
+    print(
+        f"[BUILD] APP_VERSION={getattr(config_class, 'APP_VERSION', 'unknown')} "
+        f"GIT_SHA={git_sha} BUILT_AT={build_time or 'unknown'}",
+        flush=True,
+    )
     data_dir = Path(config_class.DATA_DIR)
     marker = data_dir / '.primera_infancia_initialized.json'
     marker_preexisting = marker.is_file()
@@ -143,29 +182,42 @@ def _main() -> int:
         allow_updates=env_bool('SYNC_MANAGED_TEMPLATES', True),
     )
 
-    # Registrar Flask debe ser libre de DDL. Esta variable se fija antes del
-    # import para impedir que cualquier Blueprint migre como efecto secundario.
-    os.environ['SKIP_RUNTIME_SCHEMA_DDL'] = '1'
-
     # app configura el Engine central antes de registrar los módulos.
     import app as app_module
+
+    # Gate funcional de arranque: el import de app.py no puede ocultar fallos de
+    # módulos críticos con un simple print. Si alguno no registró su Blueprint,
+    # se cancela el despliegue antes de publicar una instancia parcial.
+    required_blueprints = {
+        'facturacion_suscripcion',
+        'panel_comercial',
+        'gestion_pedagogica',
+        'gestion_coordinador',
+        'calendario_inteligente',
+        'calendario_alias',
+        'planeacion_pedagogica',
+        'base_maestra',
+        'centro_planeacion',
+        'integrity_stability',
+    }
+    registered_blueprints = set(app_module.app.blueprints)
+    missing_blueprints = sorted(required_blueprints - registered_blueprints)
+    if missing_blueprints:
+        raise RuntimeError(
+            'Módulos críticos no registrados; se bloquea el despliegue parcial: '
+            + ', '.join(missing_blueprints)
+        )
+    print(
+        '[STARTUP] critical blueprints PASS: ' + ', '.join(sorted(required_blueprints)),
+        flush=True,
+    )
     from database import database, get_db_connection
-    from modules.base_maestra.repository import BaseMaestraRepository
-    from modules.facturacion_suscripcion.repository import BillingRepository
-    from modules.facturacion_suscripcion.services import BillingService
-    from modules.panel_comercial.services import PanelComercialService
     from modules.seguridad.services import bootstrap_initial_admin
     from modules.seguridad.tenant_context import ensure_tenant_directories
     from services.rpp_minutas_service import seed_minuta_sanitizada_desde_json
     from services.uds_catalog import catalog_summary, ensure_catalog_units_sqlite, migrate_demo_units_sqlite
 
-    print('[MIGRATION] explicit startup migrations start', flush=True)
-    with _explicit_schema_ddl():
-        app_module.init_db()
-        BillingService(BillingRepository(config_class.DATABASE_PATH)).init(force=True)
-        PanelComercialService(config_class.DATABASE_PATH).init_schema()
-        BaseMaestraRepository(config_class.DATABASE_PATH).init_schema()
-    print('[MIGRATION] explicit startup migrations PASS', flush=True)
+    app_module.init_db()
     if database.is_sqlite:
         from migrations.migrate_multitenant_phase3 import migrate as migrate_multitenant_phase3
         tenant_migration = migrate_multitenant_phase3(config_class.DATABASE_PATH)
@@ -217,6 +269,9 @@ def _main() -> int:
 
     marker.write_text(json.dumps({
         'version': app_module.app.config.get('APP_VERSION'),
+        'git_sha': git_sha,
+        'build_time': build_time or None,
+        'schema_migration_mode': True,
         'database_backend': database.dialect_name,
         'database': _safe_database_label(config_class.DATABASE_URL, config_class.DATABASE_PATH),
         'template_sync': {

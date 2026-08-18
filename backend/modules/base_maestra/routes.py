@@ -39,14 +39,34 @@ def payload() -> dict:
     return request.form.to_dict() or {}
 
 
+def _runtime_schema_ddl_enabled() -> bool:
+    """El proceso de hosting migra antes de iniciar los workers.
+
+    Cuando ``SKIP_RUNTIME_SCHEMA_DDL`` está activo, el worker debe registrar
+    todas las rutas sin repetir DDL ni hacer que un fallo de mantenimiento
+    elimine por completo el contrato HTTP del módulo.
+    """
+    return os.getenv('SKIP_RUNTIME_SCHEMA_DDL', '').strip().lower() not in {
+        '1', 'true', 'yes', 'si', 'sí', 'on',
+    }
+
+
 def register_base_maestra(app, database_path: str, upload_folder: str, output_folder: str) -> None:
     repo = BaseMaestraRepository(database_path)
+    if _runtime_schema_ddl_enabled():
+        repo.init_schema()
 
     bp = Blueprint('base_maestra', __name__, url_prefix='/api/base-maestra')
     module_upload = tenant_path(upload_folder, 'base_maestra')
     module_output = tenant_path(output_folder, 'base_maestra')
     os.makedirs(module_upload, exist_ok=True)
     os.makedirs(module_output, exist_ok=True)
+
+    @bp.before_request
+    def _ensure_schema():
+        if _runtime_schema_ddl_enabled():
+            repo.init_schema()
+
 
     @bp.route('/fuentes-estado', methods=['GET'])
     @require_roles('SUPERADMIN', 'GERENTE', 'COORDINADOR', 'AUXILIAR_ADMINISTRATIVO', 'NUTRICIONISTA')

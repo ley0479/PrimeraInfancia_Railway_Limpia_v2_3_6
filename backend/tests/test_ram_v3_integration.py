@@ -14,7 +14,7 @@ sys.path.insert(0, str(BACKEND))
 from services.ram_v3_service import generate_ram_v3, sha256_file
 
 TEMPLATE = BACKEND / 'seed_data' / 'templates_originales' / 'oficiales' / 'plantilla_ram_oficial_v3.xlsx'
-EXPECTED_HASH = '52ae6d192acd678d282d851bbc43d0ebd042efe4e338c3761a4f87f207b14fdf'
+EXPECTED_HASH = 'a6b4c9412f7c72a19b9d5e842fa5ffd4b876c7d0f0c3d5c8e140b5287d700753'
 
 
 def assert_true(value, message):

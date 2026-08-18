@@ -37,7 +37,7 @@
     <link rel="stylesheet" href="./css/reportes-gerenciales.css?v=2.2.7">
     <link rel="stylesheet" href="./css/panel-comercial.css?v=2.2.8">
     <link rel="stylesheet" href="./css/gerencia-general.css?v=2.3.0-alpha.18">
-    <link rel="stylesheet" href="./css/calendario-inteligente.css?v=2.3.0-alpha.15">
+    <link rel="stylesheet" href="./css/calendario-inteligente.css?v=2.7.0-phase6.1">
     <link rel="stylesheet" href="./css/gestion-integral-uca.css?v=2.5.3">
     <link rel="stylesheet" href="./css/motor-gestion-proyecto.css?v=2.5.3">
     <link rel="stylesheet" href="./css/supervision-calidad.css?v=2.6.0">
@@ -73,7 +73,7 @@
                     <label class="block text-sm font-medium text-slate-300 mb-2">Contraseña</label>
                     <input id="login-password" type="password" autocomplete="current-password" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100" placeholder="••••••••" />
                 </div>
-                <label class="flex items-center gap-2 text-sm text-slate-400"><input id="login-recordar" type="checkbox" class="rounded border-slate-700 bg-slate-950" /> Recordar sesión en este equipo</label>
+                <label class="flex items-center gap-2 text-sm text-slate-400"><input id="login-recordar" type="checkbox" class="rounded border-slate-700 bg-slate-950" /> Mantener sesión iniciada <span class="text-xs text-slate-500">(no guarda la contraseña)</span></label>
                 <button type="submit" class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 px-4 py-3 font-semibold text-white transition">Ingresar</button>
                 <button type="button" onclick="recuperarPassword()" class="w-full rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 transition">Recuperar contraseña</button>
                 <p id="login-message" class="min-h-5 text-sm text-amber-300" role="status" aria-live="polite"></p>
@@ -182,7 +182,7 @@
     <div class="pi-menu-group" data-menu-group="gestion-pedagogica">
         <button type="button" class="pi-menu-group-toggle" data-menu-toggle="gestion-pedagogica" aria-expanded="true"><span><i data-lucide="book-open-check"></i> Gestión Pedagógica</span><i data-lucide="chevron-down" class="pi-menu-chevron"></i></button>
         <div class="pi-menu-group-items">
-            <button id="nav-calendario-inteligente" data-menu-item data-menu-group="gestion-pedagogica" onclick="mostrarSeccion('gestion-pedagogica'); setTimeout(() => { if (typeof gpMostrarVista === 'function') gpMostrarVista('calendario'); }, 0);" class="pi-menu-item"><i data-lucide="calendar-check"></i><span>Calendario Inteligente</span></button>
+            <button id="nav-calendario-inteligente" data-menu-item data-menu-group="gestion-pedagogica" onclick="mostrarSeccion('calendario-inteligente')" class="pi-menu-item"><i data-lucide="calendar-check"></i><span>Calendario Inteligente</span><small>mes · semana · agenda</small></button>
             <button id="nav-planeacion-pedagogica" data-menu-item data-menu-group="gestion-pedagogica" onclick="mostrarSeccion('planeacion-pedagogica')" class="pi-menu-item"><i data-lucide="clipboard-pen"></i><span>Planeación Pedagógica</span></button>
             <button id="nav-gestion-pedagogica" data-menu-item data-menu-group="gestion-pedagogica" onclick="mostrarSeccion('gestion-pedagogica')" class="pi-menu-item"><i data-lucide="calendar-days"></i><span>Gestión Pedagógica</span></button>
             <button id="nav-gestion-coordinador" data-menu-item data-menu-group="gestion-pedagogica" onclick="mostrarSeccion('gestion-coordinador')" class="pi-menu-item"><i data-lucide="users-round"></i><span>Gestión por Coordinador</span></button>
@@ -3595,8 +3595,8 @@
     <script src="./js/print-master-config.js?v=2.3.0-alpha.13"></script>
     <script src="./js/print-manager.js?v=2.3.0-alpha.13"></script>
     <script src="./js/modules/menu-lateral-institucional.js?v=2.3.0-alpha.51-entregables-sn"></script>
-    <script src="./js/app.js?v=2.7.0-auth-correlation-2"></script>
-    <script src="./js/modules/calendario-inteligente.js?v=2.3.0-alpha.24"></script>
+    <script src="./js/app.js?v=2.7.0-password-persistence-1"></script>
+    <script src="./js/modules/calendario-inteligente.js?v=2.7.0-phase6.1"></script>
     <script src="./js/modules/acceso-compartido.js?v=2.4.1-tunnel-fix"></script>
     <script src="./js/modules/cruce-bases.js?v=2.1.14"></script>
     <script src="./js/modules/planeacion-pedagogica.js?v=2.7.0-proyecto-uca-1"></script>

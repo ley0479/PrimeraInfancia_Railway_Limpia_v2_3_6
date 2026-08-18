@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 import sqlite3, sys, tempfile, types
+from contextlib import closing
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]; BACKEND=ROOT/'backend'; sys.path.insert(0,str(BACKEND))
 if 'flask' not in sys.modules:
@@ -16,30 +17,37 @@ security=types.ModuleType('modules.seguridad.services'); security.require_roles=
 tenant=types.ModuleType('modules.seguridad.tenant_context'); tenant.tenant_storage_root=lambda base,fid: Path(base)/'tenants'/str(fid); tenant.current_tenant_context=lambda: types.SimpleNamespace(tenant_id=None,allow_global=True,role='SYSTEM'); tenant.strict_tenant_mode=lambda: False; tenant.current_tenant_id=lambda default=None: default; tenant.tenant_path=lambda path,*parts: str(Path(path).joinpath(*parts)); tenant.resolve_tenant_path=tenant.tenant_path; sys.modules['modules.seguridad.tenant_context']=tenant
 from modules.salud_nutricion.integral import SaludNutricionIntegralService
 from modules.salud_nutricion.schema import SCHEMA_SQL
+class TestConnection(sqlite3.Connection):
+    def __exit__(self, exc_type, exc, tb):
+        try: return super().__exit__(exc_type, exc, tb)
+        finally: self.close()
 class Repo:
     def __init__(self,path): self.path=str(path)
     def connect(self):
-        c=sqlite3.connect(self.path); c.row_factory=sqlite3.Row; c.execute('PRAGMA foreign_keys=ON'); return c
+        c=sqlite3.connect(self.path,factory=TestConnection); c.row_factory=sqlite3.Row; c.execute('PRAGMA foreign_keys=ON'); return c
     def execute_script(self,s):
-        with self.connect() as c: c.executescript(s)
+        with closing(self.connect()) as c:
+            with c: c.executescript(s)
     def table_exists(self,t):
-        with self.connect() as c:return c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(t,)).fetchone() is not None
+        with closing(self.connect()) as c:return c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(t,)).fetchone() is not None
     def columns(self,t):
-        with self.connect() as c:return {r['name'] for r in c.execute(f'PRAGMA table_info({t})')}
+        with closing(self.connect()) as c:return {r['name'] for r in c.execute(f'PRAGMA table_info({t})')}
     def fetch_all(self,s,p=()):
-        with self.connect() as c:return [dict(r) for r in c.execute(s,p).fetchall()]
+        with closing(self.connect()) as c:return [dict(r) for r in c.execute(s,p).fetchall()]
     def fetch_one(self,s,p=()):
-        with self.connect() as c:
+        with closing(self.connect()) as c:
             r=c.execute(s,p).fetchone(); return dict(r) if r else None
     def execute_update(self,s,p=()):
-        with self.connect() as c:
-            cur=c.execute(s,p); return cur.rowcount
+        with closing(self.connect()) as c:
+            with c:
+                cur=c.execute(s,p); return cur.rowcount
     def log(self,*a,**k): pass
 def req(ok,msg):
     if not ok: raise AssertionError(msg)
 with tempfile.TemporaryDirectory() as td:
     base=Path(td); db=base/'db.sqlite3'; repo=Repo(db)
-    with repo.connect() as c:
+    with closing(repo.connect()) as c:
+      with c:
         c.executescript(SCHEMA_SQL)
         c.executescript("""
         CREATE TABLE master_ninos(id INTEGER PRIMARY KEY AUTOINCREMENT,fundacion_id INTEGER,documento TEXT,nombres TEXT,apellidos TEXT,fecha_nacimiento TEXT,sexo TEXT,unidad_servicio TEXT,activo INTEGER DEFAULT 1,carne_salud TEXT,carne_vacunas TEXT);

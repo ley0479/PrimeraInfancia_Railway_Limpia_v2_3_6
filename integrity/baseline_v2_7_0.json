@@ -25,8 +25,7 @@
     "frontend/css/componente-psicosocial.css",
     "start_hosting.sh",
     "Dockerfile",
-    "railway.json"
-    ,
+    "railway.json",
     "PROMPT_MAESTRO_CONTINUIDAD_NO_REGRESION.md",
     "integrity/format_capabilities.json"
   ],
@@ -223,8 +222,9 @@
   "protected_functionality_registry": "integrity/protected_functionality.json",
   "official_templates": {
     "backend/seed_data/templates_originales/oficiales/plantilla_ram_oficial_v3.xlsx": {
-      "sha256": "52ae6d192acd678d282d851bbc43d0ebd042efe4e338c3761a4f87f207b14fdf",
-      "size": 47323
+      "sha256": "a6b4c9412f7c72a19b9d5e842fa5ffd4b876c7d0f0c3d5c8e140b5287d700753",
+      "size": 45591,
+      "change_control": "Plantilla oficial suministrada por el usuario y validada por QA RAM V3."
     },
     "backend/seed_data/templates_originales/oficiales/plantilla_ram_oficial_v2_historica.xlsx": {
       "sha256": "69fabc7db8460c11a75a56eb7a382279c2673b49bdce602146fde7293444f666",

@@ -1,0 +1,230 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-16T22:40:10+00:00",
+  "release": "PrimeraInfancia_v2_7_0_AUDITADA_CORREGIDA",
+  "source_sha256": "a6b2c4b1713a56ae7bc51813b1390c1717ece5ce7d8859bb5dfc0f4a9058bab5",
+  "changes": [
+    {
+      "status": "MODIFIED",
+      "path": "backend/app.py",
+      "size": 548268,
+      "sha256": "ab5a50730d3559f651c853e8670cf0754d70b0c0fbea2a81f247a951c376132a",
+      "original_sha256": "4a46071f1abaecff466af665305e5092daca989f654dfcb9293e05a96b896432"
+    },
+    {
+      "status": "MODIFIED",
+      "path": "backend/generador_formatos.py",
+      "size": 31965,
+      "sha256": "e7ce14e2af57e8899b877221eb3b2f77e5db996c4308045ab8a8f3b5b368c6dd",
+      "original_sha256": "93484dba16f4054d50c909bedaab29507a12e5ac0c78cac455fd7a287450f5d4"
+    },
+    {
+      "status": "MODIFIED",
+      "path": "backend/init_hosting.py",
+      "size": 11680,
+      "sha256": "9e356b5a655459b0c75a69ccf52e928d9e035a23e98f139a4c5dd5f3a64b6879",
+      "original_sha256": "89d27a856c3c818051a5192c553f988ae6b217785e91d715313f70edf3a8bca9"
+    },
+    {
+      "status": "MODIFIED",
+      "path": "backend/modules/calendario_inteligente/repository.py",
+      "size": 36462,
+      "sha256": "37c27868af97624abbb1755e0bfb426f38bd6eab1ff0db225e0ad83a5fff0650",
+      "original_sha256": "22ce3979742e212a47ed61aef71022af73fb9d16b977ce2e4e7eb5c96dec7303"
+    },
+    {
+      "status": "MODIFIED",
+      "path": "backend/modules/calendario_inteligente/routes.py",
+      "size": 14033,
+      "sha256": "c6cb83da2018fb0795d189ac8e4c5726927976852c20486fb7970ab277cab263",
+      "original_sha256": "1f24f0cc6481b94ae8ecd9919577ba2dc528492142e40105188fc098756cee99"
+    },
+    {
+      "status": "MODIFIED",
+      "path": "backend/modules/calendario_inteligente/services.py",
+      "size": 21595,
+      "sha256": "b18a9a977fb7e5899132b3324312e9e3e4ed78e5eedb0cc88820b17ca58cedf4",
+      "original_sha256": "a0c866384780ee616dd980a160e7127c466a7a2319ebe4cb23246b3a88079795"
+    },
+    {
+      "status": "MODIFIED",
+      "path": "backend/modules/centro_planeacion/repository.py",
+      "size": 53457,
+      "sha256": "b546363ac2ed6bfe911d61e01d9acc3a2067bff68ba1e28e66471f40b5444f8e",
+      "original_sha256": "9081c225b063643a2d211dbac2830a0a9fe3b5a4fdb0b17fa99701f71c00f473"
+    },
+    {
+      "status": "MODIFIED",
+      "path": "backend/modules/dbapi_compat.py",
+      "size": 32558,
+      "sha256": "accfe8cb2b2305237eef9a62e6d33319d3eafff363debe57ee8259bec3967112",
+      "original_sha256": "b4b62e116afd30510f2aca03e9af808c0761d9f9598d7de1acd1cbb7018f5eaf"
+    },
+    {
+      "status": "MODIFIED",
+      "path": "backend/modules/facturacion_suscripcion/repository.py",
+      "size": 10909,
+      "sha256": "29f90d3d25b8b768c8f6db62042404e11f5c80f03861fe8087176b4195f8ded4",
+      "original_sha256": "0c3d1364605516408a5a9954e63fed5a51140e5e762c900bba199f6d536d9111"
+    },
+    {
+      "status": "MODIFIED",
+      "path": "backend/modules/facturacion_suscripcion/routes.py",
+      "size": 10512,
+      "sha256": "0caeeb20c3a6609dfae63f4a273f9f46981f935f286d5cd05d897cdfc02077e4",
+      "original_sha256": "79e74a6987ea6e086342cb44791fe9a4ed363ed33949578834f86e6bfe8aa0ac"
+    },
+    {
+      "status": "MODIFIED",
+      "path": "backend/modules/facturacion_suscripcion/services.py",
+      "size": 34374,
+      "sha256": "41421576d4bb06a3913996ef1c9ee14a5ac69446d23684d73a9734bd829cec9c",
+      "original_sha256": "9255cb3b1fb852de7de0bef4b51ec659b43e7b073c2355a6d5a2d8e9db62536d"
+    },
+    {
+      "status": "MODIFIED",
+      "path": "backend/modules/gestion_integral_uca/integrations.py",
+      "size": 67290,
+      "sha256": "ce2d6b4cc4207675a25eacacda5e7ae1f2beba347c8605dc545f1f6d0c4cc1d9",
+      "original_sha256": "0f5bbcfe648b40da2b1b24e00273e602a581f0255c641af9a3f6306bf6876dd5"
+    },
+    {
+      "status": "MODIFIED",
+      "path": "backend/modules/panel_comercial/routes.py",
+      "size": 3757,
+      "sha256": "105867068c4fa4f413e15e79143a89b99ddc56fc27bfb92a2bb796e86eecc1a8",
+      "original_sha256": "227beab0aafd6e3078e768413c66259d96c393af174cedbd5a02090bc28c46dd"
+    },
+    {
+      "status": "MODIFIED",
+      "path": "backend/modules/panel_comercial/services.py",
+      "size": 24891,
+      "sha256": "57bbbc2301f1108908ad0659cfbfa985fb042ca8ed694c90f00d9b80e0beef07",
+      "original_sha256": "78344074b0fbf80117a575231cfd13774e9bae67c5a1b8084db7b4a743a481e9"
+    },
+    {
+      "status": "MODIFIED",
+      "path": "backend/modules/plantillas_oficiales.py",
+      "size": 32654,
+      "sha256": "228d4c2a2b48ea5dacef37bd88e2c62463b168eab7b295c59a80718856fd9c72",
+      "original_sha256": "18da78bf7f74eecfd156abc362b51c0c22c7a667e2edd6fbcd80b3dff3d572b4"
+    },
+    {
+      "status": "NEW",
+      "path": "backend/modules/runtime_schema.py",
+      "size": 941,
+      "sha256": "84a58bdaac1def4b9a17a7f431d6ea9fdd8d3ee7fd414a56178fbe2fd2c320ec"
+    },
+    {
+      "status": "MODIFIED",
+      "path": "backend/seed_data/templates_originales/oficiales/plantilla_ram_oficial_v3.xlsx",
+      "size": 45591,
+      "sha256": "a6b4c9412f7c72a19b9d5e842fa5ffd4b876c7d0f0c3d5c8e140b5287d700753",
+      "original_sha256": "52ae6d192acd678d282d851bbc43d0ebd042efe4e338c3761a4f87f207b14fdf"
+    },
+    {
+      "status": "MODIFIED",
+      "path": "backend/seed_data/templates_originales/oficiales/templates_manifest.json",
+      "size": 4050,
+      "sha256": "541d90179689623eea3223c0993de1354a83c700658327ffa20d6a05db240245",
+      "original_sha256": "1847bb1d5830b63dbd3fee5ea7cf2e18e6fe5788f2f5361027262f911efae83b"
+    },
+    {
+      "status": "MODIFIED",
+      "path": "backend/seed_data/templates_originales/seed_manifest.json",
+      "size": 1959,
+      "sha256": "c1cf830c08864654f5960e924bcc28f588cb00f6cc47f77c57a5775566e0ecff",
+      "original_sha256": "9f9d5fa6276f94cc9eaa3977a066a5f84fe92d91e373e6ccc3d149d4d9cd6c59"
+    },
+    {
+      "status": "MODIFIED",
+      "path": "backend/services/ram_v3_service.py",
+      "size": 31607,
+      "sha256": "7cb6257727c8e5510a5f3321c71fbe60426d6dacb33b82dabd0f6c4cf023c4c7",
+      "original_sha256": "063d3a519866677b859f49b13bf052af00c476a8d0c6c3e96e5e558a5ee2ad64"
+    },
+    {
+      "status": "NEW",
+      "path": "backend/tests/test_attendance_calendar_integration_v2_7_0.py",
+      "size": 4460,
+      "sha256": "86362b50fd1df2e2815a457facb4a0ab92b160af54387cfcb0d24b8a7e31bc7d"
+    },
+    {
+      "status": "NEW",
+      "path": "backend/tests/test_calendar_checklist_reader_v2_7_0.py",
+      "size": 3369,
+      "sha256": "30757563934b0e59835544eb93fda698e4e2de35874285cd03005134c63d76d4"
+    },
+    {
+      "status": "NEW",
+      "path": "backend/tests/test_postgres_startup_regression_v2_7_0.py",
+      "size": 4055,
+      "sha256": "98510c36a4421a8b806a81fc334ad247a6d1d8493340639e6661e3ee77dd72e8"
+    },
+    {
+      "status": "MODIFIED",
+      "path": "backend/tests/test_ram_v3_integration.py",
+      "size": 2262,
+      "sha256": "c3dfcd625e59c763270eea61f7287a850cc82468c853ca8e841e996a36e63b74",
+      "original_sha256": "6493d902fba02e58760e20df1396dc193919ef3553d2d33a37f937b14c1f8a5a"
+    },
+    {
+      "status": "NEW",
+      "path": "docs/AUDITORIA_CORRECCIONES_PRIMERA_INFANCIA_v2_7_0.md",
+      "size": 7315,
+      "sha256": "c5917bf7191d1fbfdc66930121a16359f60bf37319d5241a712237e6e3a316bd"
+    },
+    {
+      "status": "NEW",
+      "path": "docs/AUDITORIA_PLANTILLA_RAM_V3.md",
+      "size": 530,
+      "sha256": "1d20c179f8ad813b6cff0fcb6f6ddf94f9bb352781c23e30d75c203d33f4080f"
+    },
+    {
+      "status": "NEW",
+      "path": "docs/GUIA_DESPLIEGUE_PRIMERA_INFANCIA_v2_7_0_AUDITADA.md",
+      "size": 1309,
+      "sha256": "731d8bf5b00cdd5511e86e7955238e7b64b06d205220bbf5afd2cc8010ac6ba0"
+    },
+    {
+      "status": "NEW",
+      "path": "docs/MANIFIESTO_CAMBIOS_AUDITORIA_PRIMERA_INFANCIA_v2_7_0.json",
+      "size": 8398,
+      "sha256": "ec6c634bcb09254f64c2a6b343afc57452fbbb1413059e6feb7c5779edf8f1fc"
+    },
+    {
+      "status": "NEW",
+      "path": "docs/RESULTADOS_PRUEBAS_AUDITORIA_PRIMERA_INFANCIA_v2_7_0.json",
+      "size": 21875,
+      "sha256": "a68cc2b25ca4ef491260620411d2f1d39b2448dd1b57932e3b2f81844c8a7883"
+    },
+    {
+      "status": "MODIFIED",
+      "path": "INICIAR_PLATAFORMA_LOCAL.bat",
+      "size": 326,
+      "sha256": "60e49d26b96ca6d1118ef63dc2e30faf14e976b4044f12f23b9d242450982dc3",
+      "original_sha256": "b1b7e759b9bc1c2e7572874fbaa313ad7b1b36c3a59d5a70913b3b8ef717ae1f"
+    },
+    {
+      "status": "MODIFIED",
+      "path": "integrity/baseline_v2_7_0.json",
+      "size": 8486,
+      "sha256": "5204ad5e7a83201a0aecef9e6852372501819e090e7c41ee6d821f43abda3ab0",
+      "original_sha256": "e7f72890dfd47bb1cbe259bfda3f6689878251a420c6eb58303c82ff57edc568"
+    },
+    {
+      "status": "MODIFIED",
+      "path": "integrity/critical_tests.json",
+      "size": 1158,
+      "sha256": "237e8f63f8a9d7d2bed46dcb851da8368cdc05cd6020dc76cdf62ed67838acc1",
+      "original_sha256": "3dee37c8d60870728398f3840558c28c81812ef7cc649e5d3402a9ad7ff2367b"
+    },
+    {
+      "status": "MODIFIED",
+      "path": "start_hosting.sh",
+      "size": 2764,
+      "sha256": "6f6f299bba96a81e2d630bf087d7bef592fa5293a8a40a2b3148a6497a4791a8",
+      "original_sha256": "49d7eb69dc1add7d3499ea381e173bcfe568f4111566aa4d87d1324be46156c9"
+    }
+  ]
+}

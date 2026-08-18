@@ -19,6 +19,18 @@
     "tests/test_ram_download_period_wiring.py",
     "tests/test_ram_v3_integration.py",
     "tests/test_integrity_postgresql_v2_6_1.py",
-    "tests/test_centro_planeacion_psicosocial_v2_7_0.py"
+    "tests/test_centro_planeacion_psicosocial_v2_7_0.py",
+    "tests/test_postgres_startup_regression_v2_7_0.py",
+    "tests/test_calendar_checklist_reader_v2_7_0.py",
+    "tests/test_attendance_calendar_integration_v2_7_0.py",
+    "tests/test_calendar_phase1_views_v2_7_0.py",
+    "tests/test_calendar_phase2_recurrence_v2_7_0.py",
+    "tests/test_calendar_phase3_checklist_v2_7_0.py",
+    "tests/test_calendar_phase4_evidence_v2_7_0.py",
+    "tests/test_calendar_phase5_document_reader_v2_7_0.py",
+    "tests/test_calendar_phase6_checklist_import_v2_7_0.py",
+    "tests/test_calendar_phase7_8_ram_wiring_v2_7_0.py",
+    "tests/test_calendar_phase9_10_integration_alerts_v2_7_0.py",
+    "tests/test_calendar_phase11_compliance_v2_7_0.py"
   ]
 }
