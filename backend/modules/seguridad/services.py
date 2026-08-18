@@ -531,12 +531,17 @@ def ensure_security_schema(database_path: str) -> None:
         # No enviar INSERT ... WHERE NOT EXISTS contra una base madura: aunque
         # finalmente no escriba, PostgreSQL adquiere RowExclusiveLock y puede
         # quedar esperando locks de la instancia Railway anterior.
-        if not cur.execute("SELECT 1 FROM fundaciones WHERE id = 1").fetchone():
-            cur.execute("""
-            INSERT INTO fundaciones
-            (id, nombre, nit, representante, estado, plan, fecha_inicio, fecha_vencimiento, fecha_creacion)
-            VALUES (1, 'Entorno de pruebas', NULL, NULL, 'ACTIVA', 'PRUEBA', ?, ?, ?)
-            """, (now[:10], (datetime.now() + timedelta(days=3650)).date().isoformat(), now))
+        # En una instalación madura no consultar ni escribir ``fundaciones``.
+        # Un despliegue Railway anterior puede conservar temporalmente un lock
+        # exclusivo por DDL; el catálogo ya fue validado arriba y no hace falta
+        # tocar datos de negocio para marcar esta migración como aplicada.
+        if not security_tables_complete:
+            if not cur.execute("SELECT 1 FROM fundaciones WHERE id = 1").fetchone():
+                cur.execute("""
+                INSERT INTO fundaciones
+                (id, nombre, nit, representante, estado, plan, fecha_inicio, fecha_vencimiento, fecha_creacion)
+                VALUES (1, 'Entorno de pruebas', NULL, NULL, 'ACTIVA', 'PRUEBA', ?, ?, ?)
+                """, (now[:10], (datetime.now() + timedelta(days=3650)).date().isoformat(), now))
 
         for rol in ROLES_SISTEMA:
             if not cur.execute("SELECT 1 FROM roles_sistema WHERE nombre = ?", (rol,)).fetchone():

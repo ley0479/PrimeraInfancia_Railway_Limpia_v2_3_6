@@ -104,6 +104,12 @@ def run() -> None:
         'SELECT 1 FROM fundaciones WHERE id = 1' in security_source,
         "La fundación semilla no se consulta antes de intentar escribir",
     )
+    mature_guard = security_source.find("if not security_tables_complete:", security_source.find("no consultar ni escribir"))
+    foundation_read = security_source.find('SELECT 1 FROM fundaciones WHERE id = 1', mature_guard)
+    require(
+        mature_guard >= 0 and foundation_read > mature_guard,
+        "Una migración madura todavía puede consultar datos bloqueados de fundaciones",
+    )
     require(
         "SELECT 1, 'Entorno de pruebas'" not in security_source,
         "Persistió INSERT...SELECT que toma RowExclusiveLock aunque la semilla exista",
