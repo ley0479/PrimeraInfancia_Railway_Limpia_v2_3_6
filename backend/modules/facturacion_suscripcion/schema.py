@@ -87,6 +87,10 @@ CREATE TABLE IF NOT EXISTS movimientos_credito (
     descripcion TEXT,
     usuario_id INTEGER,
     fecha_movimiento TEXT NOT NULL,
+    idempotency_key TEXT,
+    estado TEXT NOT NULL DEFAULT 'APLICADO',
+    metadata_json TEXT,
+    fecha_aplicacion TEXT,
     FOREIGN KEY(fundacion_id) REFERENCES fundaciones(id),
     FOREIGN KEY(suscripcion_id) REFERENCES suscripciones_fundacion(id)
 );

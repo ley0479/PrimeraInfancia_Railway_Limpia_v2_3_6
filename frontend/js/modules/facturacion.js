@@ -7,6 +7,8 @@ let facEstado = {
     movimientos: [],
     fundaciones: []
 };
+let facAsignacionEnCurso = false;
+let facAsignacionPendiente = null;
 
 function facApi(path, options = {}) {
     return fetch(`${backendUrl}/api/facturacion${path}`, options).then(manejarRespuestaJson);
@@ -107,9 +109,11 @@ async function facCargarDashboard() {
 
 function facRenderDashboard(data = {}) {
     const cards = document.getElementById('fac-dashboard-cards');
+    const usage = document.getElementById('fac-dashboard-usage');
     const user = usuarioActual || authUser() || {};
     if (cards) {
         if (user.rol === 'SUPERADMIN') {
+            if (usage) usage.innerHTML = '';
             const s = data.stats || {};
             cards.innerHTML = [
                 ['Fundaciones', s.fundaciones_total || 0], ['Activas', s.activas || 0], ['Por vencer', s.por_vencer || 0],
@@ -117,6 +121,19 @@ function facRenderDashboard(data = {}) {
             ].map(([t,v]) => `<div class="fac-card"><p class="text-xs text-slate-400">${t}</p><h3 class="mt-2 text-2xl font-bold text-amber-300">${v}</h3></div>`).join('');
         } else {
             const sub = data.suscripcion || {};
+            const clamp = (value) => Math.max(0, Math.min(100, Number(value || 0)));
+            if (usage) usage.innerHTML = `
+                <article class="fac-usage-card">
+                    <div class="flex items-center justify-between gap-3"><strong>Tiempo de suscripción</strong><span class="text-xs text-slate-400">${escaparHtml(sub.estado || '')}</span></div>
+                    <div class="fac-progress-track mt-3"><div class="fac-progress-fill bg-cyan-500" style="width:${clamp(sub.porcentaje_tiempo_consumido)}%"></div></div>
+                    <p class="mt-2 text-sm text-slate-300">${Number(sub.dias_transcurridos || 0)} de ${Number(sub.dias_totales || 0)} días utilizados · ${Math.max(0, Number(sub.dias_restantes || 0))} restantes</p>
+                </article>
+                <article class="fac-usage-card">
+                    <div class="flex items-center justify-between gap-3"><strong>Créditos</strong><span class="text-xs text-slate-400">${escaparHtml(sub.estado_creditos || 'NORMAL')}</span></div>
+                    <div class="fac-progress-track mt-3"><div class="fac-progress-fill bg-amber-500" style="width:${clamp(sub.porcentaje_consumido)}%"></div></div>
+                    <p class="mt-2 text-sm text-slate-300">${Number(sub.creditos_consumidos || 0)} de ${Number(sub.creditos_totales || 0)} consumidos · ${Number(sub.creditos_disponibles || 0)} disponibles</p>
+                    <p class="mt-1 text-xs text-slate-500">Promedio: ${Number(sub.promedio_diario_consumo || 0)} por día · ${sub.dias_estimados_agotamiento == null ? 'Sin consumo suficiente para proyectar' : `proyección: ${Number(sub.dias_estimados_agotamiento)} días`}</p>
+                </article>`;
             cards.innerHTML = [
                 ['Plan', sub.plan_nombre || 'Sin plan'], ['Estado', sub.estado || ''], ['Vence', sub.fecha_vencimiento || ''],
                 ['Días restantes', sub.dias_restantes ?? 0], ['Créditos', sub.creditos_disponibles || 0], ['Gracia', sub.fecha_fin_gracia || '']
@@ -239,11 +256,33 @@ async function facCargarCreditos() {
 }
 
 async function facAsignarCreditos() {
+    if (facAsignacionEnCurso) return;
     const body = {
         fundacion_id: document.getElementById('fac-credito-fundacion').value,
         paquete_id: document.getElementById('fac-credito-paquete').value,
         creditos: document.getElementById('fac-credito-cantidad').value,
         descripcion: document.getElementById('fac-credito-descripcion').value || 'Asignación manual de créditos'
     };
-    try { await facApi('/creditos/asignar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); facMensaje('Créditos asignados.'); await facCargarCreditos(); await facCargarSuscripciones(); await facCargarDashboard(); } catch (error) { facMensaje(error.message, 'error'); }
+    const fingerprint = JSON.stringify(body);
+    if (!facAsignacionPendiente || facAsignacionPendiente.fingerprint !== fingerprint) {
+        facAsignacionPendiente = {
+            fingerprint,
+            key: globalThis.crypto?.randomUUID?.() || `credit-${Date.now()}-${Math.random().toString(16).slice(2)}`
+        };
+    }
+    facAsignacionEnCurso = true;
+    try {
+        await facApi('/creditos/asignar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Idempotency-Key': facAsignacionPendiente.key },
+            body: fingerprint
+        });
+        facAsignacionPendiente = null;
+        facMensaje('Créditos asignados.');
+        await facCargarCreditos(); await facCargarSuscripciones(); await facCargarDashboard();
+    } catch (error) {
+        facMensaje(error.message, 'error');
+    } finally {
+        facAsignacionEnCurso = false;
+    }
 }

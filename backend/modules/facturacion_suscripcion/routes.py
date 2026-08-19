@@ -182,7 +182,9 @@ def register_facturacion(app, database_path: str, upload_folder: str) -> None:
         if denied:
             return denied
         try:
-            mov = service.asignar_creditos(payload())
+            data = payload()
+            data.setdefault('idempotency_key', request.headers.get('Idempotency-Key') or request.headers.get('X-Idempotency-Key'))
+            mov = service.asignar_creditos(data)
             return jsonify({'message': 'Créditos asignados correctamente.', 'movimiento': mov, 'suscripcion': service.get_subscription(int(mov['fundacion_id']))}), 201
         except Exception as exc:
             return jsonify({'error': str(exc)}), 400
@@ -196,7 +198,11 @@ def register_facturacion(app, database_path: str, upload_folder: str) -> None:
         try:
             fid = int(data.get('fundacion_id') or repo.current_fundacion_id())
             accion = data.get('accion') or 'exportacion_masiva'
-            mov = service.consumir_creditos(fid, accion, data.get('referencia_tipo'), str(data.get('referencia_id') or ''), data.get('descripcion') or '')
+            mov = service.consumir_creditos(
+                fid, accion, data.get('referencia_tipo'), str(data.get('referencia_id') or ''),
+                data.get('descripcion') or '',
+                idempotency_key=(request.headers.get('Idempotency-Key') or request.headers.get('X-Idempotency-Key') or data.get('idempotency_key')),
+            )
             return jsonify({'message': 'Créditos consumidos correctamente.', 'movimiento': mov, 'suscripcion': service.get_subscription(fid)}), 201
         except PermissionError:
             return jsonify({'error': 'Créditos insuficientes.'}), 402

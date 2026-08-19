@@ -3,15 +3,18 @@ from __future__ import annotations
 import json
 import os
 import threading
+import uuid
 from datetime import date, datetime, timedelta
 from typing import Any
 
 from flask import g, jsonify, request
 from werkzeug.utils import secure_filename
+from sqlalchemy import text
 
 from .repository import BillingRepository, add_months, now_iso, parse_date, today_iso
 from .schema import CREDIT_COSTS, CREDIT_PATH_RULES, PATH_MODULE_MAP
 from modules.runtime_schema import migration_mode, runtime_schema_ddl_disabled, schema_ddl_enabled
+from database import database
 
 
 def normalize_estado_suscripcion(fecha_vencimiento: str, estado_actual: str = 'ACTIVA', dias_gracia: int = 5) -> str:
@@ -33,14 +36,23 @@ def subscription_to_api(sub: dict[str, Any] | None) -> dict[str, Any]:
     data = dict(sub)
     data['modulos_habilitados'] = json.loads(data.get('modulos_habilitados') or '[]') if isinstance(data.get('modulos_habilitados'), str) else (data.get('modulos_habilitados') or [])
     try:
+        inicio = parse_date(data.get('fecha_inicio'))
         venc = parse_date(data.get('fecha_vencimiento'))
         gracia = int(data.get('dias_gracia') or 0)
+        data['dias_totales'] = max(0, (venc - inicio).days)
+        data['dias_transcurridos'] = max(0, min(data['dias_totales'], (date.today() - inicio).days))
         data['dias_restantes'] = (venc - date.today()).days
+        data['porcentaje_tiempo_consumido'] = round(
+            (data['dias_transcurridos'] / data['dias_totales'] * 100) if data['dias_totales'] else 0, 2
+        )
         data['fecha_fin_gracia'] = (venc + timedelta(days=gracia)).isoformat()
         data['en_gracia'] = venc < date.today() <= venc + timedelta(days=gracia)
         data['gracia_vencida'] = date.today() > venc + timedelta(days=gracia)
     except Exception:
         data['dias_restantes'] = 0
+        data['dias_totales'] = 0
+        data['dias_transcurridos'] = 0
+        data['porcentaje_tiempo_consumido'] = 0
         data['en_gracia'] = False
         data['gracia_vencida'] = False
     return data
@@ -285,7 +297,41 @@ class BillingService:
                 """,
                 (fid,),
             )
-        return subscription_to_api(row)
+        data = subscription_to_api(row)
+        if not data:
+            return data
+        ledger = self.repo.fetch_one(
+            """SELECT
+                   COALESCE(SUM(CASE WHEN creditos > 0 THEN creditos ELSE 0 END),0) AS creditos_totales,
+                   COALESCE(SUM(CASE WHEN creditos < 0 THEN ABS(creditos) ELSE 0 END),0) AS creditos_consumidos
+               FROM movimientos_credito WHERE fundacion_id=? AND COALESCE(estado,'APLICADO')='APLICADO'""",
+            (fid,),
+        ) or {}
+        total = int(ledger.get('creditos_totales') or 0)
+        consumed = int(ledger.get('creditos_consumidos') or 0)
+        available = int(data.get('creditos_disponibles') or 0)
+        elapsed = max(1, int(data.get('dias_transcurridos') or 0))
+        daily_average = round(consumed / elapsed, 2) if consumed > 0 else 0
+        projected_days = int(available / daily_average) if daily_average > 0 else None
+        available_percentage = round((available / total * 100) if total > 0 else 0, 2)
+        data.update({
+            'creditos_totales': total,
+            'creditos_consumidos': consumed,
+            'porcentaje_consumido': round((consumed / total * 100) if total > 0 else 0, 2),
+            'porcentaje_disponible': available_percentage,
+            'promedio_diario_consumo': daily_average,
+            'dias_estimados_agotamiento': projected_days,
+            'fecha_estimada_agotamiento': (
+                (date.today() + timedelta(days=projected_days)).isoformat()
+                if projected_days is not None else None
+            ),
+            'estado_creditos': (
+                'AGOTADO' if available <= 0 else 'CRITICO' if available_percentage <= 5
+                else 'ALTO' if available_percentage <= 10 else 'ADVERTENCIA'
+                if available_percentage <= 25 else 'NORMAL'
+            ),
+        })
+        return data
 
     def upsert_subscription(self, data: dict[str, Any], fundacion_id: int | None = None) -> dict[str, Any]:
         fid = self.authorized_fundacion_id(
@@ -393,29 +439,81 @@ class BillingService:
         self.repo.log('REGISTRAR_PAGO', 'pagos_suscripcion', pago_id, despues=pago)
         return {'pago': pago, 'suscripcion': updated}
 
-    def registrar_movimiento_credito(self, fundacion_id: int, tipo: str, accion: str, creditos: int, descripcion: str = '', referencia_tipo: str | None = None, referencia_id: str | None = None) -> dict[str, Any]:
+    def registrar_movimiento_credito(
+        self, fundacion_id: int, tipo: str, accion: str, creditos: int,
+        descripcion: str = '', referencia_tipo: str | None = None,
+        referencia_id: str | None = None, *, idempotency_key: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         fundacion_id = self.authorized_fundacion_id(fundacion_id)
-        sub = self.get_subscription(fundacion_id)
-        saldo_anterior = int(sub.get('creditos_disponibles') or 0)
-        if tipo.upper() == 'CONSUMO':
-            saldo_nuevo = max(0, saldo_anterior - abs(int(creditos)))
-            mov_creditos = -abs(int(creditos))
-        else:
-            saldo_nuevo = saldo_anterior + abs(int(creditos))
-            mov_creditos = abs(int(creditos))
-        mov_id = self.repo.execute(
-            """
-            INSERT INTO movimientos_credito
-            (fundacion_id, suscripcion_id, tipo, accion, creditos, saldo_anterior, saldo_nuevo, referencia_tipo,
-             referencia_id, descripcion, usuario_id, fecha_movimiento)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (fundacion_id, sub.get('id'), tipo.upper(), accion, mov_creditos, saldo_anterior, saldo_nuevo, referencia_tipo, referencia_id, descripcion, self.repo.current_user_id(), now_iso()),
-        )
-        self.repo.execute_update("UPDATE suscripciones_fundacion SET creditos_disponibles=?, fecha_actualizacion=? WHERE fundacion_id=?", (saldo_nuevo, now_iso(), fundacion_id))
-        self.repo.execute_update("UPDATE fundaciones SET creditos_disponibles=?, fecha_actualizacion=? WHERE id=?", (saldo_nuevo, now_iso(), fundacion_id))
-        mov = self.repo.fetch_one("SELECT * FROM movimientos_credito WHERE id=?", (mov_id,)) or {}
-        self.repo.log('CREDITOS_' + tipo.upper(), 'movimientos_credito', mov_id, despues=mov)
+        movement_type = str(tipo or '').strip().upper()
+        amount = abs(int(creditos))
+        if amount <= 0:
+            raise ValueError('La cantidad de créditos debe ser mayor que cero.')
+        key = str(idempotency_key or uuid.uuid4().hex).strip()[:180]
+        timestamp = now_iso()
+
+        with database.transaction() as conn:
+            lock_suffix = ' FOR UPDATE' if database.is_postgresql else ''
+            sub_result = conn.execute(
+                text('SELECT * FROM suscripciones_fundacion WHERE fundacion_id=:fid' + lock_suffix),
+                {'fid': fundacion_id},
+            ).mappings().first()
+            if not sub_result:
+                raise ValueError('La fundación no tiene una suscripción configurada.')
+            sub = dict(sub_result)
+
+            existing = conn.execute(
+                text('''SELECT * FROM movimientos_credito
+                        WHERE fundacion_id=:fid AND idempotency_key=:key LIMIT 1'''),
+                {'fid': fundacion_id, 'key': key},
+            ).mappings().first()
+            if existing:
+                return dict(existing)
+
+            previous_balance = int(sub.get('creditos_disponibles') or 0)
+            if movement_type == 'CONSUMO':
+                if previous_balance < amount:
+                    raise PermissionError('Créditos insuficientes')
+                new_balance = previous_balance - amount
+                signed_amount = -amount
+            else:
+                new_balance = previous_balance + amount
+                signed_amount = amount
+
+            inserted = conn.execute(
+                text('''INSERT INTO movimientos_credito
+                        (fundacion_id,suscripcion_id,tipo,accion,creditos,saldo_anterior,saldo_nuevo,
+                         referencia_tipo,referencia_id,descripcion,usuario_id,fecha_movimiento,
+                         idempotency_key,estado,metadata_json,fecha_aplicacion)
+                        VALUES (:fid,:sid,:tipo,:accion,:creditos,:anterior,:nuevo,:ref_tipo,:ref_id,
+                                :descripcion,:usuario,:fecha,:key,'APLICADO',:metadata,:fecha)
+                        RETURNING id'''),
+                {
+                    'fid': fundacion_id, 'sid': sub.get('id'), 'tipo': movement_type,
+                    'accion': accion, 'creditos': signed_amount, 'anterior': previous_balance,
+                    'nuevo': new_balance, 'ref_tipo': referencia_tipo, 'ref_id': referencia_id,
+                    'descripcion': descripcion, 'usuario': self.repo.current_user_id(),
+                    'fecha': timestamp, 'key': key,
+                    'metadata': json.dumps(metadata or {}, ensure_ascii=False),
+                },
+            ).scalar_one()
+            conn.execute(
+                text('''UPDATE suscripciones_fundacion
+                        SET creditos_disponibles=:saldo, fecha_actualizacion=:fecha
+                        WHERE fundacion_id=:fid'''),
+                {'saldo': new_balance, 'fecha': timestamp, 'fid': fundacion_id},
+            )
+            conn.execute(
+                text('''UPDATE fundaciones SET creditos_disponibles=:saldo,
+                        fecha_actualizacion=:fecha WHERE id=:fid'''),
+                {'saldo': new_balance, 'fecha': timestamp, 'fid': fundacion_id},
+            )
+            mov = dict(conn.execute(
+                text('SELECT * FROM movimientos_credito WHERE id=:id'), {'id': int(inserted)}
+            ).mappings().one())
+
+        self.repo.log('CREDITOS_' + movement_type, 'movimientos_credito', int(mov['id']), despues=mov)
         return mov
 
     def asignar_creditos(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -428,9 +526,18 @@ class BillingService:
                 creditos = int(paquete.get('creditos') or 0) if paquete else 0
         if creditos <= 0:
             raise ValueError('Cantidad de créditos requerida.')
-        return self.registrar_movimiento_credito(fid, 'ASIGNACION', data.get('accion') or 'asignacion_manual', creditos, data.get('descripcion') or 'Asignación manual de créditos', referencia_tipo='paquete', referencia_id=str(data.get('paquete_id') or 'manual'))
+        return self.registrar_movimiento_credito(
+            fid, 'ASIGNACION', data.get('accion') or 'asignacion_manual', creditos,
+            data.get('descripcion') or 'Asignación manual de créditos', referencia_tipo='paquete',
+            referencia_id=str(data.get('paquete_id') or 'manual'),
+            idempotency_key=data.get('idempotency_key'),
+        )
 
-    def consumir_creditos(self, fundacion_id: int, accion: str, referencia_tipo: str | None = None, referencia_id: str | None = None, descripcion: str = '') -> dict[str, Any]:
+    def consumir_creditos(
+        self, fundacion_id: int, accion: str, referencia_tipo: str | None = None,
+        referencia_id: str | None = None, descripcion: str = '', *,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
         fundacion_id = self.authorized_fundacion_id(fundacion_id)
         costo = int(CREDIT_COSTS.get(accion, 0))
         if costo <= 0:
@@ -439,7 +546,11 @@ class BillingService:
         saldo = int(sub.get('creditos_disponibles') or 0)
         if saldo < costo:
             raise PermissionError('Créditos insuficientes')
-        return self.registrar_movimiento_credito(fundacion_id, 'CONSUMO', accion, costo, descripcion or f'Consumo de {costo} crédito(s) por {accion}', referencia_tipo, referencia_id)
+        return self.registrar_movimiento_credito(
+            fundacion_id, 'CONSUMO', accion, costo,
+            descripcion or f'Consumo de {costo} crédito(s) por {accion}', referencia_tipo,
+            referencia_id, idempotency_key=idempotency_key,
+        )
 
     def credit_rule_for_request(self, path: str, method: str) -> dict[str, Any] | None:
         for rule in CREDIT_PATH_RULES:
