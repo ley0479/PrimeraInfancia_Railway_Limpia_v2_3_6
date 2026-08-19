@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, date, timedelta
 from typing import Any, Iterable
 
@@ -85,6 +86,13 @@ class BillingRepository(CoreCompatRepository):
             cur.execute(normalize_ddl_for_engine(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
 
     def init_schema(self) -> None:
+        if (
+            os.getenv('SKIP_RUNTIME_SCHEMA_DDL', '').strip().lower()
+            in {'1', 'true', 'yes', 'si', 'sí', 'on'}
+            and os.getenv('APP_SCHEMA_MIGRATION_MODE', '').strip().lower()
+            not in {'1', 'true', 'yes', 'si', 'sí', 'on'}
+        ):
+            return
         conn = self.connect()
         try:
             cur = conn.cursor()

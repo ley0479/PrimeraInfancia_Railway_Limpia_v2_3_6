@@ -60,8 +60,6 @@ def sanitize_name(filename: str) -> str:
 
 
 def register_motor_plantillas(app, database_path: str, templates_folder: str, output_folder: str) -> None:
-    init_schema(database_path)
-    init_minutas_schema(database_path)
     repo = MotorPlantillasRepository(database_path)
     custom_templates = tenant_path(
         Path(app.config['DATA_DIR']) / 'custom_templates',
@@ -82,11 +80,6 @@ def register_motor_plantillas(app, database_path: str, templates_folder: str, ou
     ram_template_path = Path(templates_folder) / 'oficiales' / 'plantilla_ram_oficial_v3.xlsx'
 
     bp = Blueprint('motor_plantillas', __name__, url_prefix='/api/motor-plantillas')
-
-    @bp.before_request
-    def _ensure_schema():
-        init_schema(database_path)
-        init_minutas_schema(database_path)
 
     @bp.route('/dashboard', methods=['GET'])
     @require_roles(*ALLOWED_ROLES)

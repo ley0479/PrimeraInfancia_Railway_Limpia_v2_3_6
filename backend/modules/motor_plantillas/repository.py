@@ -18,7 +18,6 @@ def row_to_dict(row):
 class MotorPlantillasRepository:
     def __init__(self, database_path: str):
         self.database_path = database_path
-        init_schema(database_path)
 
     def log(self, accion: str, plantilla_id=None, mapeo_id=None, usuario_id=None, fundacion_id=1, detalle=None):
         conn = connect(self.database_path)

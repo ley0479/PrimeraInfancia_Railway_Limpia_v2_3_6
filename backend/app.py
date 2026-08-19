@@ -608,6 +608,9 @@ def aplicar_metadatos_tenant(datos=None):
 
 
 def table_columns(cursor, table_name):
+    if database.is_sqlite:
+        cursor.execute(f'PRAGMA table_info("{str(table_name)}")')
+        return {row['name'] for row in cursor.fetchall()}
     cursor.execute(
         """
         SELECT column_name AS name

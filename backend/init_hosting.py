@@ -87,7 +87,25 @@ def bootstrap_core_schema(config_class) -> None:
     from modules.seguridad.services import ensure_security_schema
     ensure_security_schema(str(config_class.DATABASE_PATH))
     from modules.base_maestra.repository import BaseMaestraRepository
-    BaseMaestraRepository(str(config_class.DATABASE_PATH)).init_schema()
+    BaseMaestraRepository(config_class.DATABASE_PATH).init_schema()
+
+    # Los modulos comerciales se migran explicitamente en predeploy. Registrar
+    # sus Blueprints durante el import de app.py queda como operacion sin DDL.
+    from modules.facturacion_suscripcion.repository import BillingRepository
+    from modules.facturacion_suscripcion.services import BillingService
+    BillingService(BillingRepository(config_class.DATABASE_PATH)).init(force=True)
+    from modules.panel_comercial.services import PanelComercialService
+    PanelComercialService(config_class.DATABASE_PATH).init_schema()
+
+    from modules.motor_plantillas.services import init_schema as init_motor_plantillas_schema
+    from services.rpp_minutas_service import init_schema as init_rpp_minutas_schema
+    init_motor_plantillas_schema(config_class.DATABASE_PATH)
+    init_rpp_minutas_schema(config_class.DATABASE_PATH)
+
+    # Las bases anteriores a multi-tenant conservaban UNIQUE(nombre), lo que
+    # impedia repetir legítimamente una UDS en otra fundacion.
+    from migrations.migrate_unidades_tenant_unique_v7 import migrate as migrate_unidades_tenant_unique
+    migrate_unidades_tenant_unique(config_class.DATABASE_PATH)
 
     # La identidad global se migra exclusivamente durante init/pre-deploy.
     # El Blueprint institucional no ejecuta DDL al importarse ni por request.
@@ -211,6 +229,11 @@ def _main() -> int:
         allow_updates=env_bool('SYNC_MANAGED_TEMPLATES', True),
     )
 
+    # El esquema ya esta preparado. Desde este punto, importar/registrar Flask
+    # no tiene permiso de ejecutar DDL ni semillas.
+    os.environ['APP_SCHEMA_MIGRATION_MODE'] = '0'
+    os.environ['SKIP_RUNTIME_SCHEMA_DDL'] = '1'
+
     # app configura el Engine central antes de registrar los módulos.
     import app as app_module
 
@@ -226,6 +249,7 @@ def _main() -> int:
         'calendario_alias',
         'planeacion_pedagogica',
         'base_maestra',
+        'motor_plantillas',
         'centro_planeacion',
         'integrity_stability',
     }
@@ -246,6 +270,11 @@ def _main() -> int:
     from services.rpp_minutas_service import seed_minuta_sanitizada_desde_json
     from services.uds_catalog import catalog_summary, ensure_catalog_units_sqlite, migrate_demo_units_sqlite
 
+    # Continuamos dentro del contenedor de predeploy. El import anterior quedó
+    # protegido; las escrituras de esquema explícitas de init_db sí están
+    # autorizadas en esta fase y nunca se ejecutan en el worker web.
+    os.environ['APP_SCHEMA_MIGRATION_MODE'] = '1'
+    os.environ['SKIP_RUNTIME_SCHEMA_DDL'] = '0'
     app_module.init_db()
     if database.is_sqlite:
         from migrations.migrate_multitenant_phase3 import migrate as migrate_multitenant_phase3
