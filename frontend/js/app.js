@@ -1896,7 +1896,11 @@ function enviarFormularioProcesamientoCuentame(formData, textoCargando) {
         if (xhr.status >= 400) {
             const mensaje524 = xhr.status === 524
                 ? 'El procesamiento síncrono superó el tiempo disponible. Reduce la cantidad de UDS o formatos y vuelve a intentar.'
-                : (resultado.error || `Error técnico del servidor (${xhr.status}). Revisa el archivo o intenta nuevamente.`);
+                : [
+                    resultado.error || `Error técnico del servidor (${xhr.status}).`,
+                    resultado.detalle || '',
+                    resultado.trace_id ? `Referencia: ${resultado.trace_id}` : '',
+                ].filter(Boolean).join(' ');
             mostrarMensaje('message-box', mensaje524, 'error');
             return;
         }

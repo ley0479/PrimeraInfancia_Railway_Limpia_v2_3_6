@@ -456,18 +456,20 @@ def log_procesamiento_base_maestra(etapa, detalle='', **extra):
     No reemplaza el log de jobs; deja una bitácora legible cuando un proceso
     en segundo plano falla antes de devolver respuesta al navegador.
     """
+    payload = ' '.join(f'{k}={v}' for k, v in extra.items() if v is not None)
+    linea = f"{datetime.now().isoformat(timespec='seconds')} | {etapa}"
+    if detalle:
+        linea += f" | {detalle}"
+    if payload:
+        linea += f" | {payload}"
+    linea = linea[:3000]
+    print(f'[PROCESSING] {linea}', flush=True)
     try:
         os.makedirs(os.path.dirname(PROCESSING_LOG_FILE), exist_ok=True)
-        payload = ' '.join(f'{k}={v}' for k, v in extra.items() if v is not None)
-        linea = f"{datetime.now().isoformat(timespec='seconds')} | {etapa}"
-        if detalle:
-            linea += f" | {detalle}"
-        if payload:
-            linea += f" | {payload}"
         with open(PROCESSING_LOG_FILE, 'a', encoding='utf-8') as fh:
-            fh.write(linea[:3000] + '\n')
-    except Exception:
-        pass
+            fh.write(linea + '\n')
+    except Exception as log_exc:
+        print(f'[PROCESSING] No se pudo escribir bitácora persistente: {log_exc}', flush=True)
 
 
 def log_beneficiarios_sincronizacion_batch(registros):
