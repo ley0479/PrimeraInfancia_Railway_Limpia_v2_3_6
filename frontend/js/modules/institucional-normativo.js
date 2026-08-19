@@ -237,9 +237,14 @@
     }
 
     async function cargarIdentidadPublica(silent = true) {
+        // La identidad pública pertenece exclusivamente al estado sin sesión.
+        // Evita que una respuesta iniciada durante el login sobrescriba después
+        // la identidad efectiva (fundación -> global -> fallback).
+        if (token()) return cargarIdentidadEfectiva(silent);
         try {
             const data = await fetchJson('/api/configuracion-publica');
             const visual = data.configuracion || data;
+            if (token()) return data;
             aplicarIdentidadInstitucional({
                 nombre_plataforma: visual.nombre_plataforma,
                 nombre_corporacion: visual.nombre_plataforma,
@@ -631,7 +636,8 @@
         bindConfigForms();
         // Solo consulta datos livianos de configuración para pintar identidad.
         // No carga manuales ni PDFs en memoria al iniciar.
-        cargarIdentidadPublica(true);
+        if (token()) cargarIdentidadEfectiva(true);
+        else cargarIdentidadPublica(true);
     }
 
     window.descargarArchivoInstitucional = descargarArchivoInstitucional;
