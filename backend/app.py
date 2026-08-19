@@ -3807,6 +3807,7 @@ def registrar_movimientos_lote(movimientos):
         return 0
 
     ahora = datetime.now().isoformat()
+    fundacion_id = fundacion_actual_id()
     conn = database_connection()
     cursor = conn.cursor()
     try:
@@ -3815,25 +3816,51 @@ def registrar_movimientos_lote(movimientos):
         pass
 
     documentos = sorted({limpiar_documento_talento(m.get('documento')) for m in movimientos if limpiar_documento_talento(m.get('documento'))})
-    beneficiario_por_doc = {}
+    beneficiario_por_clave = {}
+    beneficiarios_por_doc = {}
     for i in range(0, len(documentos), 400):
         bloque = documentos[i:i + 400]
         placeholders = ','.join(['?'] * len(bloque))
         try:
             filas = cursor.execute(
-                f"SELECT documento, id FROM beneficiarios WHERE documento IN ({placeholders})",
-                bloque
+                f"""
+                SELECT documento, unidad, id
+                  FROM beneficiarios
+                 WHERE COALESCE(fundacion_id, 1) = ?
+                   AND documento IN ({placeholders})
+                """,
+                [fundacion_id, *bloque],
             ).fetchall()
-            for fila in filas:
-                beneficiario_por_doc[limpiar_documento_talento(fila['documento'])] = fila['id']
         except Exception:
-            pass
+            conn.close()
+            raise
+        for fila in filas:
+            documento = limpiar_documento_talento(fila['documento'])
+            clave = (documento, normalize_unidad(fila['unidad']))
+            beneficiario_por_clave[clave] = int(fila['id'])
+            beneficiarios_por_doc.setdefault(documento, []).append(int(fila['id']))
 
     valores = []
+    movimientos_sin_beneficiario = []
     for mov in movimientos:
         documento = limpiar_documento_talento(mov.get('documento'))
+        unidad_movimiento = normalize_unidad(
+            mov.get('unidad_destino') or mov.get('unidad_origen') or ''
+        )
+        beneficiario_id = beneficiario_por_clave.get((documento, unidad_movimiento))
+        if not beneficiario_id:
+            candidatos = beneficiarios_por_doc.get(documento) or []
+            if len(candidatos) == 1:
+                beneficiario_id = candidatos[0]
+        if not beneficiario_id:
+            movimientos_sin_beneficiario.append({
+                'documento': documento,
+                'unidad': unidad_movimiento,
+                'tipo': limpiar_valor(mov.get('tipo')),
+            })
+            continue
         valores.append((
-            int(beneficiario_por_doc.get(documento) or 0),
+            int(beneficiario_id),
             limpiar_valor(mov.get('tipo')),
             documento,
             limpiar_valor(mov.get('nombre')),
@@ -3846,6 +3873,17 @@ def registrar_movimientos_lote(movimientos):
             'sistema',
             ahora
         ))
+
+    if movimientos_sin_beneficiario:
+        log_procesamiento_base_maestra(
+            'Movimientos omitidos sin beneficiario válido',
+            total=len(movimientos_sin_beneficiario),
+            muestras=json.dumps(movimientos_sin_beneficiario[:10], ensure_ascii=False),
+            fundacion_id=fundacion_id,
+        )
+    if not valores:
+        conn.close()
+        return 0
 
     sql_insert_movimientos = '''
         INSERT INTO movimientos

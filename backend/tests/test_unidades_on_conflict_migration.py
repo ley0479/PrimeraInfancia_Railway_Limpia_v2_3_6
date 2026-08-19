@@ -116,9 +116,22 @@ def test_predeploy_retira_solo_la_restriccion_global_legacy():
     assert 'DROP TABLE' not in source.upper()
 
 
+def test_movimientos_nunca_insertan_beneficiario_cero_y_respetan_tenant():
+    source = APP_PATH.read_text(encoding='utf-8')
+    start = source.index('def registrar_movimientos_lote')
+    end = source.index('\ndef registrar_movimiento(', start)
+    function_source = source[start:end]
+
+    assert 'COALESCE(fundacion_id, 1) = ?' in function_source
+    assert 'beneficiario_por_clave' in function_source
+    assert "int(beneficiario_por_doc.get(documento) or 0)" not in function_source
+    assert "'Movimientos omitidos sin beneficiario válido'" in function_source
+
+
 if __name__ == '__main__':
     test_migracion_existente_habilita_on_conflict_sin_perder_datos()
     test_migracion_es_idempotente()
     test_contrato_final_permite_el_mismo_nombre_en_fundaciones_distintas()
     test_predeploy_retira_solo_la_restriccion_global_legacy()
+    test_movimientos_nunca_insertan_beneficiario_cero_y_respetan_tenant()
     print('UNIDADES_TENANT_UNIQUE_MIGRATION_PASS')
