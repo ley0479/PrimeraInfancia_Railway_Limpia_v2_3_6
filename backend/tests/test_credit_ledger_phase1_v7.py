@@ -82,6 +82,14 @@ def main() -> None:
             assert int(final["dias_totales"]) >= 0
             assert "porcentaje_tiempo_consumido" in final
             assert "estado_creditos" in final
+            alerts = service.subscription_alerts(final)
+            assert len({(item["tipo"], item["umbral"]) for item in alerts}) == len(alerts)
+
+            config_source = (BACKEND / "config.py").read_text(encoding="utf-8")
+            middleware_source = (BACKEND / "modules" / "facturacion_suscripcion" / "services.py").read_text(encoding="utf-8")
+            assert 'ENABLE_CREDIT_ENFORCEMENT", False' in config_source
+            assert "Idempotency-Key" in middleware_source
+            assert "automatic_charge_failed" in middleware_source
             assert int(repo.fetch_one(
                 "SELECT COUNT(*) AS total FROM movimientos_credito WHERE fundacion_id=? AND idempotency_key=?",
                 (1, "test-consumption-1"),

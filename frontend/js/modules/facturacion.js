@@ -143,7 +143,7 @@ function facRenderDashboard(data = {}) {
     const alertas = document.getElementById('fac-alertas-list');
     if (alertas) {
         const list = data.alertas || [];
-        alertas.innerHTML = list.length ? list.map(a => `<div class="rounded-xl border ${facEstadoClase(a.estado)} p-3"><strong>${escaparHtml(a.fundacion_nombre || 'Fundación')}</strong><br><span>Estado: ${escaparHtml(a.estado)} · Vence: ${escaparHtml(a.fecha_vencimiento)}</span></div>`).join('') : '<p class="text-slate-500">Sin alertas de suscripción.</p>';
+        alertas.innerHTML = list.length ? list.map(a => `<div class="rounded-xl border ${facEstadoClase(a.estado || a.nivel)} p-3"><strong>${escaparHtml(a.fundacion_nombre || a.tipo || 'Fundación')}</strong><br><span>${escaparHtml(a.mensaje || `Estado: ${a.estado || ''} · Vence: ${a.fecha_vencimiento || ''}`)}</span></div>`).join('') : '<p class="text-slate-500">Sin alertas de suscripción o créditos.</p>';
     }
     const pagos = document.getElementById('fac-pagos-recientes');
     if (pagos) {

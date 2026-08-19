@@ -618,7 +618,47 @@ class BillingService:
             (self.repo.current_fundacion_id(),),
         )
         pagos = self.repo.fetch_all("SELECT * FROM pagos_suscripcion WHERE fundacion_id=? ORDER BY fecha_pago DESC, id DESC LIMIT 20", (self.repo.current_fundacion_id(),))
-        return {'suscripcion': sub, 'movimientos': movimientos, 'pagos': pagos}
+        return {
+            'suscripcion': sub, 'movimientos': movimientos, 'pagos': pagos,
+            'alertas': self.subscription_alerts(sub),
+        }
+
+    def subscription_alerts(self, sub: dict[str, Any]) -> list[dict[str, Any]]:
+        """Recordatorios deterministas; una alerta por tipo y umbral."""
+        if not sub:
+            return []
+        alerts: list[dict[str, Any]] = []
+        days = int(sub.get('dias_restantes') or 0)
+        time_level = next(((limit, level) for limit, level in (
+            (0, 'VENCIDA'), (1, 'CRITICA'), (3, 'ALTA'), (7, 'ADVERTENCIA'), (14, 'INFORMATIVA')
+        ) if days <= limit), None)
+        if time_level:
+            limit, level = time_level
+            alerts.append({
+                'tipo': 'VIGENCIA', 'nivel': level, 'umbral': limit,
+                'fundacion_nombre': sub.get('fundacion_nombre'),
+                'mensaje': ('La suscripción está vencida.' if days <= 0 else f'La suscripción vence en {days} día(s).'),
+                'fecha_vencimiento': sub.get('fecha_vencimiento'),
+            })
+        available = float(sub.get('porcentaje_disponible') or 0)
+        credit_level = next(((limit, level) for limit, level in (
+            (0, 'AGOTADA'), (5, 'CRITICA'), (10, 'ALTA'), (25, 'ADVERTENCIA'), (50, 'INFORMATIVA')
+        ) if available <= limit), None)
+        if credit_level:
+            limit, level = credit_level
+            alerts.append({
+                'tipo': 'CREDITOS', 'nivel': level, 'umbral': limit,
+                'fundacion_nombre': sub.get('fundacion_nombre'),
+                'mensaje': f"Quedan {int(sub.get('creditos_disponibles') or 0)} créditos ({available:.1f}% disponible).",
+            })
+        projected = sub.get('dias_estimados_agotamiento')
+        if projected is not None and int(projected) < max(0, days):
+            alerts.append({
+                'tipo': 'PROYECCION', 'nivel': 'ALTA', 'umbral': int(projected),
+                'fundacion_nombre': sub.get('fundacion_nombre'),
+                'mensaje': f'Los créditos podrían agotarse en {int(projected)} día(s), antes del vencimiento.',
+            })
+        return alerts
 
     def list_movimientos(self, fundacion_id: int | None = None, limit: int = 500) -> list[dict[str, Any]]:
         if self.repo.is_superadmin() and fundacion_id:
@@ -707,13 +747,21 @@ def register_billing_middleware(app, database_path: str, upload_folder: str | No
                 return None
             return _json_error('La suscripción está vencida y superó los días de gracia. Registra un pago para reactivar.', 402)
 
-        rule = service.credit_rule_for_request(request.path, request.method)
+        rule = service.credit_rule_for_request(request.path, request.method) if app.config.get('ENABLE_CREDIT_ENFORCEMENT', False) else None
         if rule:
+            request_data = request.get_json(silent=True) if request.is_json else request.form
+            idempotency_key = (
+                request.headers.get('Idempotency-Key') or request.headers.get('X-Idempotency-Key')
+                or request.headers.get('X-Request-ID') or (request_data or {}).get('idempotency_key')
+            )
+            if not idempotency_key:
+                return _json_error('Esta operación requiere Idempotency-Key para proteger el cobro.', 400)
             saldo = int(sub.get('creditos_disponibles') or 0)
             if saldo < int(rule.get('costo') or 0):
                 return _json_error('Créditos insuficientes. Compra o solicita asignación de nuevos créditos.', 402)
             g.billing_credit_rule = rule
             g.billing_credit_fundacion_id = fid
+            g.billing_credit_idempotency_key = str(idempotency_key)
         g.billing_subscription = sub
         return None
 
@@ -721,6 +769,7 @@ def register_billing_middleware(app, database_path: str, upload_folder: str | No
     def _billing_after_request(response):
         rule = getattr(g, 'billing_credit_rule', None)
         fid = getattr(g, 'billing_credit_fundacion_id', None)
+        idempotency_key = getattr(g, 'billing_credit_idempotency_key', None)
         if rule and fid and 200 <= int(response.status_code) < 300:
             try:
                 service.consumir_creditos(
@@ -729,9 +778,12 @@ def register_billing_middleware(app, database_path: str, upload_folder: str | No
                     referencia_tipo='endpoint',
                     referencia_id=request.path,
                     descripcion=f"Consumo automático por {request.method} {request.path}",
+                    idempotency_key=idempotency_key,
                 )
+                response.headers['X-Credit-Charge'] = 'confirmed'
             except Exception:
-                pass
+                app.logger.exception('[CREDITS] automatic_charge_failed path=%s fundacion_id=%s', request.path, fid)
+                response.headers['X-Credit-Charge'] = 'failed'
         sub = getattr(g, 'billing_subscription', None)
         if sub and response is not None:
             try:
