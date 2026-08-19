@@ -105,7 +105,8 @@ def bootstrap_core_schema(config_class) -> None:
     # Las bases anteriores a multi-tenant conservaban UNIQUE(nombre), lo que
     # impedia repetir legítimamente una UDS en otra fundacion.
     from migrations.migrate_unidades_tenant_unique_v7 import migrate as migrate_unidades_tenant_unique
-    migrate_unidades_tenant_unique(config_class.DATABASE_PATH)
+    unidades_migration = migrate_unidades_tenant_unique(config_class.DATABASE_PATH)
+    print('[MIGRATION] unidades tenant unique: ' + json.dumps(unidades_migration, ensure_ascii=False), flush=True)
 
     # La identidad global se migra exclusivamente durante init/pre-deploy.
     # El Blueprint institucional no ejecuta DDL al importarse ni por request.

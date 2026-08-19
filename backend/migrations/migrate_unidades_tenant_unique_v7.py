@@ -41,7 +41,14 @@ def _postgres_unique_constraints(conn: Any) -> list[tuple[str, list[str]]]:
     constraints: list[tuple[str, list[str]]] = []
     for row in rows:
         name = str(row["constraint_name"])
-        columns = list(row["columns"] or [])
+        raw_columns = row["columns"] or []
+        # psycopg devuelve ARRAY como lista. Algunos adaptadores compatibles lo
+        # serializan como ``{nombre}``; normalizar ambos evita dejar viva la
+        # restricción histórica por una diferencia de representación.
+        if isinstance(raw_columns, str):
+            columns = [value.strip().strip('"') for value in raw_columns.strip('{}').split(',') if value.strip()]
+        else:
+            columns = list(raw_columns)
         constraints.append((name, [str(column) for column in columns]))
     return constraints
 
@@ -94,13 +101,31 @@ def migrate(_database_path: str | None = None) -> dict[str, Any]:
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_unidades_fundacion_nombre "
             "ON unidades(fundacion_id, nombre)"
         )
+        # Nombre creado por PostgreSQL para el UNIQUE(nombre) del esquema
+        # histórico. IF EXISTS hace esta reparación idempotente.
+        conn.execute(
+            "ALTER TABLE unidades DROP CONSTRAINT IF EXISTS unidades_nombre_key"
+        )
+        dropped.append("unidades_nombre_key")
         for constraint_name, constraint_columns in _postgres_unique_constraints(conn):
             if constraint_columns == ["nombre"]:
                 conn.execute(
                     "ALTER TABLE unidades DROP CONSTRAINT "
                     + _quote_identifier(constraint_name)
                 )
-                dropped.append(constraint_name)
+                if constraint_name not in dropped:
+                    dropped.append(constraint_name)
+
+        remaining_legacy = [
+            name
+            for name, constraint_columns in _postgres_unique_constraints(conn)
+            if constraint_columns == ["nombre"]
+        ]
+        if remaining_legacy:
+            raise RuntimeError(
+                "No fue posible retirar la unicidad global de unidades: "
+                + ", ".join(remaining_legacy)
+            )
         conn.commit()
 
     return {

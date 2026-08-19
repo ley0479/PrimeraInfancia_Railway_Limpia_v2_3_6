@@ -108,6 +108,8 @@ def test_predeploy_retira_solo_la_restriccion_global_legacy():
 
     assert 'constraint_columns == ["nombre"]' in source
     assert 'ALTER TABLE unidades DROP CONSTRAINT' in source
+    assert 'DROP CONSTRAINT IF EXISTS unidades_nombre_key' in source
+    assert 'remaining_legacy' in source
     assert 'ON unidades(fundacion_id, nombre)' in source
     assert 'HAVING COUNT(*) > 1' in source
     assert 'DELETE FROM UNIDADES' not in source.upper()
