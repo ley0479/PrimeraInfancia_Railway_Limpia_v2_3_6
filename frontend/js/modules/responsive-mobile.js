@@ -111,8 +111,8 @@
     }
 
     function mejorarTabla(table) {
-        if (!table || table.dataset.piResponsiveReady === '1') return;
-        table.dataset.piResponsiveReady = '1';
+        if (!table) return;
+        const preparada = table.dataset.piResponsiveReady === '1';
 
         let wrapper = table.parentElement;
         const parentAlreadyScrolls = wrapper && (
@@ -124,15 +124,17 @@
             window.getComputedStyle(wrapper).overflowX === 'scroll'
         );
 
-        if (!parentAlreadyScrolls) {
+        if (!preparada && !parentAlreadyScrolls) {
             const nuevoWrapper = document.createElement('div');
             nuevoWrapper.className = 'pi-responsive-table-scroll';
             table.parentNode.insertBefore(nuevoWrapper, table);
             nuevoWrapper.appendChild(table);
             wrapper = nuevoWrapper;
-        } else {
+        } else if (wrapper) {
             wrapper.classList.add('pi-responsive-table-scroll');
         }
+
+        table.dataset.piResponsiveReady = '1';
 
         wrapper.setAttribute('role', 'region');
         wrapper.setAttribute('aria-label', table.getAttribute('aria-label') || 'Tabla con desplazamiento horizontal');
@@ -143,6 +145,9 @@
             const anchoMinimo = Math.min(1500, Math.max(700, columnas * 125));
             table.classList.add('pi-responsive-wide-table');
             table.style.setProperty('--pi-responsive-table-min-width', anchoMinimo + 'px');
+        } else {
+            table.classList.remove('pi-responsive-wide-table');
+            table.style.removeProperty('--pi-responsive-table-min-width');
         }
 
         if (!wrapper.nextElementSibling?.classList.contains('pi-responsive-scroll-hint')) {
@@ -180,7 +185,7 @@
 
     function mejorarContenido(root) {
         const scope = root && root.querySelectorAll ? root : document;
-        scope.querySelectorAll('table:not([data-pi-responsive-ready])').forEach(mejorarTabla);
+        scope.querySelectorAll('table').forEach(mejorarTabla);
         mejorarCalendarios(scope);
         optimizarImagenes(scope);
     }
@@ -217,6 +222,18 @@
             if (hayNodosNuevos) programarMejoras();
         });
         observer.observe(document.body, { childList: true, subtree: true });
+
+        let resizeTimer = null;
+        const alCambiarViewport = function () {
+            window.clearTimeout(resizeTimer);
+            resizeTimer = window.setTimeout(function () {
+                actualizarModoMenu();
+                programarMejoras();
+            }, 100);
+        };
+        window.addEventListener('resize', alCambiarViewport, { passive: true });
+        window.addEventListener('orientationchange', alCambiarViewport, { passive: true });
+        window.visualViewport?.addEventListener('resize', alCambiarViewport, { passive: true });
 
         window.PrimeraInfanciaResponsive = {
             abrirMenu: abrirMenu,
