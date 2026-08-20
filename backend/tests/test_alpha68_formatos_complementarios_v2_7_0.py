@@ -7,6 +7,7 @@ import tempfile
 import traceback
 import unicodedata
 from pathlib import Path
+from types import SimpleNamespace
 
 from openpyxl import load_workbook
 from werkzeug.utils import secure_filename
@@ -40,14 +41,21 @@ def _load_targets():
     return namespace
 
 
-def _run(selection):
+def _run(selection, attendance_available=False):
     ns = _load_targets()
     calls = []
+    def attendance(*args):
+        if not attendance_available:
+            raise FileNotFoundError("Plantilla opcional no cargada")
+        calls.append("listado_asistencia_usuarios")
+        return "asistencia.xlsx"
+
     ns.update({
         "_alpha68_log": lambda *args, **kwargs: None,
         "_alpha68_generar_listado_usuarios": lambda *args: calls.append("listado_usuarios") or "listado.xlsx",
         "_alpha68_generar_relacion_mensual": lambda *args: calls.append("relacion_mensual") or "relacion.xlsx",
         "_alpha68_generar_distribucion_alimentos": lambda *args: calls.append("distribucion_alimentos") or "distribucion.xlsx",
+        "_alpha68_generar_listado_asistencia_usuarios": attendance,
     })
     generated = ns["_alpha68_generar_complementarios_formato"](
         "UDS PRUEBA", [{"Documento": "1"}], {}, selection, 8, 2026
@@ -65,6 +73,12 @@ def test_seleccion_individual_genera_solamente_lo_solicitado():
     calls, generated = _run({"relacion_mensual"})
     assert calls == ["relacion_mensual"]
     assert generated == ["relacion.xlsx"]
+
+
+def test_asistencia_usuarios_se_genera_cuando_hay_plantilla():
+    calls, generated = _run({"listado_asistencia_usuarios"}, attendance_available=True)
+    assert calls == ["listado_asistencia_usuarios"]
+    assert generated == ["asistencia.xlsx"]
 
 
 def test_paquete_completo_crea_y_abre_los_tres_xlsx():
@@ -92,12 +106,14 @@ def test_paquete_completo_crea_y_abre_los_tres_xlsx():
             "traceback": traceback,
             "secure_filename": secure_filename,
             "OUTPUT_FOLDER": output,
+            "app": SimpleNamespace(config={"DATA_DIR": str(Path(output) / "data")}),
             "normalizar_texto_clave": normalizar,
             "unir_partes": lambda *parts: " ".join(str(part) for part in parts if part),
             "_project_path": lambda name: str(APP_PATH.parent) if name == "backend" else str(APP_PATH.parents[1]),
             "registrar_archivo_generado_alpha57": lambda *args, **kwargs: None,
             "_alpha68_log": lambda *args, **kwargs: None,
             "_alpha67_unidad_slug": lambda value: secure_filename(str(value)).upper(),
+            "_alpha68_generar_listado_asistencia_usuarios": lambda *args: (_ for _ in ()).throw(FileNotFoundError()),
         })
         generated = ns["_alpha68_generar_complementarios_formato"](
             "UDS PRUEBA", usuarios, {}, set(), 8, 2026
@@ -119,5 +135,6 @@ def test_paquete_completo_crea_y_abre_los_tres_xlsx():
 if __name__ == "__main__":
     test_seleccion_vacia_genera_paquete_complementario_completo()
     test_seleccion_individual_genera_solamente_lo_solicitado()
+    test_asistencia_usuarios_se_genera_cuando_hay_plantilla()
     test_paquete_completo_crea_y_abre_los_tres_xlsx()
     print("Formatos complementarios Alpha68 v2.7.0: PASS")

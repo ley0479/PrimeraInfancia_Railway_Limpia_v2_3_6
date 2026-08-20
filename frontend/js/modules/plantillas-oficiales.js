@@ -45,10 +45,23 @@ function poRender() {
             <td>${p.preservar_estilos ? 'Solo valores · preserva impresión' : 'Revisar'}</td>
         </tr>
     `).join('');
+    poRenderMapeoAsistencia(plantillasOficialesCache.find((item) => item.tipo_formato === 'listado_asistencia_usuarios'));
+}
+
+function poRenderMapeoAsistencia(plantilla) {
+    const target = document.getElementById('po-asistencia-mapeo');
+    if (!target) return;
+    const mapping = plantilla?.mapeo;
+    if (!mapping) {
+        target.textContent = 'Carga la planilla para detectar y mostrar el mapeo de columnas.';
+        return;
+    }
+    const fields = Object.entries(mapping.campos || {}).map(([field, col]) => `${escaparHtml(field)} → columna ${Number(col)}`).join(' · ');
+    target.innerHTML = `<strong class="text-emerald-300">Mapeo detectado:</strong> hoja ${escaparHtml(mapping.hoja || '')}, encabezados en fila ${Number(mapping.fila_encabezado || 0)}.<br>${fields}`;
 }
 
 async function poSubir(tipo) {
-    const inputs = { rpp: 'po-rpp-file', bienestarina: 'po-bienestarina-file', listado_usuarios: 'po-listado-usuarios-file' };
+    const inputs = { rpp: 'po-rpp-file', bienestarina: 'po-bienestarina-file', listado_usuarios: 'po-listado-usuarios-file', listado_asistencia_usuarios: 'po-listado-asistencia-file' };
     const input = document.getElementById(inputs[tipo]);
     const file = input?.files?.[0];
     if (!file) {
@@ -68,6 +81,7 @@ async function poSubir(tipo) {
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || 'No se pudo actualizar la plantilla.');
         poMostrarMensaje(data.message || 'Plantilla oficial actualizada.');
+        if (tipo === 'listado_asistencia_usuarios') poRenderMapeoAsistencia(data.plantilla);
         input.value = '';
         await poCargar();
     } catch (error) {

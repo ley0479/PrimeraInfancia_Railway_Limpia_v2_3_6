@@ -8435,6 +8435,8 @@ def _alpha68_parse_formatos_seleccionados(options=None):
         'relacion': 'relacion_mensual',
         'relacion_mensual': 'relacion_mensual', 'listado': 'listado_usuarios',
         'listado_usuarios': 'listado_usuarios', 'usuarios': 'listado_usuarios',
+        'listado_asistencia_usuarios': 'listado_asistencia_usuarios',
+        'asistencia_usuarios': 'listado_asistencia_usuarios',
         'distribucion': 'distribucion_alimentos', 'distribucion_alimentos': 'distribucion_alimentos',
         'alimentos': 'distribucion_alimentos', 'paquete': 'paquete_completo',
         'paquete_completo': 'paquete_completo', 'todo': 'paquete_completo', 'todos': 'paquete_completo',
@@ -8665,6 +8667,22 @@ def _alpha68_generar_relacion_mensual(unidad, usuarios, mes, anio):
     return _alpha68_guardar_workbook_registrado(wb, nombre, 'relacion_mensual', unidad, mes, anio, extra={'usuarios': total})
 
 
+def _alpha68_generar_listado_asistencia_usuarios(unidad, usuarios, mes, anio):
+    from services.listado_asistencia_usuarios_service import generate_list, template_info
+    data_dir = app.config.get('DATA_DIR')
+    info = template_info(data_dir)
+    if not info.get('existe'):
+        raise FileNotFoundError('Carga primero la planilla oficial de asistencia en Plantillas Oficiales.')
+    nombre = secure_filename(f"{_alpha67_unidad_slug(unidad)}_LISTADO_ASISTENCIA_USUARIOS_{int(anio)}_{int(mes):02d}.xlsx")
+    ruta = os.path.join(OUTPUT_FOLDER, nombre)
+    generate_list(data_dir, ruta, usuarios or [], metadata={'unidad': unidad, 'mes': mes, 'anio': anio})
+    registrar_archivo_generado_alpha57(
+        'listado_asistencia_usuarios', unidad, nombre, ruta, mes=mes, anio=anio,
+        extra={'usuarios': len(usuarios or []), 'plantilla_oficial': True, 'mapeo': info.get('mapeo') or {}},
+    )
+    return ruta
+
+
 def _alpha68_cargar_config_distribucion():
     ruta = os.path.join(_project_path('backend'), 'config', 'distribucion_alimentos.json')
     os.makedirs(os.path.dirname(ruta), exist_ok=True)
@@ -8728,6 +8746,7 @@ def _alpha68_generar_complementarios_formato(unidad, usuarios, options, seleccio
     # Antes se retornaba aquí y el paquete omitía justamente estos tres XLSX.
     claves = set(seleccionados or {
         'listado_usuarios',
+        'listado_asistencia_usuarios',
         'relacion_mensual',
         'distribucion_alimentos',
     })
@@ -8735,6 +8754,15 @@ def _alpha68_generar_complementarios_formato(unidad, usuarios, options, seleccio
     try:
         if _alpha68_should_generar(claves, 'listado_usuarios'):
             generados.append(_alpha68_generar_listado_usuarios(unidad, usuarios, mes, anio, options))
+        if _alpha68_should_generar(claves, 'listado_asistencia_usuarios'):
+            try:
+                generados.append(_alpha68_generar_listado_asistencia_usuarios(unidad, usuarios, mes, anio))
+            except FileNotFoundError:
+                # En el paquete historico la nueva plantilla es opcional hasta
+                # que la corporacion la cargue. Si el usuario la selecciono de
+                # forma expresa, se conserva el error claro de configuracion.
+                if seleccionados:
+                    raise
         if _alpha68_should_generar(claves, 'relacion_mensual'):
             generados.append(_alpha68_generar_relacion_mensual(unidad, usuarios, mes, anio))
         if _alpha68_should_generar(claves, 'distribucion_alimentos'):
@@ -10038,6 +10066,7 @@ def _alpha59_intentar_generar_faltante(unidad, formato):
 
         directos = {
             'listado_usuarios': lambda: _alpha68_generar_listado_usuarios(unidad, usuarios, mes, anio),
+            'listado_asistencia_usuarios': lambda: _alpha68_generar_listado_asistencia_usuarios(unidad, usuarios, mes, anio),
             'relacion_mensual': lambda: _alpha68_generar_relacion_mensual(unidad, usuarios, mes, anio),
             'distribucion_alimentos': lambda: _alpha68_generar_distribucion_alimentos(unidad, usuarios, mes, anio),
         }

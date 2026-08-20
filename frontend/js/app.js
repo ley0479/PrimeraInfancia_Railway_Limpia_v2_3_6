@@ -1576,6 +1576,7 @@ function actualizarResumenFormatosAlpha68() {
     const nombres = {
         rpp: 'RPP', bienestarina: 'Bienestarina', ram: 'RAM',
         relacion_mensual: 'Relación mensual', listado_usuarios: 'Listado de usuarios',
+        listado_asistencia_usuarios: 'Asistencia de usuarios',
         distribucion_alimentos: 'Distribución de alimentos', paquete_completo: 'Paquete completo'
     };
     destino.textContent = `Se procesará solo: ${seleccion.map((v) => nombres[v] || v).join(', ')}.`;

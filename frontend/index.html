@@ -685,6 +685,7 @@
                                 <label class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"><input type="checkbox" data-alpha68-formato value="ram" class="h-4 w-4 rounded border-slate-600 bg-slate-950 text-cyan-500" /> RAM</label>
                                 <label class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"><input type="checkbox" data-alpha68-formato value="relacion_mensual" class="h-4 w-4 rounded border-slate-600 bg-slate-950 text-cyan-500" /> Relación mensual</label>
                                 <label class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"><input type="checkbox" data-alpha68-formato value="listado_usuarios" class="h-4 w-4 rounded border-slate-600 bg-slate-950 text-cyan-500" /> Listado usuarios</label>
+                                <label class="flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/5 px-3 py-2"><input type="checkbox" data-alpha68-formato value="listado_asistencia_usuarios" class="h-4 w-4 rounded border-slate-600 bg-slate-950 text-cyan-500" /> Asistencia usuarios</label>
                                 <label class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"><input type="checkbox" data-alpha68-formato value="distribucion_alimentos" class="h-4 w-4 rounded border-slate-600 bg-slate-950 text-cyan-500" /> Distribución alimentos</label>
                                 <label class="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2"><input type="checkbox" data-alpha68-formato value="paquete_completo" class="h-4 w-4 rounded border-slate-600 bg-slate-950 text-emerald-500" /> Paquete completo</label>
                             </div>
@@ -991,7 +992,7 @@
                     <div class="dashboard-current-datetime-bar">
                         <div class="dashboard-current-datetime-title">
                             <h2 class="text-xl font-semibold text-slate-100 flex items-center gap-2"><i data-lucide="file-check-2" class="w-5 h-5 text-emerald-400"></i> Plantillas oficiales</h2>
-                            <p class="text-xs text-slate-400">RPP y Bienestarina usan Excel; el listado de usuarios usa el Word oficial propio de cada corporación.</p>
+                            <p class="text-xs text-slate-400">Carga formatos oficiales por corporación y genera copias diligenciadas listas para imprimir.</p>
                         </div>
                         <div data-current-datetime data-hour-format="12" aria-label="Fecha y hora actual"></div>
                     </div>
@@ -1043,6 +1044,23 @@
                                 <button onclick="poDescargar('bienestarina')" class="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">Descargar vigente</button>
                                 <button onclick="poRestaurar('bienestarina')" class="rounded-xl border border-amber-600/40 px-4 py-2 text-sm text-amber-300 hover:bg-amber-500/10">Restaurar anterior</button>
                             </div>
+                        </div>
+
+                        <div class="mp-card">
+                            <div class="flex items-start justify-between gap-3">
+                                <div>
+                                    <h3 class="text-lg font-medium text-slate-100">Asistencia oficial de usuarios</h3>
+                                    <p class="text-sm text-slate-400">Sube la planilla Excel oficial. El sistema mapea sus columnas y genera un listado por UDS con firma y asistencia en blanco para imprimir.</p>
+                                </div>
+                                <span class="rounded-full bg-cyan-500/20 px-3 py-1 text-xs text-cyan-300">Mapeo automático</span>
+                            </div>
+                            <input id="po-listado-asistencia-file" type="file" accept=".xlsx,.xlsm" class="mp-input mt-4 w-full" />
+                            <div class="mt-4 flex flex-wrap gap-2">
+                                <button onclick="poSubir('listado_asistencia_usuarios')" class="rounded-xl bg-cyan-600 hover:bg-cyan-500 px-4 py-2 text-sm font-medium text-white">Cargar y mapear planilla</button>
+                                <button onclick="poDescargar('listado_asistencia_usuarios')" class="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">Descargar vigente</button>
+                                <button onclick="poRestaurar('listado_asistencia_usuarios')" class="rounded-xl border border-amber-600/40 px-4 py-2 text-sm text-amber-300 hover:bg-amber-500/10">Restaurar anterior</button>
+                            </div>
+                            <p id="po-asistencia-mapeo" class="mt-3 text-xs leading-5 text-slate-400">Carga la planilla para detectar y mostrar el mapeo de columnas.</p>
                         </div>
                     </div>
 
