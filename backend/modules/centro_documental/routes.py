@@ -16,6 +16,9 @@ from .repository import CentroDocumentalRepository
 from .template_inspector_service import inspect_template, propose_mapping
 from .theme_generation_service import generate_planning
 from .narrative_service import assemble_narrative
+from .data_context_service import search_participants, search_professionals
+from .validators import validate_special_state
+from .document_builder_service import build_docx,build_package,convert_pdf
 
 
 ADMIN_ROLES = ("SUPERADMIN", "GERENTE", "ADMIN", "COORDINADOR")
@@ -161,5 +164,131 @@ def register_centro_documental(app, database_path: str, data_dir: str) -> None:
         try: result=assemble_narrative(payload.get("selecciones") or [])
         except ValueError as exc: return jsonify({"error":str(exc),"codigo":"CONTRADICCION"}),409
         return jsonify({"narrativa":result})
+
+    @blueprint.get("/contexto/participantes")
+    @require_roles(*PROFESSIONAL_ROLES)
+    def participants_context():
+        user=_user()
+        return jsonify(search_participants(database_path,user["fundacion_id"],request.args.get("q", ""),request.args.get("uds", ""),request.args.get("limit",25,type=int),request.args.get("offset",0,type=int)))
+
+    @blueprint.get("/contexto/profesionales")
+    @require_roles(*PROFESSIONAL_ROLES)
+    def professionals_context():
+        user=_user()
+        return jsonify(search_professionals(database_path,user["fundacion_id"],request.args.get("q", ""),request.args.get("uds", ""),request.args.get("limit",25,type=int)))
+
+    @blueprint.get("/catalogos")
+    @require_roles(*PROFESSIONAL_ROLES)
+    def catalogs():
+        if not _enabled("ENABLE_RESPONSE_CATALOGS",False): return jsonify({"error":"Los catálogos documentales aún no están habilitados."}),409
+        user=_user(); return jsonify({"catalogos":repository.list_catalogs(user["fundacion_id"],request.args.get("componente", ""))})
+
+    @blueprint.post("")
+    @require_roles(*PROFESSIONAL_ROLES)
+    def create_document():
+        user=_user(); payload=request.get_json(silent=True) or {}
+        if not payload.get("tipo_documento") or not payload.get("componente"): return jsonify({"error":"Tipo de documento y componente son obligatorios."}),400
+        if str(payload.get("tipo_documento")).upper()=="CAPTURE": return jsonify({"error":"CAPTURE requiere una plantilla oficial real aprobada.","codigo":"PLANTILLA_PENDIENTE"}),409
+        if payload.get("tema") and not payload.get("planeacion"):
+            payload["planeacion"]=generate_planning(payload["tema"],payload["componente"],payload.get("tipo_actividad", ""),payload.get("grupo_poblacional", ""))
+        item=repository.create_instance(user["fundacion_id"],payload,user["id"])
+        return jsonify({"documento":item}),201
+
+    @blueprint.get("/<int:document_id>")
+    @require_roles(*PROFESSIONAL_ROLES)
+    def get_document(document_id: int):
+        user=_user(); item=repository.get_instance(document_id,user["fundacion_id"])
+        return jsonify({"documento":item}) if item else (jsonify({"error":"Documento no encontrado."}),404)
+
+    @blueprint.post("/<int:document_id>/selecciones")
+    @require_roles(*PROFESSIONAL_ROLES)
+    def save_selections(document_id: int):
+        user=_user(); selections=(request.get_json(silent=True) or {}).get("selecciones") or []
+        try:
+            for item in selections: validate_special_state(item.get("estado_especial"),item.get("justificacion"))
+            saved=repository.replace_selections(document_id,user["fundacion_id"],selections,user["id"])
+        except KeyError as exc: return jsonify({"error":str(exc)}),404
+        except ValueError as exc: return jsonify({"error":str(exc)}),400
+        return jsonify({"selecciones":saved})
+
+    @blueprint.post("/<int:document_id>/generar-borrador")
+    @require_roles(*PROFESSIONAL_ROLES)
+    def generate_draft(document_id: int):
+        user=_user(); item=repository.get_instance(document_id,user["fundacion_id"])
+        if not item: return jsonify({"error":"Documento no encontrado."}),404
+        selections=[{"categoria":value.get("categoria"),"codigo":value.get("codigo"),"texto":value.get("texto") or value.get("texto_personalizado")} for value in item["selecciones"]]
+        try: draft=assemble_narrative(selections)
+        except ValueError as exc: return jsonify({"error":str(exc),"codigo":"CONTRADICCION"}),409
+        updated=repository.save_narrative(document_id,user["fundacion_id"],draft["texto"],user["id"])
+        return jsonify({"narrativa":draft,"documento":updated})
+
+    @blueprint.post("/<int:document_id>/<action>")
+    @require_roles(*PROFESSIONAL_ROLES)
+    def transition_document(document_id: int, action: str):
+        names={"enviar-revision":"ENVIAR_REVISION","devolver":"DEVOLVER","reenviar":"REENVIAR","aprobar":"APROBAR","archivar":"ARCHIVAR"}
+        if action not in names: return jsonify({"error":"Acción documental no encontrada."}),404
+        user=_user(); payload=request.get_json(silent=True) or {}
+        if names[action] in {"DEVOLVER","APROBAR","ARCHIVAR"} and user["rol"] not in ADMIN_ROLES:
+            return jsonify({"error":"El rol actual no puede revisar o aprobar documentos."}),403
+        try: item=repository.transition(document_id,user["fundacion_id"],names[action],user["id"],str(payload.get("observacion") or ""))
+        except KeyError as exc: return jsonify({"error":str(exc)}),404
+        except ValueError as exc: return jsonify({"error":str(exc)}),409
+        return jsonify({"documento":item})
+
+    def _generate_word(document_id: int, user: dict):
+        item=repository.get_instance(document_id,user["fundacion_id"])
+        if not item: raise KeyError("Documento no encontrado.")
+        if not item.get("plantilla_version_id"): raise ValueError("Seleccione una plantilla oficial aprobada.")
+        template=repository.get_version(item["plantilla_version_id"],user["fundacion_id"])
+        if not template or template.get("estado") not in {"APROBADA","ACTIVA"}: raise ValueError("La plantilla todavía no tiene un mapa aprobado.")
+        if template.get("tipo_documento")=="CAPTURE": raise ValueError("CAPTURE permanece pendiente de piloto con plantilla oficial.")
+        folder=tenant_storage_root(data_dir,user["fundacion_id"])/"documents"/str(document_id)
+        output=folder/f"documento_{document_id}_v{int(item.get('version_actual') or 0)+1}.docx"
+        context=dict(item.get("datos") or {}); context.update({"uds":item.get("uds"),"tema":item.get("tema"),"mapped_fields":[field.get("field_key") for field in (context.get("mapeo_campos") or [])]})
+        generated=build_docx(Path(template["ruta_privada"]),output,context,item.get("narrativa") or "")
+        version=repository.record_version(document_id,user["fundacion_id"],{"estado":item["estado"],"tema":item.get("tema")},str(output),None,generated["sha256"],user["id"])
+        return generated,version
+
+    @blueprint.post("/<int:document_id>/generar-word")
+    @require_roles(*PROFESSIONAL_ROLES)
+    def generate_word(document_id: int):
+        user=_user()
+        try: generated,version=_generate_word(document_id,user)
+        except KeyError as exc: return jsonify({"error":str(exc)}),404
+        except (ValueError,FileNotFoundError,RuntimeError) as exc: return jsonify({"error":str(exc)}),409
+        return jsonify({"message":"Word generado sobre una copia; el original permanece intacto.","archivo":{"version":version,"integridad":generated}}),201
+
+    @blueprint.post("/<int:document_id>/generar-pdf")
+    @require_roles(*PROFESSIONAL_ROLES)
+    def generate_pdf(document_id: int):
+        user=_user(); version=repository.get_generated_version(document_id,user["fundacion_id"])
+        if not version or not version.get("archivo_word"): return jsonify({"error":"Primero genere el documento Word."}),409
+        try: pdf=convert_pdf(Path(version["archivo_word"]),Path(version["archivo_word"]).parent)
+        except RuntimeError as exc: return jsonify({"error":str(exc),"word_disponible":True}),503
+        recorded=repository.record_version(document_id,user["fundacion_id"],{"origen_version":version["version"]},version["archivo_word"],str(pdf),version.get("hash_sha256"),user["id"])
+        return jsonify({"message":"PDF generado.","archivo":recorded}),201
+
+    @blueprint.post("/<int:document_id>/generar-paquete")
+    @require_roles(*PROFESSIONAL_ROLES)
+    def generate_package(document_id: int):
+        user=_user(); item=repository.get_instance(document_id,user["fundacion_id"]); version=repository.get_generated_version(document_id,user["fundacion_id"])
+        if not item or not version: return jsonify({"error":"El documento y su Word deben existir antes de crear el paquete."}),409
+        files=[]
+        if version.get("archivo_word"): files.append(("01_DOCUMENTO.docx",Path(version["archivo_word"])))
+        if version.get("archivo_pdf"): files.append(("07_PDF_APROBADOS/documento.pdf",Path(version["archivo_pdf"])))
+        folder=tenant_storage_root(data_dir,user["fundacion_id"])/"packages"/str(document_id); output=folder/f"PAQUETE_DOCUMENTAL_{document_id}.zip"
+        package=build_package(output,files,{"documento_id":document_id,"fundacion_id":user["fundacion_id"],"estado":item["estado"],"capture":"PENDIENTE_PLANTILLA"})
+        repository.audit(user["fundacion_id"],"DOCUMENTO",document_id,"PAQUETE_GENERADO",user["id"],{"archivo":output.name})
+        return jsonify({"message":"Paquete documental generado.","paquete":package}),201
+
+    @blueprint.get("/<int:document_id>/descargar")
+    @require_roles(*PROFESSIONAL_ROLES)
+    def download_generated(document_id: int):
+        user=_user(); version=repository.get_generated_version(document_id,user["fundacion_id"],request.args.get("version",type=int)); kind=request.args.get("tipo","word")
+        if not version: return jsonify({"error":"Versión no encontrada."}),404
+        path=Path(version.get("archivo_pdf") if kind=="pdf" else version.get("archivo_word") or "")
+        if not path.exists(): return jsonify({"error":"Archivo no disponible."}),404
+        repository.audit(user["fundacion_id"],"DOCUMENTO",document_id,"DESCARGADO",user["id"],{"tipo":kind,"version":version["version"]})
+        return send_file(path,as_attachment=True,download_name=path.name)
 
     app.register_blueprint(blueprint)

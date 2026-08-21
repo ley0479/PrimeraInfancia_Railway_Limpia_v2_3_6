@@ -88,3 +88,11 @@ Archivos compartidos previstos para modificación mínima:
 Baseline seleccionada: **PASS (6/6)**.
 
 CAPTURE: **PENDING**, por ausencia de plantilla oficial real.
+
+## Avance posterior a la auditoría
+
+- Fases 1–2: catálogo versionado, hash, original privado, inspección DOCX/XLSX/PDF y aprobación de mapa — PASS.
+- Fases 3–5: contexto paginado de Base Maestra/Talento Humano, planeación determinista, catálogos, selecciones, narrativa y revisión — PASS.
+- Fase 6: Word sobre copia, integridad del original, texto largo, membrete, firma vacía y ZIP con manifiesto — PASS.
+- PDF: PENDING en el entorno local por ausencia de LibreOffice; se verificó que el fallo conserva y ofrece el Word.
+- CAPTURE: PENDING; no existe plantilla real aprobada y la bandera permanece desactivada.

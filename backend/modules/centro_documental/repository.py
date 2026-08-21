@@ -78,3 +78,85 @@ class CentroDocumentalRepository:
             connection.execute("UPDATE doc_plantilla_versiones SET estado='APROBADA',usuario_aprobador_id=?,mapa_version=?,actualizado_en=? WHERE id=? AND fundacion_id=?",(user_id,mapping["version"],now_iso(),version_id,tenant)); connection.commit()
         self.audit(tenant,"MAPEO",mapping["id"],"APROBADO",user_id)
         return {"id":mapping["id"],"estado":"APROBADO","version":mapping["version"]}
+
+    def list_catalogs(self, tenant: int, component: str = "") -> list[dict]:
+        with self.connect() as connection:
+            where="((c.scope='GLOBAL' AND c.fundacion_id IS NULL) OR c.fundacion_id=?) AND c.activo=1"
+            params=[tenant]
+            if component: where+=" AND c.componente=?"; params.append(component.upper())
+            catalogs=connection.execute(f"SELECT c.* FROM doc_catalogos_respuesta c WHERE {where} ORDER BY c.componente,c.categoria,c.codigo",params).fetchall()
+            result=[]
+            for row in catalogs:
+                item=dict(row); options=connection.execute("SELECT * FROM doc_opciones_respuesta WHERE catalogo_id=? AND activo=1 ORDER BY orden,codigo",(item["id"],)).fetchall()
+                item["opciones"]=[dict(option) for option in options]; result.append(item)
+        return result
+
+    def create_instance(self, tenant: int, data: dict, user_id=None) -> dict:
+        with self.connect() as connection:
+            cursor=connection.execute("INSERT INTO doc_instancias(fundacion_id,tipo_documento,componente,plantilla_version_id,actividad_id,uds,periodo,modo,estado,tema,datos_json,planeacion_json,hechos_json,creado_por,actualizado_por,creado_en,actualizado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(tenant,data["tipo_documento"],data["componente"],data.get("plantilla_version_id"),data.get("actividad_id"),data.get("uds"),data.get("periodo"),data.get("modo","PLANEACION"),"BORRADOR",data.get("tema"),json.dumps(data.get("datos") or {},ensure_ascii=False),json.dumps(data.get("planeacion") or {},ensure_ascii=False),"{}",user_id,user_id,now_iso(),now_iso()))
+            instance_id=int(cursor.lastrowid); connection.commit()
+        self.audit(tenant,"DOCUMENTO",instance_id,"CREADO",user_id)
+        return self.get_instance(instance_id,tenant)
+
+    def get_instance(self, instance_id: int, tenant: int) -> dict | None:
+        with self.connect() as connection:
+            row=connection.execute("SELECT * FROM doc_instancias WHERE id=? AND fundacion_id=?",(instance_id,tenant)).fetchone()
+            if not row: return None
+            item=dict(row)
+            selections=connection.execute("SELECT s.*,o.codigo,o.texto FROM doc_selecciones s LEFT JOIN doc_opciones_respuesta o ON o.id=s.opcion_id WHERE s.documento_id=? AND s.fundacion_id=? ORDER BY s.id",(instance_id,tenant)).fetchall()
+            reviews=connection.execute("SELECT * FROM doc_revisiones WHERE documento_id=? AND fundacion_id=? ORDER BY id",(instance_id,tenant)).fetchall()
+        for key in ("datos_json","planeacion_json","hechos_json"):
+            item[key[:-5]]=json.loads(item.get(key) or "{}")
+        item["selecciones"]=[dict(value) for value in selections]; item["revisiones"]=[dict(value) for value in reviews]
+        return item
+
+    def replace_selections(self, instance_id: int, tenant: int, selections: list[dict], user_id=None) -> list[dict]:
+        with self.connect() as connection:
+            if not connection.execute("SELECT id FROM doc_instancias WHERE id=? AND fundacion_id=?",(instance_id,tenant)).fetchone(): raise KeyError("Documento no encontrado.")
+            connection.execute("DELETE FROM doc_selecciones WHERE documento_id=? AND fundacion_id=?",(instance_id,tenant))
+            for item in selections:
+                option_id=item.get("opcion_id")
+                if option_id:
+                    allowed=connection.execute("SELECT o.id FROM doc_opciones_respuesta o JOIN doc_catalogos_respuesta c ON c.id=o.catalogo_id WHERE o.id=? AND o.activo=1 AND ((c.scope='GLOBAL' AND c.fundacion_id IS NULL) OR c.fundacion_id=?)",(option_id,tenant)).fetchone()
+                    if not allowed: raise ValueError("La opción seleccionada no pertenece a la fundación o no está activa.")
+                connection.execute("INSERT INTO doc_selecciones(documento_id,fundacion_id,categoria,opcion_id,texto_personalizado,estado_especial,justificacion,confirmado_por,confirmado_en) VALUES(?,?,?,?,?,?,?,?,?)",(instance_id,tenant,str(item.get("categoria") or "").upper(),item.get("opcion_id"),item.get("texto_personalizado"),item.get("estado_especial"),item.get("justificacion"),user_id,now_iso()))
+            connection.execute("UPDATE doc_instancias SET hechos_json=?,actualizado_por=?,actualizado_en=? WHERE id=? AND fundacion_id=?",(json.dumps({"confirmados":True,"cantidad":len(selections)},ensure_ascii=False),user_id,now_iso(),instance_id,tenant)); connection.commit()
+        self.audit(tenant,"DOCUMENTO",instance_id,"SELECCIONES_CONFIRMADAS",user_id,{"cantidad":len(selections)})
+        return self.get_instance(instance_id,tenant)["selecciones"]
+
+    def save_narrative(self, instance_id: int, tenant: int, narrative: str, user_id=None) -> dict:
+        with self.connect() as connection:
+            cursor=connection.execute("UPDATE doc_instancias SET narrativa=?,modo='INFORME_FINAL',estado='EN_ELABORACION',actualizado_por=?,actualizado_en=? WHERE id=? AND fundacion_id=?",(narrative,user_id,now_iso(),instance_id,tenant))
+            if not cursor.rowcount: raise KeyError("Documento no encontrado.")
+            connection.commit()
+        self.audit(tenant,"DOCUMENTO",instance_id,"NARRATIVA_GUARDADA",user_id)
+        return self.get_instance(instance_id,tenant)
+
+    def transition(self, instance_id: int, tenant: int, action: str, user_id=None, observation: str = "") -> dict:
+        transitions={"ENVIAR_REVISION":("EN_ELABORACION","EN_REVISION"),"DEVOLVER":("EN_REVISION","DEVUELTO"),"REENVIAR":("DEVUELTO","EN_REVISION"),"APROBAR":("EN_REVISION","APROBADO"),"ARCHIVAR":("APROBADO","ARCHIVADO")}
+        if action not in transitions: raise ValueError("Acción documental no permitida.")
+        source,target=transitions[action]
+        if action=="DEVOLVER" and not observation.strip(): raise ValueError("La devolución requiere una observación.")
+        with self.connect() as connection:
+            row=connection.execute("SELECT estado FROM doc_instancias WHERE id=? AND fundacion_id=?",(instance_id,tenant)).fetchone()
+            if not row: raise KeyError("Documento no encontrado.")
+            if row["estado"]!=source: raise ValueError(f"La acción {action} requiere estado {source}.")
+            connection.execute("UPDATE doc_instancias SET estado=?,actualizado_por=?,actualizado_en=? WHERE id=? AND fundacion_id=?",(target,user_id,now_iso(),instance_id,tenant))
+            connection.execute("INSERT INTO doc_revisiones(documento_id,fundacion_id,accion,observacion,usuario_id,creado_en) VALUES(?,?,?,?,?,?)",(instance_id,tenant,action,observation,user_id,now_iso())); connection.commit()
+        self.audit(tenant,"DOCUMENTO",instance_id,action,user_id,{"estado":target})
+        return self.get_instance(instance_id,tenant)
+
+    def record_version(self, instance_id: int, tenant: int, content: dict, word_path: str | None, pdf_path: str | None, digest: str | None, user_id=None) -> dict:
+        with self.connect() as connection:
+            if not connection.execute("SELECT id FROM doc_instancias WHERE id=? AND fundacion_id=?",(instance_id,tenant)).fetchone(): raise KeyError("Documento no encontrado.")
+            number=int(connection.execute("SELECT COALESCE(MAX(version),0)+1 n FROM doc_versiones WHERE documento_id=? AND fundacion_id=?",(instance_id,tenant)).fetchone()["n"])
+            cursor=connection.execute("INSERT INTO doc_versiones(documento_id,fundacion_id,version,estado,contenido_json,archivo_word,archivo_pdf,hash_sha256,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?)",(instance_id,tenant,number,"GENERADA",json.dumps(content,ensure_ascii=False),word_path,pdf_path,digest,user_id,now_iso()))
+            connection.execute("UPDATE doc_instancias SET version_actual=?,actualizado_en=? WHERE id=? AND fundacion_id=?",(number,now_iso(),instance_id,tenant)); connection.commit()
+        self.audit(tenant,"DOCUMENTO_VERSION",int(cursor.lastrowid),"GENERADA",user_id,{"documento_id":instance_id,"version":number})
+        return {"id":int(cursor.lastrowid),"version":number,"archivo_word":word_path,"archivo_pdf":pdf_path,"sha256":digest}
+
+    def get_generated_version(self, instance_id: int, tenant: int, number: int | None = None) -> dict | None:
+        with self.connect() as connection:
+            if number is None: row=connection.execute("SELECT * FROM doc_versiones WHERE documento_id=? AND fundacion_id=? ORDER BY version DESC LIMIT 1",(instance_id,tenant)).fetchone()
+            else: row=connection.execute("SELECT * FROM doc_versiones WHERE documento_id=? AND fundacion_id=? AND version=?",(instance_id,tenant,number)).fetchone()
+        return dict(row) if row else None
