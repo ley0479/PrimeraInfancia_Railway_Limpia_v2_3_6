@@ -114,7 +114,7 @@ def password_policy_errors(password: str, minimum: int = 12) -> list[str]:
 
 class BaseConfig:
     APP_ENV = os.getenv("APP_ENV", os.getenv("FLASK_ENV", "development")).lower()
-    APP_VERSION = os.getenv("APP_VERSION", "2.7.1-universal-data-mapper")
+    APP_VERSION = os.getenv("APP_VERSION", "2.7.2-document-center")
     BIBLIOTECA_REMOTE_CHECKS_ENABLED = os.getenv("BIBLIOTECA_REMOTE_CHECKS_ENABLED", "false").lower() in {"1", "true", "si", "sí"}
     BIBLIOTECA_ALLOWED_DOMAINS = os.getenv("BIBLIOTECA_ALLOWED_DOMAINS", "icbf.gov.co,www.icbf.gov.co")
     MOTOR_GESTION_ENABLED = os.getenv("MOTOR_GESTION_ENABLED", "true").lower() in {"1", "true", "si", "sí"}

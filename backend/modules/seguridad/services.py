@@ -79,6 +79,7 @@ FAMILY_SOCIAL = frozenset({'SUPERADMIN', 'GERENTE', 'COORDINADOR', 'PSICOSOCIAL'
 # Toda familia de rutas /api debe aparecer explícitamente. Lo no declarado se deniega.
 PATH_ROLE_RULES = sorted([
     ('/api/auth', ALL_ROLES),
+    ('/api/system', ALL_ROLES),
     ('/api/panel-comercial', MANAGEMENT),
     ('/api/gerencia-general', MANAGEMENT),
     ('/api/acceso', MANAGEMENT),
@@ -99,6 +100,7 @@ PATH_ROLE_RULES = sorted([
     ('/api/talento', frozenset({'SUPERADMIN', 'GERENTE', 'AUXILIAR_ADMINISTRATIVO'})),
     ('/api/motor-plantillas', frozenset({'SUPERADMIN', 'GERENTE', 'AUXILIAR_ADMINISTRATIVO'})),
     ('/api/idp', ADMIN_OPERATIONS),
+    ('/api/documentos', frozenset({'SUPERADMIN', 'GERENTE', 'COORDINADOR', 'AUXILIAR_ADMINISTRATIVO', 'DOCENTE', 'NUTRICIONISTA', 'PSICOSOCIAL', 'ENFERMERIA'})),
     ('/api/plantillas-oficiales', frozenset({'SUPERADMIN', 'GERENTE', 'AUXILIAR_ADMINISTRATIVO'})),
     ('/api/paquete-mensual', ADMIN_OPERATIONS),
     ('/api/reportes-gerenciales', ADMIN_OPERATIONS),

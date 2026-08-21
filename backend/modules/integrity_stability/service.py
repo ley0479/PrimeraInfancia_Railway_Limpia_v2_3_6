@@ -155,7 +155,7 @@ class IntegrityStabilityService:
             if path.is_dir() and not path.name.startswith("__")
         ])
         return {
-            "version": os.getenv("APP_VERSION", "2.7.1-universal-data-mapper"),
+            "version": os.getenv("APP_VERSION", "2.7.2-document-center"),
             "baseline_version": baseline.get("baseline_version"),
             "critical_modules": baseline.get("critical_modules", []),
             "modules_detected": modules,

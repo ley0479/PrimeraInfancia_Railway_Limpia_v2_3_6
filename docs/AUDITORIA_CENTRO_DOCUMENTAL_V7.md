@@ -100,3 +100,4 @@ CAPTURE: **PENDING**, por ausencia de plantilla oficial real.
 - Reutilización del listado oficial existente — integrada; requiere que cada fundación tenga su planilla oficial cargada.
 - Contrato HTTP, roles y aislamiento A/B — PASS.
 - Asistente frontend dentro del Motor Documental IDP — sintaxis PASS; oculto mientras la bandera permanezca apagada.
+- Validador global: 8 PASS/9 FAIL por controles históricos de manifiestos, residuos, Bash/Docker, versión fijada y excepciones públicas no reconocidas. La familia nueva `/api/documentos` fue declarada en el registro central y dejó de figurar entre las rutas sin política.

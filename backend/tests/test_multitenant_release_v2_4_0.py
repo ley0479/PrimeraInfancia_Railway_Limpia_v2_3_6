@@ -19,7 +19,7 @@ def require(path: str, *needles: str) -> str:
 def main() -> None:
     env = require(
         ".env.example",
-        "APP_VERSION=2.7.1-universal-data-mapper",
+        "APP_VERSION=2.7.2-document-center",
         "SINGLE_TENANT_MODE=false",
         "ALLOW_EXPERIMENTAL_MULTI_TENANT=true",
         "MULTI_TENANT_STRICT=true",
