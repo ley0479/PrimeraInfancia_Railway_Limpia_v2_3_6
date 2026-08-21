@@ -124,6 +124,13 @@ def main():
         report_id,_=create(repo,1,report_word); report_doc=repo.get_document(report_id,1)
         require(report_doc['tipo_documento']=='INFORME' and 'cumplieron' in report_doc['resultado_canonico']['informe']['conclusiones'],'No estructuro el informe')
         require(report_doc['validaciones']['semaforo']=='VERDE','Marco incorrectamente el informe completo')
+        rpp_word=root/'RPP_RACION_PREPARADA.docx'; rpp=Document(); rpp.add_heading('RPP RACION PREPARADA',0); rpp.add_paragraph('Fecha: 20/08/2026'); rpp.add_paragraph('UDS: UCA 1'); rpp.add_paragraph('Tiempo de comida: Almuerzo'); rpp.add_paragraph('Preparación: Arroz, pollo guisado y ensalada'); rpp.add_paragraph('Minuta patrón: Ciclo 3 día 4'); rpp.add_paragraph('Número de porciones: 25'); rpp.add_paragraph('Responsable: Manipuladora de alimentos'); rpp.save(rpp_word)
+        rpp_id,_=create(repo,1,rpp_word); rpp_doc=repo.get_document(rpp_id,1); rpp_data=rpp_doc['resultado_canonico']['rpp']
+        require(rpp_doc['tipo_documento']=='RPP' and rpp_data['fecha']=='2026-08-20' and rpp_data['porciones']=='25','No estructuro el RPP')
+        require(rpp_doc['validaciones']['semaforo']=='VERDE','Marco incorrectamente el RPP completo')
+        incomplete_rpp=root/'RPP_INCOMPLETO.docx'; rpp_incomplete=Document(); rpp_incomplete.add_heading('RPP RACION PREPARADA',0); rpp_incomplete.add_paragraph('Fecha: 20/08/2026'); rpp_incomplete.save(incomplete_rpp)
+        incomplete_rpp_id,_=create(repo,1,incomplete_rpp); incomplete_rpp_doc=repo.get_document(incomplete_rpp_id,1)
+        require(incomplete_rpp_doc['validaciones']['semaforo']=='ROJO' and incomplete_rpp_doc['validaciones']['errores_criticos']>=4,'No bloqueo el RPP incompleto')
         invalid_book=root/'LISTADO_ASISTENCIA_INVALIDO.xlsx'
         invalid_wb=Workbook(); invalid_ws=invalid_wb.active; invalid_ws.append(['LISTADO DE ASISTENCIA']); invalid_ws.append(['Nombre completo','Documento','UDS','Asistio']); invalid_ws.append(['PERSONA INEXISTENTE','9999','UCA 1','SI']); invalid_wb.save(invalid_book)
         invalid_id,_=create(repo,1,invalid_book)

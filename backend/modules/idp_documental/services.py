@@ -340,6 +340,18 @@ REPORT_LABEL_ALIASES = {
     'conclusiones':('conclusiones','conclusion'), 'recomendaciones':('recomendaciones','acciones de mejora'),
     'responsable':('responsable','elaborado por','profesional'), 'unidad':('uds','uca','unidad','unidad de servicio'),
 }
+RPP_LABEL_ALIASES = {
+    'fecha':('fecha','fecha de preparacion','fecha del servicio'),
+    'periodo':('periodo','mes','vigencia'),
+    'unidad':('uds','uca','unidad','unidad de servicio'),
+    'modalidad':('modalidad','modalidad de atencion'),
+    'tiempo_comida':('tiempo de comida','servicio de alimentacion','momento de consumo'),
+    'preparacion':('preparacion','menu','nombre de la preparacion'),
+    'minuta_patron':('minuta patron','ciclo de minuta','minuta'),
+    'porciones':('porciones','numero de porciones','raciones preparadas','cantidad de raciones'),
+    'responsable':('responsable','manipulador de alimentos','preparado por'),
+    'observaciones':('observaciones','novedades'),
+}
 
 
 def _mapped_header(value: Any) -> str | None:
@@ -540,6 +552,7 @@ def canonicalize(raw: dict, document_type: str) -> tuple[dict, list[dict]]:
     if document_type=='PLANEACION_PEDAGOGICA': _canonicalize_planning(raw,canonical,fields)
     if document_type=='ACTA': _canonicalize_labeled_document(raw,canonical,fields,'acta',MINUTES_LABEL_ALIASES)
     if document_type=='INFORME': _canonicalize_labeled_document(raw,canonical,fields,'informe',REPORT_LABEL_ALIASES)
+    if document_type=='RPP': _canonicalize_labeled_document(raw,canonical,fields,'rpp',RPP_LABEL_ALIASES)
     fields.append({'ruta': 'tipo_documento', 'valor': document_type, 'texto_original': document_type, 'confianza': 1.0, 'evidencia': {}, 'regla': 'clasificador_reglas'})
     return canonical, fields
 
@@ -669,12 +682,17 @@ def validate_report(canonical: dict) -> dict:
     return _validate_labeled(canonical.get('informe') or {},'informe',(('objetivo','objetivo del informe'),('actividades','actividades realizadas'),('resultados','resultados'),('conclusiones','conclusiones')),(('periodo','periodo'),('responsable','responsable')),len(REPORT_LABEL_ALIASES))
 
 
+def validate_rpp(canonical: dict) -> dict:
+    return _validate_labeled(canonical.get('rpp') or {},'rpp',(('fecha','fecha del servicio'),('unidad','UDS/UCA'),('tiempo_comida','tiempo de comida'),('preparacion','preparación o menú'),('porciones','número de porciones')),(('minuta_patron','minuta patrón'),('responsable','responsable de la preparación')),len(RPP_LABEL_ALIASES))
+
+
 def validate_canonical(database_path: str, tenant_id: int, canonical: dict) -> dict:
     if canonical.get('tipo_documento')=='CRONOGRAMA': return validate_schedule(canonical)
     if canonical.get('tipo_documento')=='PESO_TALLA': return validate_nutrition(database_path,tenant_id,canonical)
     if canonical.get('tipo_documento')=='PLANEACION_PEDAGOGICA': return validate_planning(canonical)
     if canonical.get('tipo_documento')=='ACTA': return validate_minutes(canonical)
     if canonical.get('tipo_documento')=='INFORME': return validate_report(canonical)
+    if canonical.get('tipo_documento')=='RPP': return validate_rpp(canonical)
     return validate_against_master(database_path,tenant_id,canonical)
 
 
