@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+from datetime import datetime
 from typing import Any
 
 from .services import connect, init_schema, now_iso, public_document, validate_against_master
@@ -26,6 +28,16 @@ def _assign_path(root: dict, dotted_path: str, value: Any) -> None:
         current[position] = value
     else:
         current[last] = value
+
+
+def _nullable_bool(value: Any):
+    if value is None or value == '': return None
+    if isinstance(value,bool): return int(value)
+    if isinstance(value,(int,float)): return int(bool(value))
+    normalized=str(value).strip().lower()
+    if normalized in {'si','sí','s','true','1','x','presente','asistio','asistió'}: return 1
+    if normalized in {'no','n','false','0','ausente','inasistente'}: return 0
+    return None
 
 
 class IDPRepository:
@@ -134,3 +146,31 @@ class IDPRepository:
         if int(validation.get('errores_criticos') or 0)>0: conn.close(); raise ValueError('Corrige los errores críticos de validación antes de aprobar.')
         now=now_iso(); conn.execute("UPDATE idp_documentos SET estado='APROBADO',etapa='APROBADO',progreso=100,usuario_aprobador_id=?,fecha_aprobacion=?,fecha_actualizacion=? WHERE id=? AND fundacion_id=?",(user_id,now,now,document_id,tenant_id)); conn.commit(); conn.close()
         self.audit(tenant_id,'DOCUMENTO_APROBADO',document_id,user_id,'APROBADO','APROBADO',{'importado':False})
+
+    def import_attendance(self, document_id: int, tenant_id: int, user_id, activity_date: str, activity: str='') -> dict:
+        date=str(activity_date or '').strip()
+        if not re.fullmatch(r'\d{4}-\d{2}-\d{2}',date): raise ValueError('Indica una fecha válida en formato AAAA-MM-DD.')
+        try: datetime.strptime(date,'%Y-%m-%d')
+        except ValueError: raise ValueError('La fecha de la actividad no existe.')
+        conn=connect(self.database_path); row=conn.execute("SELECT estado,tipo_documento,resultado_canonico_json,validaciones_json FROM idp_documentos WHERE id=? AND fundacion_id=?",(document_id,tenant_id)).fetchone()
+        if not row: conn.close(); raise KeyError('Documento no encontrado.')
+        existing=conn.execute("SELECT * FROM idp_lotes_importacion WHERE documento_id=? AND fundacion_id=?",(document_id,tenant_id)).fetchone()
+        if existing: result=dict(existing); result['ya_importado']=True; conn.close(); return result
+        if row['estado']!='APROBADO': conn.close(); raise ValueError('El documento debe estar aprobado antes de importarlo.')
+        if row['tipo_documento']!='LISTADO_ASISTENCIA': conn.close(); raise ValueError('Solo se pueden importar listados de asistencia desde este flujo.')
+        try: canonical=json.loads(row['resultado_canonico_json'] or '{}'); validation=json.loads(row['validaciones_json'] or '{}')
+        except Exception: canonical={}; validation={}
+        if int(validation.get('errores_criticos') or 0)>0: conn.close(); raise ValueError('Corrige los errores críticos antes de importar.')
+        participants=list(canonical.get('participantes') or [])
+        if not participants: conn.close(); raise ValueError('No hay participantes validados para importar.')
+        unit=str((canonical.get('unidad_servicio') or {}).get('nombre') or ''); now=now_iso(); activity_safe=str(activity or '').strip()[:300]
+        cur=conn.execute("""INSERT INTO idp_lotes_importacion(documento_id,fundacion_id,tipo_documento,fecha_actividad,actividad,unidad_servicio,total_registros,usuario_id,fecha_importacion) VALUES(?,?,?,?,?,?,?,?,?)""",(document_id,tenant_id,row['tipo_documento'],date,activity_safe,unit,len(participants),user_id,now)); lot_id=int(cur.lastrowid)
+        for index,participant in enumerate(participants):
+            document=str(participant.get('documento') or participant.get('nui') or '').strip()
+            if not document: conn.rollback(); conn.close(); raise ValueError(f'El participante de la fila {index + 1} no tiene documento.')
+            attended=participant.get('asistio'); signed=participant.get('firma_presente')
+            evidence={'indice':index,'origen':'resultado_canonico','documento_id':document_id}
+            conn.execute("""INSERT INTO idp_asistencias_importadas(lote_id,documento_id,fundacion_id,indice_participante,documento_participante,nombre_completo,unidad_servicio,fecha_actividad,actividad,asistio,firma_presente,evidencia_json,fecha_importacion) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",(lot_id,document_id,tenant_id,index,document,str(participant.get('nombre_completo') or '')[:300],str(participant.get('unidad') or unit)[:300],date,activity_safe,_nullable_bool(attended),_nullable_bool(signed),json.dumps(evidence,ensure_ascii=False),now))
+        conn.execute("UPDATE idp_documentos SET estado='IMPORTADO',etapa='IMPORTADO',progreso=100,fecha_actualizacion=? WHERE id=? AND fundacion_id=?",(now,document_id,tenant_id)); conn.commit(); conn.close()
+        self.audit(tenant_id,'ASISTENCIA_IMPORTADA',document_id,user_id,'IMPORTADO','IMPORTADO',{'lote_id':lot_id,'fecha_actividad':date,'total':len(participants)})
+        return {'id':lot_id,'documento_id':document_id,'fundacion_id':tenant_id,'fecha_actividad':date,'actividad':activity_safe,'unidad_servicio':unit,'total_registros':len(participants),'ya_importado':False}

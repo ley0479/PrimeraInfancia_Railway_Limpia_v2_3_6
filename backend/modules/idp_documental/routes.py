@@ -162,4 +162,14 @@ def register_idp_documental(app, database_path: str, data_dir: str) -> None:
         repo.audit(user['fundacion_id'],'LISTADO_OFICIAL_GENERADO',document_id,user['id'],'APROBADO','APROBADO',{'archivo':output.name,'participantes':len(users)})
         return send_file(output,as_attachment=True,download_name=f'LISTADO_ASISTENCIA_OFICIAL_{document_id}.xlsx')
 
+    @bp.route('/documentos/<int:document_id>/importar-asistencia', methods=['POST'])
+    @require_roles('SUPERADMIN','GERENTE','COORDINADOR')
+    def import_attendance(document_id: int):
+        user=_user(); data=request.get_json(silent=True) or {}
+        try: lot=repo.import_attendance(document_id,user['fundacion_id'],user['id'],data.get('fecha_actividad'),data.get('actividad'))
+        except KeyError as exc: return jsonify({'error':str(exc)}),404
+        except ValueError as exc: return jsonify({'error':str(exc)}),409
+        message='El documento ya estaba importado; no se duplicaron registros.' if lot.get('ya_importado') else 'Asistencia importada con trazabilidad.'
+        return jsonify({'message':message,'lote':lot,'documento':repo.get_document(document_id,user['fundacion_id'])})
+
     app.register_blueprint(bp)

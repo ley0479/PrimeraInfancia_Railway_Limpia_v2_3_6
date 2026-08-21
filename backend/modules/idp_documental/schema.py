@@ -90,6 +90,41 @@ CREATE TABLE IF NOT EXISTS idp_resultados_validacion (
     FOREIGN KEY(documento_id) REFERENCES idp_documentos(id)
 );
 
+CREATE TABLE IF NOT EXISTS idp_lotes_importacion (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    documento_id BIGINT NOT NULL,
+    fundacion_id INTEGER NOT NULL,
+    tipo_documento TEXT NOT NULL,
+    fecha_actividad TEXT NOT NULL,
+    actividad TEXT,
+    unidad_servicio TEXT,
+    total_registros INTEGER NOT NULL DEFAULT 0,
+    usuario_id INTEGER,
+    fecha_importacion TEXT NOT NULL,
+    UNIQUE(documento_id, fundacion_id),
+    FOREIGN KEY(documento_id) REFERENCES idp_documentos(id)
+);
+
+CREATE TABLE IF NOT EXISTS idp_asistencias_importadas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lote_id BIGINT NOT NULL,
+    documento_id BIGINT NOT NULL,
+    fundacion_id INTEGER NOT NULL,
+    indice_participante INTEGER NOT NULL,
+    documento_participante TEXT NOT NULL,
+    nombre_completo TEXT,
+    unidad_servicio TEXT,
+    fecha_actividad TEXT NOT NULL,
+    actividad TEXT,
+    asistio INTEGER,
+    firma_presente INTEGER,
+    evidencia_json TEXT,
+    fecha_importacion TEXT NOT NULL,
+    UNIQUE(documento_id, fundacion_id, indice_participante),
+    FOREIGN KEY(lote_id) REFERENCES idp_lotes_importacion(id),
+    FOREIGN KEY(documento_id) REFERENCES idp_documentos(id)
+);
+
 CREATE TABLE IF NOT EXISTS idp_eventos_auditoria (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     documento_id BIGINT,
@@ -107,4 +142,6 @@ CREATE INDEX IF NOT EXISTS idx_idp_documentos_tenant_estado ON idp_documentos(fu
 CREATE INDEX IF NOT EXISTS idx_idp_campos_documento ON idp_campos_extraidos(documento_id, fundacion_id);
 CREATE INDEX IF NOT EXISTS idx_idp_eventos_documento ON idp_eventos_auditoria(documento_id, fundacion_id);
 CREATE INDEX IF NOT EXISTS idx_idp_validaciones_documento ON idp_resultados_validacion(documento_id, fundacion_id, nivel);
+CREATE INDEX IF NOT EXISTS idx_idp_lotes_tenant_fecha ON idp_lotes_importacion(fundacion_id, fecha_actividad);
+CREATE INDEX IF NOT EXISTS idx_idp_asistencias_tenant_doc ON idp_asistencias_importadas(fundacion_id, documento_participante, fecha_actividad);
 """

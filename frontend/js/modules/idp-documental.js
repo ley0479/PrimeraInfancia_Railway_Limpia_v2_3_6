@@ -18,7 +18,7 @@
 
     function badge(status) {
         const value=String(status||'RECIBIDO').toUpperCase();
-        const tone=value==='APROBADO'?'green':value.includes('ERROR')?'red':value.includes('OCR')||value.includes('REVISION')?'yellow':'blue';
+        const tone=['APROBADO','IMPORTADO'].includes(value)?'green':value.includes('ERROR')?'red':value.includes('OCR')||value.includes('REVISION')?'yellow':'blue';
         return `<span class="idp-badge ${tone}">${esc(value.replaceAll('_',' '))}</span>`;
     }
 
@@ -47,10 +47,11 @@
         const summary=doc.validaciones||{};
         const validations=(summary.resultados||[]).map(item=>`<div class="idp-validation ${String(item.nivel||'').toLowerCase()}"><strong>${esc(item.regla||item.codigo||'VALIDACION')}</strong><span>${esc(item.mensaje||'Sin detalle')}</span></div>`).join('');
         const validationSummary=`<div class="idp-validation-summary ${String(summary.semaforo||'GRIS').toLowerCase()}"><div><small>Semáforo</small><strong>${esc(summary.semaforo||'GRIS')}</strong></div><div><small>Coincidencias</small><strong>${Number(summary.coincidencias||0)} / ${Number(summary.total||0)}</strong></div><div><small>Errores críticos</small><strong>${Number(summary.errores_criticos||0)}</strong></div><div><small>Advertencias</small><strong>${Number(summary.advertencias||0)}</strong></div></div>`;
-        const approvalBlocked=doc.estado==='REQUIERE_OCR'||doc.estado==='APROBADO'||Number(summary.errores_criticos||0)>0;
-        const canGenerate=doc.estado==='APROBADO'&&doc.tipo_documento==='LISTADO_ASISTENCIA';
+        const approvalBlocked=doc.estado!=='REQUIERE_REVISION'||Number(summary.errores_criticos||0)>0;
+        const canGenerate=['APROBADO','IMPORTADO'].includes(doc.estado)&&doc.tipo_documento==='LISTADO_ASISTENCIA';
+        const canImport=doc.estado==='APROBADO'&&doc.tipo_documento==='LISTADO_ASISTENCIA';
         const canRetryOcr=doc.estado==='REQUIERE_OCR'||doc.estado==='ERROR';
-        target.innerHTML=`<div class="idp-card p-5"><div class="idp-detail-head"><div><p class="idp-eyebrow">${esc(doc.tipo_documento)}</p><h3>${esc(doc.nombre_original)}</h3><p>Motor: ${esc(doc.motor_lectura||'Pendiente')} · Clasificación ${(Number(doc.confianza_clasificacion||0)*100).toFixed(0)}%</p></div>${badge(doc.estado)}</div><div class="idp-progress"><span style="width:${Math.max(0,Math.min(100,Number(doc.progreso||0)))}%"></span></div>${validationSummary}<div class="idp-actions"><button class="idp-btn secondary" onclick="IDPDocumental.download(${Number(doc.id)})">Descargar original</button>${canRetryOcr?`<button class="idp-btn primary" onclick="IDPDocumental.retryOcr(${Number(doc.id)})">Reintentar OCR</button>`:''}<button class="idp-btn primary" ${approvalBlocked?'disabled':''} onclick="IDPDocumental.approve(${Number(doc.id)})">Aprobar sin importar</button>${canGenerate?`<button class="idp-btn primary" onclick="IDPDocumental.downloadOfficial(${Number(doc.id)})">Generar listado oficial</button>`:''}</div>${validations}<div class="idp-review-grid"><section><h4 class="idp-review-title">Documento original privado</h4><div id="idp-preview" class="idp-preview"><div class="idp-empty">Preparando vista segura...</div></div><div id="idp-evidence-focus" class="idp-evidence-focus">Selecciona un campo para consultar su evidencia.</div></section><section><h4 class="idp-review-title">Información extraída</h4><div class="idp-fields">${fields||'<div class="idp-empty">No hay campos estructurados. Requiere mapeo u OCR.</div>'}</div></section></div></div>`;
+        target.innerHTML=`<div class="idp-card p-5"><div class="idp-detail-head"><div><p class="idp-eyebrow">${esc(doc.tipo_documento)}</p><h3>${esc(doc.nombre_original)}</h3><p>Motor: ${esc(doc.motor_lectura||'Pendiente')} · Clasificación ${(Number(doc.confianza_clasificacion||0)*100).toFixed(0)}%</p></div>${badge(doc.estado)}</div><div class="idp-progress"><span style="width:${Math.max(0,Math.min(100,Number(doc.progreso||0)))}%"></span></div>${validationSummary}<div class="idp-actions"><button class="idp-btn secondary" onclick="IDPDocumental.download(${Number(doc.id)})">Descargar original</button>${canRetryOcr?`<button class="idp-btn primary" onclick="IDPDocumental.retryOcr(${Number(doc.id)})">Reintentar OCR</button>`:''}<button class="idp-btn primary" ${approvalBlocked?'disabled':''} onclick="IDPDocumental.approve(${Number(doc.id)})">Aprobar sin importar</button>${canGenerate?`<button class="idp-btn primary" onclick="IDPDocumental.downloadOfficial(${Number(doc.id)})">Generar listado oficial</button>`:''}${canImport?`<button class="idp-btn primary" onclick="IDPDocumental.importAttendance(${Number(doc.id)})">Importar asistencia</button>`:''}</div>${validations}<div class="idp-review-grid"><section><h4 class="idp-review-title">Documento original privado</h4><div id="idp-preview" class="idp-preview"><div class="idp-empty">Preparando vista segura...</div></div><div id="idp-evidence-focus" class="idp-evidence-focus">Selecciona un campo para consultar su evidencia.</div></section><section><h4 class="idp-review-title">Información extraída</h4><div class="idp-fields">${fields||'<div class="idp-empty">No hay campos estructurados. Requiere mapeo u OCR.</div>'}</div></section></div></div>`;
     }
 
     async function load() {
@@ -119,10 +120,18 @@
         catch(error){message(error.message,'error'); await select(id);}
     }
 
+    async function importAttendance(id) {
+        const today=new Date().toISOString().slice(0,10),date=prompt('Fecha de la actividad (AAAA-MM-DD)',today); if(date===null)return;
+        const activity=prompt('Nombre o tema de la actividad (opcional)','')??'';
+        if(!confirm(`¿Importar definitivamente la asistencia del ${date}? El sistema evitará registros duplicados.`))return;
+        try { const data=await api(`/documentos/${id}/importar-asistencia`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fecha_actividad:date,actividad})}); state.selected=data.documento; message(data.message,'success'); await load(); renderDetail(); await loadPreview(); }
+        catch(error){message(error.message,'error');}
+    }
+
     function init() {
         if(!state.initialized){state.initialized=true;$('idp-upload')?.addEventListener('click',upload);}
         load();
     }
-    window.IDPDocumental={init,load,select,upload,correct,approve,download,downloadOfficial,retryOcr,focusEvidence};
+    window.IDPDocumental={init,load,select,upload,correct,approve,download,downloadOfficial,retryOcr,focusEvidence,importAttendance};
     window.idpDocumentalInit=init;
 })();
