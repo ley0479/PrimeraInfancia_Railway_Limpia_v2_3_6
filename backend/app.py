@@ -430,6 +430,9 @@ except Exception as exc:
 try:
     from modules.idp_documental import register_idp_documental
     register_idp_documental(app, DATABASE_PATH, app.config['DATA_DIR'])
+
+    from modules.centro_documental import register_centro_documental
+    register_centro_documental(app, DATABASE_PATH, app.config['DATA_DIR'])
 except Exception as exc:
     if str(app.config.get('APP_ENV', '')).lower() == 'production':
         app.logger.exception('Motor Universal Documental IDP no pudo registrarse')
