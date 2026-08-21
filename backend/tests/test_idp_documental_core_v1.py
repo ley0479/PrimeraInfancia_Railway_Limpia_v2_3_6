@@ -82,13 +82,16 @@ def main():
         except ValueError: blocked=True
         require(blocked,'Permitio aprobar una imagen sin OCR')
         repo.restart_extraction(image_id,1,10)
-        with patch('modules.idp_documental.services._ocr_image_text',return_value='LISTADO DE ASISTENCIA\nNombre Documento UDS Firma'):
+        with patch('modules.idp_documental.services._ocr_image_text',return_value='LISTADO DE ASISTENCIA\nNombre Documento UDS Firma\nANA PEREZ  1001  UCA 1  SI'):
             ocr_raw=read_document_ocr(image_path)
         ocr_classification=classify_document(ocr_raw['texto'],image_path.name); ocr_canonical,ocr_fields=canonicalize(ocr_raw,ocr_classification[0]); ocr_canonical['fundacion']['id']=1
         repo.complete_extraction(image_id,1,ocr_raw,ocr_canonical,ocr_fields,ocr_classification,10)
         ocr_doc=repo.get_document(image_id,1)
         require(ocr_doc['estado']=='REQUIERE_REVISION' and ocr_doc['motor_lectura']=='TESSERACT_LOCAL','El reintento OCR no avanzo a revision')
-        require(ocr_doc['validaciones']['errores_criticos']>0,'El OCR sin filas estructuradas no exigio revision')
+        require(len(ocr_doc['resultado_canonico']['participantes'])==1,'El OCR no estructuro la fila del participante')
+        require(ocr_doc['resultado_canonico']['participantes'][0]['documento']=='1001','El OCR no conservo el documento detectado')
+        require(ocr_doc['validaciones']['coincidencias']==1,'El participante OCR no se valido contra Base Maestra')
+        require(any(field['regla']=='fila_ocr_con_documento' for field in ocr_doc['campos']),'El OCR no guardo evidencia editable')
         require(any(event['evento']=='OCR_REINTENTADO' for event in ocr_doc['eventos']),'No audito el reintento OCR')
         print('IDP core PASS: clasificacion, canonico, tenant, Base Maestra, correccion y aprobacion')
 

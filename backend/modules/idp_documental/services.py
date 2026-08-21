@@ -234,6 +234,32 @@ def _mapped_header(value: Any) -> str | None:
     return None
 
 
+def _canonicalize_ocr_attendance(raw: dict, canonical: dict, fields: list[dict]) -> None:
+    seen=set()
+    for line_number,line in enumerate(str(raw.get('texto') or '').splitlines(),1):
+        original=' '.join(line.split())
+        if not original or any(token in normalize(original) for token in ('listado de asistencia','nombre documento','nombre completo documento')):
+            continue
+        match=re.search(r'(?<!\d)(\d{4,12})(?!\d)',original)
+        if not match: continue
+        document=match.group(1)
+        if document in seen or (len(document)==4 and 1900<=int(document)<=2100): continue
+        prefix=re.sub(r'^\s*\d+[.)-]?\s*','',original[:match.start()]).strip(' :-|')
+        suffix=original[match.end():].strip(' :-|')
+        if len(normalize(prefix))<3: continue
+        participant={'nombre_completo':prefix,'documento':document}
+        unit_match=re.search(r'\b(?:UDS|UCA)\s*[:#-]?\s*[A-Za-z0-9._-]+',suffix,re.IGNORECASE)
+        if unit_match:
+            participant['unidad']=unit_match.group(0).strip()
+            canonical['unidad_servicio'].setdefault('nombre',participant['unidad'])
+        attendance_match=re.search(r'\b(SI|NO|PRESENTE|AUSENTE)\b',suffix,re.IGNORECASE)
+        if attendance_match: participant['asistio']=normalize(attendance_match.group(1)) in {'si','presente'}
+        index=len(canonical['participantes']); canonical['participantes'].append(participant); seen.add(document)
+        for field,value in participant.items():
+            confidence=.82 if field=='documento' else (.74 if field=='nombre_completo' else .68)
+            fields.append({'ruta':f'participantes.{index}.{field}','valor':value,'texto_original':original,'confianza':confidence,'evidencia':{'pagina':1,'linea':line_number,'texto':original},'regla':'fila_ocr_con_documento'})
+
+
 def canonicalize(raw: dict, document_type: str) -> tuple[dict, list[dict]]:
     canonical = {'tipo_documento': document_type, 'version_plantilla': None, 'periodo': {}, 'fundacion': {}, 'unidad_servicio': {}, 'actividad': {}, 'participantes': [], 'metadatos': {'motor': raw.get('motor'), 'requiere_ocr': bool(raw.get('requiere_ocr'))}}
     fields = []
@@ -257,6 +283,8 @@ def canonicalize(raw: dict, document_type: str) -> tuple[dict, list[dict]]:
                     if any(participant.get(key) not in (None, '') for key in ('documento', 'nombre_completo')):
                         canonical['participantes'].append(participant)
                 break
+    if document_type in {'LISTADO_ASISTENCIA','RAM'} and raw.get('origen_ocr') and not canonical['participantes']:
+        _canonicalize_ocr_attendance(raw,canonical,fields)
     fields.append({'ruta': 'tipo_documento', 'valor': document_type, 'texto_original': document_type, 'confianza': 1.0, 'evidencia': {}, 'regla': 'clasificador_reglas'})
     return canonical, fields
 
