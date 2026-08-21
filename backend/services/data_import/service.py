@@ -29,6 +29,10 @@ class UniversalMappingService:
         preview = adapter.preview(source, selected, 500)
         mapping = map_columns(preview.columns, preview.rows, confirmed)
         selected_fields = {field for field, decision in mapping.items() if decision.selected}
+        if "participante.nombre_completo" not in selected_fields and (
+            "participante.primer_nombre" in selected_fields and "participante.primer_apellido" in selected_fields
+        ):
+            selected_fields.add("participante.nombre_completo")
         compatibility = {}
         for name, requirements in FORMAT_REQUIREMENTS.items():
             required = requirements["required"]

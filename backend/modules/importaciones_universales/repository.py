@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from modules.dbapi_compat import sqlite3
+from services.data_import.catalog import CANONICAL_FIELDS, CATALOG_VERSION, NEGATIVE_TERMS
+from services.data_import.normalizers import normalize_header
 
 from .schema import SCHEMA_SQL
 
@@ -19,7 +21,20 @@ class UniversalImportRepository:
         Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.database_path); conn.row_factory = sqlite3.Row; return conn
     def init_schema(self):
-        with self.connect() as conn: conn.executescript(SCHEMA_SQL); conn.commit()
+        with self.connect() as conn:
+            conn.executescript(SCHEMA_SQL)
+            now=now_iso()
+            for field,config in CANONICAL_FIELDS.items():
+                for index,alias in enumerate(config.get("aliases",[])):
+                    conn.execute("""INSERT INTO aliases_campos_universal(tenant_id,institucion,fuente,campo_canonico,alias_original,alias_normalizado,tipo,peso,version,creado_en)
+                      VALUES(0,'','',?,?,?,?,?,?,?) ON CONFLICT(tenant_id,institucion,fuente,campo_canonico,alias_normalizado,tipo,version) DO NOTHING""",
+                      (field,alias,normalize_header(alias),"POSITIVO",100 if index == 0 else 80,CATALOG_VERSION,now))
+            for field,terms in NEGATIVE_TERMS.items():
+                for term,weight in terms.items():
+                    conn.execute("""INSERT INTO aliases_campos_universal(tenant_id,institucion,fuente,campo_canonico,alias_original,alias_normalizado,tipo,peso,version,creado_en)
+                      VALUES(0,'','',?,?,?,?,?,?,?) ON CONFLICT(tenant_id,institucion,fuente,campo_canonico,alias_normalizado,tipo,version) DO NOTHING""",
+                      (field,term,normalize_header(term),"NEGATIVO",weight,CATALOG_VERSION,now))
+            conn.commit()
     def find_hash(self, tenant_id: int, digest: str):
         with self.connect() as conn:
             row = conn.execute("SELECT * FROM importaciones_universales WHERE tenant_id=? AND hash_sha256=?", (tenant_id, digest)).fetchone()
@@ -119,6 +134,12 @@ class UniversalImportRepository:
             version=conn.execute("SELECT COALESCE(MAX(version),0)+1 v FROM perfiles_mapeo_universal WHERE tenant_id=? AND fingerprint_estructura=?",(tenant_id,item["fingerprint_estructura"])).fetchone()["v"]
             cur=conn.execute("INSERT INTO perfiles_mapeo_universal(tenant_id,nombre,fingerprint_estructura,version,estado,mapeo_json,catalogo_version,usuario_id,creado_en,publicado_en) VALUES(?,?,?,?, 'PUBLICADO',?,?,?,?,?)",(tenant_id,item["nombre_archivo"],item["fingerprint_estructura"],version,json.dumps(mapping,ensure_ascii=False),item["resultado"].get("catalog_version","unknown"),user_id,now,now))
             profile_id=int(cur.lastrowid)
+            staged=conn.execute("SELECT id,normalizado_json FROM importaciones_filas_staging WHERE importacion_id=? AND tenant_id=?",(import_id,tenant_id)).fetchall()
+            for row in staged:
+                bundle=json.loads(row["normalizado_json"] or "{}"); provenance=bundle.get("provenance",{})
+                for evidence in provenance.values():
+                    evidence["confirmed_by"]=user_id; evidence["mapping_profile_id"]=profile_id; evidence["mapping_profile_version"]=version
+                conn.execute("UPDATE importaciones_filas_staging SET normalizado_json=? WHERE id=?",(json.dumps(bundle,ensure_ascii=False,default=str),row["id"]))
             conn.execute("UPDATE importaciones_universales SET perfil_mapeo_id=?,estado='LISTO_PARA_IMPORTAR',porcentaje=80,etapa_actual='Mapeo confirmado',confirmado_en=?,actualizado_en=? WHERE id=? AND tenant_id=?",(profile_id,now,now,import_id,tenant_id))
             conn.execute("INSERT INTO auditoria_importaciones_universal(importacion_id,tenant_id,usuario_id,evento,detalle_json,creado_en) VALUES(?,?,?,?,?,?)",(import_id,tenant_id,user_id,"MAPEO_CONFIRMADO",json.dumps({"perfil_id":profile_id,"version":version}),now)); conn.commit()
             return {"perfil_id":profile_id,"version":version,"estado":"LISTO_PARA_IMPORTAR"}

@@ -13,7 +13,7 @@ def migrate(database_path: str) -> dict:
     return {"status": "migrated", "mode": "additive", "tables": [
         "importaciones_universales", "perfiles_mapeo_universal",
         "importaciones_filas_staging", "auditoria_importaciones_universal",
-        "unidades_identificadores_origen",
+        "unidades_identificadores_origen", "aliases_campos_universal",
     ]}
 
 
@@ -22,7 +22,7 @@ def downgrade(database_path: str, *, allow_drop: bool = False) -> dict:
         return {"status": "blocked", "reason": "La reversión requiere exportar auditoría y allow_drop=True."}
     repo = UniversalImportRepository(database_path)
     with repo.connect() as conn:
-        for table in ("auditoria_importaciones_universal", "importaciones_filas_staging", "unidades_identificadores_origen", "perfiles_mapeo_universal", "importaciones_universales"):
+        for table in ("auditoria_importaciones_universal", "importaciones_filas_staging", "unidades_identificadores_origen", "aliases_campos_universal", "perfiles_mapeo_universal", "importaciones_universales"):
             conn.execute(f"DROP TABLE IF EXISTS {table}")
         conn.commit()
     return {"status": "reverted"}

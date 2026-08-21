@@ -21,6 +21,15 @@ CREATE TABLE IF NOT EXISTS perfiles_mapeo_universal (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_perfil_version_tenant ON perfiles_mapeo_universal(tenant_id, fingerprint_estructura, version);
 
+CREATE TABLE IF NOT EXISTS aliases_campos_universal (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL DEFAULT 0,
+ institucion TEXT NOT NULL DEFAULT '', fuente TEXT NOT NULL DEFAULT '', campo_canonico TEXT NOT NULL,
+ alias_original TEXT NOT NULL, alias_normalizado TEXT NOT NULL, tipo TEXT NOT NULL DEFAULT 'POSITIVO',
+ peso INTEGER NOT NULL DEFAULT 80, version TEXT NOT NULL, vigente_desde TEXT, vigente_hasta TEXT,
+ confirmado_por INTEGER, creado_en TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_alias_universal_scope ON aliases_campos_universal(tenant_id,institucion,fuente,campo_canonico,alias_normalizado,tipo,version);
+
 CREATE TABLE IF NOT EXISTS importaciones_filas_staging (
  id INTEGER PRIMARY KEY AUTOINCREMENT, importacion_id INTEGER NOT NULL, tenant_id INTEGER NOT NULL,
  numero_fila INTEGER NOT NULL, hash_fila TEXT NOT NULL, original_json TEXT NOT NULL,
