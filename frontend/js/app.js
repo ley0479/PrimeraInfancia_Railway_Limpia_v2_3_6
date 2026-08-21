@@ -66,6 +66,7 @@ const MENU_POR_ROL = {
 };
 if (!MENU_POR_ROL.COORDINADOR.includes('talento')) MENU_POR_ROL.COORDINADOR.push('talento');
 ['SUPERADMIN','GERENTE','COORDINADOR','AUXILIAR_ADMINISTRATIVO'].forEach(rol=>{if(!MENU_POR_ROL[rol].includes('administrativo-financiero'))MENU_POR_ROL[rol].push('administrativo-financiero')});
+['SUPERADMIN','GERENTE','COORDINADOR','AUXILIAR_ADMINISTRATIVO'].forEach(rol=>{if(!MENU_POR_ROL[rol].includes('motor-documental'))MENU_POR_ROL[rol].push('motor-documental')});
 ['SUPERADMIN','GERENTE'].forEach(rol=>{if(!MENU_POR_ROL[rol].includes('integraciones-configuracion'))MENU_POR_ROL[rol].push('integraciones-configuracion')});
 
 const allowedBaseExtensions = ['.xlsx', '.xls', '.xlsm', '.csv', '.txt', '.tsv', '.tab', '.dat', '.ods', '.html', '.htm', '.json', '.docx', '.pdf'];
@@ -732,7 +733,7 @@ async function initApp() {
         MenuInstitucionalLateral.init();
     }
     const seccionInicial = (window.location.hash || '').replace('#', '') || 'dashboard';
-    mostrarSeccion(['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'manual-operativo', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'centro-planeacion', 'supervision-calidad', 'familias-redes', 'componente-psicosocial', 'ambientes-protectores', 'integrity-stability'].includes(seccionInicial) ? seccionInicial : 'dashboard');
+    mostrarSeccion(['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'manual-operativo', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'centro-planeacion', 'supervision-calidad', 'familias-redes', 'componente-psicosocial', 'ambientes-protectores', 'integrity-stability', 'motor-documental'].includes(seccionInicial) ? seccionInicial : 'dashboard');
 
     const inputExcel = document.getElementById('input-excel');
     const dropZone = document.getElementById('drop-zone');
@@ -792,11 +793,11 @@ function mostrarSeccion(seccion) {
     if (afSection) afSection.classList.toggle('hidden', seccion !== 'administrativo-financiero');
     const icSection = document.getElementById('integraciones-configuracion');
     if (icSection) icSection.classList.toggle('hidden', seccion !== 'integraciones-configuracion');
-    ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'manual-operativo', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'centro-planeacion', 'supervision-calidad', 'familias-redes', 'componente-psicosocial', 'ambientes-protectores', 'integrity-stability'].forEach(id => {
+    ['dashboard', 'buscador-beneficiarios', 'calendario-inteligente', 'administracion', 'panel-comercial', 'gerencia-general', 'acceso-compartido', 'configuracion-institucional', 'manual-operativo', 'ajustes', 'administrador-disenos', 'backups', 'calidad-datos', 'base-maestra', 'motor-plantillas', 'plantillas-oficiales', 'paquete-mensual', 'reportes-gerenciales', 'facturacion', 'formatos', 'nutricion', 'salud-nutricion', 'talento', 'cumplimiento', 'planeacion-pedagogica', 'gestion-pedagogica', 'gestion-coordinador', 'cuentas-cobro', 'relacion-mes', 'expediente-operativo-uca', 'biblioteca-icbf', 'motor-gestion-proyecto', 'centro-planeacion', 'supervision-calidad', 'familias-redes', 'componente-psicosocial', 'ambientes-protectores', 'integrity-stability', 'motor-documental'].forEach(id => {
         const section = document.getElementById(id);
         if (section) section.classList.toggle('hidden', id !== seccion);
     });
-    ['nav-dashboard', 'nav-buscador-beneficiarios', 'nav-calendario-inteligente', 'nav-administracion', 'nav-panel-comercial', 'nav-gerencia-general', 'nav-acceso-compartido', 'nav-configuracion-institucional', 'nav-manual-operativo', 'nav-ajustes', 'nav-administrador-disenos', 'nav-backups', 'nav-calidad-datos', 'nav-base-maestra', 'nav-motor-plantillas', 'nav-plantillas-oficiales', 'nav-paquete-mensual', 'nav-reportes-gerenciales', 'nav-facturacion', 'nav-formatos', 'nav-nutricion', 'nav-salud-nutricion', 'nav-talento', 'nav-cumplimiento', 'nav-planeacion-pedagogica', 'nav-gestion-pedagogica', 'nav-gestion-coordinador', 'nav-cuentas-cobro', 'nav-relacion-mes', 'nav-expediente-operativo-uca', 'nav-biblioteca-icbf', 'nav-motor-gestion-proyecto', 'nav-centro-planeacion', 'nav-supervision-calidad', 'nav-familias-redes', 'nav-componente-psicosocial', 'nav-ambientes-protectores', 'nav-integrity-stability'].forEach(id => {
+    ['nav-dashboard', 'nav-buscador-beneficiarios', 'nav-calendario-inteligente', 'nav-administracion', 'nav-panel-comercial', 'nav-gerencia-general', 'nav-acceso-compartido', 'nav-configuracion-institucional', 'nav-manual-operativo', 'nav-ajustes', 'nav-administrador-disenos', 'nav-backups', 'nav-calidad-datos', 'nav-base-maestra', 'nav-motor-plantillas', 'nav-plantillas-oficiales', 'nav-paquete-mensual', 'nav-reportes-gerenciales', 'nav-facturacion', 'nav-formatos', 'nav-nutricion', 'nav-salud-nutricion', 'nav-talento', 'nav-cumplimiento', 'nav-planeacion-pedagogica', 'nav-gestion-pedagogica', 'nav-gestion-coordinador', 'nav-cuentas-cobro', 'nav-relacion-mes', 'nav-expediente-operativo-uca', 'nav-biblioteca-icbf', 'nav-motor-gestion-proyecto', 'nav-centro-planeacion', 'nav-supervision-calidad', 'nav-familias-redes', 'nav-componente-psicosocial', 'nav-ambientes-protectores', 'nav-integrity-stability', 'nav-motor-documental'].forEach(id => {
         const boton = document.getElementById(id);
         if (boton) {
             boton.classList.toggle('bg-indigo-600/10', id === `nav-${seccion}`);
@@ -848,6 +849,9 @@ function mostrarSeccion(seccion) {
     }
     if (seccion === 'integrity-stability' && typeof integrityStabilityInit === 'function') {
         integrityStabilityInit();
+    }
+    if (seccion === 'motor-documental' && typeof idpDocumentalInit === 'function') {
+        idpDocumentalInit();
     }
     if (seccion === 'planeacion-pedagogica' && typeof ppInit === 'function') {
         ppInit();

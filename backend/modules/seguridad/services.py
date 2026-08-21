@@ -62,6 +62,8 @@ if 'talento' not in ROLE_MENU_PERMISSIONS['COORDINADOR']:
 for _role in ('SUPERADMIN','GERENTE','COORDINADOR','AUXILIAR_ADMINISTRATIVO'):
     if 'administrativo-financiero' not in ROLE_MENU_PERMISSIONS[_role]:
         ROLE_MENU_PERMISSIONS[_role].append('administrativo-financiero')
+    if 'motor-documental' not in ROLE_MENU_PERMISSIONS[_role]:
+        ROLE_MENU_PERMISSIONS[_role].append('motor-documental')
 for _role in ('SUPERADMIN','GERENTE'):
     if 'integraciones-configuracion' not in ROLE_MENU_PERMISSIONS[_role]:
         ROLE_MENU_PERMISSIONS[_role].append('integraciones-configuracion')
@@ -96,6 +98,7 @@ PATH_ROLE_RULES = sorted([
     ('/api/talento-core', ADMIN_OPERATIONS),
     ('/api/talento', frozenset({'SUPERADMIN', 'GERENTE', 'AUXILIAR_ADMINISTRATIVO'})),
     ('/api/motor-plantillas', frozenset({'SUPERADMIN', 'GERENTE', 'AUXILIAR_ADMINISTRATIVO'})),
+    ('/api/idp', ADMIN_OPERATIONS),
     ('/api/plantillas-oficiales', frozenset({'SUPERADMIN', 'GERENTE', 'AUXILIAR_ADMINISTRATIVO'})),
     ('/api/paquete-mensual', ADMIN_OPERATIONS),
     ('/api/reportes-gerenciales', ADMIN_OPERATIONS),

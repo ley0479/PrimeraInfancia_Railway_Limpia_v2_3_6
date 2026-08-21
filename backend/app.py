@@ -420,6 +420,15 @@ except Exception as exc:
         raise RuntimeError('El Motor de Integridad no pudo registrarse; se bloquea el arranque productivo.') from exc
     print(f'Motor de Integridad no pudo registrarse: {exc}')
 
+try:
+    from modules.idp_documental import register_idp_documental
+    register_idp_documental(app, DATABASE_PATH, app.config['DATA_DIR'])
+except Exception as exc:
+    if str(app.config.get('APP_ENV', '')).lower() == 'production':
+        app.logger.exception('Motor Universal Documental IDP no pudo registrarse')
+    else:
+        print(f'Motor Universal Documental IDP no pudo registrarse: {exc}')
+
 
 KNOWN_UNITS = uds_canonical_units()
 

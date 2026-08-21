@@ -46,6 +46,7 @@
     <link rel="stylesheet" href="./css/centro-planeacion.css?v=2.7.0">
     <link rel="stylesheet" href="./css/componente-psicosocial.css?v=2.7.0">
     <link rel="stylesheet" href="./css/integrity-stability.css?v=2.6.1">
+    <link rel="stylesheet" href="./css/idp-documental.css?v=2.7.0-idp-core-1">
     <link rel="stylesheet" href="./css/accessibility-pi.css?v=2.3.0-release-a11y-ux">
     <link rel="stylesheet" href="./css/responsive-mobile.css?v=2.3.4-responsive-stability">
     <script src="https://unpkg.com/lucide@1.28.0"></script>
@@ -171,6 +172,7 @@
         <div class="pi-menu-group-items">
             <button id="nav-formatos" data-menu-item data-menu-group="operacion-icbf" onclick="mostrarSeccion('formatos')" class="pi-menu-item"><i data-lucide="file-spreadsheet"></i><span>Formatos ICBF</span></button>
             <button id="nav-motor-plantillas" data-menu-item data-menu-group="operacion-icbf" onclick="mostrarSeccion('motor-plantillas')" class="pi-menu-item"><i data-lucide="wand-sparkles"></i><span>Motor de Plantillas</span></button>
+            <button id="nav-motor-documental" data-menu-item data-menu-group="operacion-icbf" onclick="mostrarSeccion('motor-documental')" class="pi-menu-item"><i data-lucide="scan-text"></i><span>Motor Documental IDP</span><small>lectura y revisión</small></button>
             <button id="nav-plantillas-oficiales" data-menu-item data-menu-group="operacion-icbf" onclick="mostrarSeccion('plantillas-oficiales')" class="pi-menu-item"><i data-lucide="file-check-2"></i><span>Plantillas Oficiales</span></button>
             <button id="nav-paquete-mensual" data-menu-item data-menu-group="operacion-icbf" onclick="mostrarSeccion('paquete-mensual')" class="pi-menu-item"><i data-lucide="package-check"></i><span>Paquete Mensual</span></button>
             <button id="nav-relacion-mes" data-menu-item data-menu-group="operacion-icbf" onclick="mostrarSeccion('relacion-mes')" class="pi-menu-item"><i data-lucide="table-2"></i><span>Relación del Mes</span></button>
@@ -3452,6 +3454,25 @@
                 </section>
 
 
+                <section id="motor-documental" class="hidden space-y-6 idp-shell">
+                    <div class="idp-card p-6">
+                        <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
+                            <div><p class="idp-eyebrow">Núcleo IDP independiente del proveedor</p><h2 class="mt-2 text-2xl font-semibold text-white flex items-center gap-2"><i data-lucide="scan-text" class="w-6 h-6 text-sky-300"></i> Motor Universal de Lectura y Validación Documental</h2><p class="mt-2 max-w-4xl text-sm text-slate-400">Recibe documentos privados, evita duplicados por huella digital, clasifica, extrae datos nativos y los presenta para revisión humana. En esta fase ninguna aprobación importa información automáticamente.</p></div>
+                            <button type="button" class="idp-btn secondary" onclick="IDPDocumental.load()"><i data-lucide="refresh-cw"></i> Actualizar</button>
+                        </div>
+                        <div id="idp-message" class="hidden mt-4"></div>
+                        <div class="mt-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] items-end">
+                            <div><label class="block text-xs text-slate-400 mb-2">Documento original</label><input id="idp-file" type="file" accept=".xlsx,.xlsm,.docx,.pptx,.pdf,.png,.jpg,.jpeg,.bmp,.tif,.tiff,.heif,.heic" class="idp-input"></div>
+                            <button id="idp-upload" type="button" class="idp-btn primary"><i data-lucide="upload-cloud"></i> Cargar y analizar</button>
+                        </div>
+                        <p class="mt-3 text-xs text-slate-500">Excel, Word y PowerPoint se leen nativamente. PDF con texto usa extracción directa. Fotografías y escaneos se conservan como pendientes de OCR, sin inventar campos. Máximo 50 MB.</p>
+                    </div>
+                    <div class="idp-layout">
+                        <aside class="idp-card p-4"><div class="flex items-center justify-between mb-3"><h3 class="font-semibold text-white">Documentos</h3><span class="text-xs text-slate-500">Por fundación</span></div><div id="idp-documents" class="space-y-2"><div class="idp-empty">Cargando documentos...</div></div></aside>
+                        <div id="idp-detail"><div class="idp-empty">Selecciona un documento para revisar sus resultados.</div></div>
+                    </div>
+                </section>
+
                 <section id="integrity-stability" class="hidden space-y-6 ies-shell">
                     <div class="ies-card p-6">
                         <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
@@ -3671,6 +3692,7 @@
     <script src="./js/modules/centro-planeacion.js?v=2.7.0"></script>
     <script src="./js/modules/componente-psicosocial.js?v=2.7.0"></script>
     <script src="./js/modules/integrity-stability.js?v=2.6.1"></script>
+    <script src="./js/modules/idp-documental.js?v=2.7.0-idp-core-1"></script>
     <script src="./js/modules/panel-principal-institucional.js?v=2.3.0-alpha.51-entregables-sn"></script>
     <script src="./js/modules/buscador-global.js?v=2.3.0-alpha.70-menu"></script>
     <script src="./js/modules/accessibility-pi.js?v=2.3.0-release-a11y-ux"></script>
