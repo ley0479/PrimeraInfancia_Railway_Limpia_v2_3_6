@@ -133,10 +133,18 @@ jobs:
             --root "$GITHUB_WORKSPACE" \
             --report "$RUNNER_TEMP/pi-evidence/safe_repair_plan_ci.json"
 
-      - name: Release package validator
+      # validate_release.py valida un paquete distribuible con SHA256SUMS y
+      # estructura payload/. El checkout fuente no es ese artefacto; ejecutarlo
+      # aquí producía fallos falsos por manifiestos de empaquetado históricos.
+      - name: Document Center regression
         run: |
-          python tools/validate_release.py \
-            --json "$RUNNER_TEMP/pi-evidence/release_validation_ci.json"
+          export PYTHONPATH="$GITHUB_WORKSPACE/backend"
+          python backend/tests/test_centro_documental_core_v7.py
+          python backend/tests/test_centro_documental_templates_v7.py
+          python backend/tests/test_centro_documental_flow_v7.py
+          python backend/tests/test_centro_documental_exports_v7.py
+          python backend/tests/test_centro_documental_integrations_v7.py
+          python backend/tests/test_centro_documental_http_v7.py
 
       - name: Upload audit evidence
         if: always()

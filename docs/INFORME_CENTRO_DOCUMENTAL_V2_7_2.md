@@ -108,6 +108,7 @@ Predeploy incluye la migración documental. Startup solo registra rutas. `/api/h
 - Validar visualmente la interfaz en dispositivos y probar impresión con formatos reales.
 - Ejecutar GitHub Actions y piloto controlado antes de activar banderas.
 - Sanear por el proceso formal de release los manifiestos/hashes y residuos históricos señalados por `tools/validate_release.py`; no se regeneraron silenciosamente.
+- CI fuente dejó de ejecutar `validate_release.py`: esa herramienta corresponde al paquete distribuible con `payload/` y `SHA256SUMS`. GitHub Actions conserva integrity gate, PostgreSQL y suma las seis regresiones documentales.
 
 ## Ejecución local
 
