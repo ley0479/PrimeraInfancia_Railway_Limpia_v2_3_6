@@ -76,6 +76,18 @@ def normalize(value: Any) -> str:
 
 def classify_document(text: str, filename: str) -> tuple[str, float, str]:
     sample = normalize(f'{filename} {text[:15000]}')
+    normalized_filename = normalize(filename)
+    filename_markers = {
+        'LISTADO_ASISTENCIA': ('listado asistencia', 'asistencia'),
+        'RAM': ('formato ram', ' ram '),
+        'RPP': (' rpp ',),
+        'BIENESTARINA': ('bienestarina',),
+        'CRONOGRAMA': ('cronograma',),
+        'PLANEACION_PEDAGOGICA': ('planeacion pedagogica', 'planeacion'),
+        'PESO_TALLA': ('peso talla', 'valoracion nutricional'),
+        'ACTA': ('acta',),
+        'INFORME': ('informe',),
+    }
     rules = [
         ('LISTADO_ASISTENCIA', ('listado de asistencia', 'firma del asistente', 'asistio', 'participantes'), 0.94),
         ('RAM', ('formato ram', 'registro de asistencia mensual', 'f27 mt1 pp'), 0.95),
@@ -92,6 +104,8 @@ def classify_document(text: str, filename: str) -> tuple[str, float, str]:
         hits = sum(1 for token in tokens if token in sample)
         if hits:
             confidence = min(0.99, base - 0.14 + hits * 0.07)
+            if any(marker.strip() in normalized_filename for marker in filename_markers.get(kind, ())):
+                confidence = min(0.99, confidence + 0.15)
             if confidence > best[1]:
                 best = (kind, confidence, f'{hits} regla(s) semantica(s)')
     return best
@@ -312,6 +326,20 @@ PLANNING_LABEL_ALIASES = {
     'recursos':('recursos','materiales'),
     'observaciones':('observaciones','valoracion','evaluacion'),
 }
+MINUTES_LABEL_ALIASES = {
+    'fecha':('fecha','fecha del acta'), 'lugar':('lugar','sitio'), 'hora':('hora','hora de inicio'),
+    'tema':('tema','asunto','objetivo'), 'asistentes':('asistentes','participantes'),
+    'orden_dia':('orden del dia','agenda'), 'desarrollo':('desarrollo','desarrollo de la reunion'),
+    'compromisos':('compromisos','acuerdos'), 'responsable':('responsable','elaboro','convoca'),
+    'firma_referencia':('firmas','firma','firma de asistentes'), 'unidad':('uds','uca','unidad','unidad de servicio'),
+}
+REPORT_LABEL_ALIASES = {
+    'periodo':('periodo','mes','vigencia'), 'fecha':('fecha','fecha del informe'), 'titulo':('titulo','nombre del informe','tema'),
+    'objetivo':('objetivo','objetivo general'), 'actividades':('actividades','actividades realizadas'),
+    'resultados':('resultados','logros','avance'), 'dificultades':('dificultades','situaciones encontradas'),
+    'conclusiones':('conclusiones','conclusion'), 'recomendaciones':('recomendaciones','acciones de mejora'),
+    'responsable':('responsable','elaborado por','profesional'), 'unidad':('uds','uca','unidad','unidad de servicio'),
+}
 
 
 def _mapped_header(value: Any) -> str | None:
@@ -347,6 +375,13 @@ def _planning_label(value: Any) -> str | None:
     text=normalize(value).rstrip(':')
     for field,aliases in PLANNING_LABEL_ALIASES.items():
         if text in aliases or any(len(alias)>=5 and text.startswith(alias) for alias in aliases): return field
+    return None
+
+
+def _label_for(value: Any, aliases: dict[str,tuple[str,...]]) -> str | None:
+    text=normalize(value).rstrip(':')
+    for field,names in aliases.items():
+        if text in names or any(len(name)>=5 and text.startswith(name) for name in names): return field
     return None
 
 
@@ -429,6 +464,25 @@ def _canonicalize_planning(raw: dict, canonical: dict, fields: list[dict]) -> No
     for field,value in planning.items(): fields.append({'ruta':f'planeacion.{field}','valor':value,'texto_original':value,'confianza':.94 if not raw.get('origen_ocr') else .74,'evidencia':evidence.get(field) or {},'regla':'etiqueta_planeacion'})
 
 
+def _canonicalize_labeled_document(raw: dict, canonical: dict, fields: list[dict], key: str, aliases: dict[str,tuple[str,...]]) -> None:
+    data={}; evidence={}; paragraphs=raw.get('parrafos') or []
+    for position,item in enumerate(paragraphs):
+        text=str(item.get('texto') or '').strip(); label_part,value_part=(text.split(':',1)+[''])[:2] if ':' in text else (text,''); field=_label_for(label_part,aliases)
+        if not field: continue
+        value=value_part.strip()
+        if not value and position+1<len(paragraphs) and not _label_for(paragraphs[position+1].get('texto'),aliases): value=str(paragraphs[position+1].get('texto') or '').strip()
+        if value: data[field]=_schedule_date(value) if field=='fecha' else value; evidence[field]={'parrafo':item.get('indice'),'texto':text}
+    for sheet in raw.get('hojas') or []:
+        for row in sheet.get('filas') or []:
+            values=row.get('valores') or []
+            if len(values)<2: continue
+            field=_label_for(values[0],aliases); value=values[1]
+            if field and value not in (None,'') and field not in data: data[field]=_schedule_date(value) if field=='fecha' else str(value).strip(); evidence[field]={'hoja':sheet['nombre'],'fila':row.get('fila'),'columna':2}
+    canonical[key]=data
+    if data.get('unidad'): canonical['unidad_servicio']['nombre']=data['unidad']
+    for field,value in data.items(): fields.append({'ruta':f'{key}.{field}','valor':value,'texto_original':value,'confianza':.93 if not raw.get('origen_ocr') else .73,'evidencia':evidence.get(field) or {},'regla':f'etiqueta_{key}'})
+
+
 def _canonicalize_ocr_attendance(raw: dict, canonical: dict, fields: list[dict]) -> None:
     seen=set()
     for line_number,line in enumerate(str(raw.get('texto') or '').splitlines(),1):
@@ -484,6 +538,8 @@ def canonicalize(raw: dict, document_type: str) -> tuple[dict, list[dict]]:
     if document_type=='CRONOGRAMA': _canonicalize_schedule(raw,canonical,fields)
     if document_type=='PESO_TALLA': _canonicalize_nutrition(raw,canonical,fields)
     if document_type=='PLANEACION_PEDAGOGICA': _canonicalize_planning(raw,canonical,fields)
+    if document_type=='ACTA': _canonicalize_labeled_document(raw,canonical,fields,'acta',MINUTES_LABEL_ALIASES)
+    if document_type=='INFORME': _canonicalize_labeled_document(raw,canonical,fields,'informe',REPORT_LABEL_ALIASES)
     fields.append({'ruta': 'tipo_documento', 'valor': document_type, 'texto_original': document_type, 'confianza': 1.0, 'evidencia': {}, 'regla': 'clasificador_reglas'})
     return canonical, fields
 
@@ -595,10 +651,30 @@ def validate_planning(canonical: dict) -> dict:
     return {'semaforo':'ROJO' if critical else ('AMARILLO' if warnings else 'VERDE'),'errores_criticos':critical,'advertencias':warnings,'coincidencias':len(planning),'total':len(PLANNING_LABEL_ALIASES),'resultados':results}
 
 
+def _validate_labeled(data: dict, key: str, required: tuple[tuple[str,str],...], recommended: tuple[tuple[str,str],...], total_fields: int) -> dict:
+    results=[]
+    for field,label in required:
+        if not data.get(field): results.append({'ruta_canonica':f'{key}.{field}','regla':f'{field.upper()}_REQUERIDO','nivel':'CRITICO','estado':'ERROR','mensaje':f'No se identificó {label}.','esperado':None,'evidencia':{}})
+    for field,label in recommended:
+        if not data.get(field): results.append({'ruta_canonica':f'{key}.{field}','regla':f'{field.upper()}_RECOMENDADO','nivel':'ADVERTENCIA','estado':'REVISAR','mensaje':f'No se identificó {label}; no se completó por suposición.','esperado':None,'evidencia':{}})
+    critical=sum(item['nivel']=='CRITICO' for item in results); warnings=sum(item['nivel']=='ADVERTENCIA' for item in results)
+    return {'semaforo':'ROJO' if critical else ('AMARILLO' if warnings else 'VERDE'),'errores_criticos':critical,'advertencias':warnings,'coincidencias':len(data),'total':total_fields,'resultados':results}
+
+
+def validate_minutes(canonical: dict) -> dict:
+    return _validate_labeled(canonical.get('acta') or {},'acta',(('fecha','fecha del acta'),('tema','tema u objetivo'),('desarrollo','desarrollo de la reunión'),('compromisos','compromisos o acuerdos')),(('responsable','responsable'),('asistentes','asistentes'),('firma_referencia','presencia de firmas')),len(MINUTES_LABEL_ALIASES))
+
+
+def validate_report(canonical: dict) -> dict:
+    return _validate_labeled(canonical.get('informe') or {},'informe',(('objetivo','objetivo del informe'),('actividades','actividades realizadas'),('resultados','resultados'),('conclusiones','conclusiones')),(('periodo','periodo'),('responsable','responsable')),len(REPORT_LABEL_ALIASES))
+
+
 def validate_canonical(database_path: str, tenant_id: int, canonical: dict) -> dict:
     if canonical.get('tipo_documento')=='CRONOGRAMA': return validate_schedule(canonical)
     if canonical.get('tipo_documento')=='PESO_TALLA': return validate_nutrition(database_path,tenant_id,canonical)
     if canonical.get('tipo_documento')=='PLANEACION_PEDAGOGICA': return validate_planning(canonical)
+    if canonical.get('tipo_documento')=='ACTA': return validate_minutes(canonical)
+    if canonical.get('tipo_documento')=='INFORME': return validate_report(canonical)
     return validate_against_master(database_path,tenant_id,canonical)
 
 
