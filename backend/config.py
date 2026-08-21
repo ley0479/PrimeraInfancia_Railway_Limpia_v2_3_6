@@ -114,7 +114,7 @@ def password_policy_errors(password: str, minimum: int = 12) -> list[str]:
 
 class BaseConfig:
     APP_ENV = os.getenv("APP_ENV", os.getenv("FLASK_ENV", "development")).lower()
-    APP_VERSION = os.getenv("APP_VERSION", "2.7.0-centro-planeacion-psicosocial")
+    APP_VERSION = os.getenv("APP_VERSION", "2.7.1-universal-data-mapper")
     BIBLIOTECA_REMOTE_CHECKS_ENABLED = os.getenv("BIBLIOTECA_REMOTE_CHECKS_ENABLED", "false").lower() in {"1", "true", "si", "sí"}
     BIBLIOTECA_ALLOWED_DOMAINS = os.getenv("BIBLIOTECA_ALLOWED_DOMAINS", "icbf.gov.co,www.icbf.gov.co")
     MOTOR_GESTION_ENABLED = os.getenv("MOTOR_GESTION_ENABLED", "true").lower() in {"1", "true", "si", "sí"}
@@ -136,6 +136,8 @@ class BaseConfig:
     METRICS_ENABLED = env_bool("METRICS_ENABLED", True)
     ENABLE_CREDIT_ENFORCEMENT = env_bool("ENABLE_CREDIT_ENFORCEMENT", False)
     ENABLE_CREDIT_ALERTS = env_bool("ENABLE_CREDIT_ALERTS", True)
+    ENABLE_UNIVERSAL_DATA_MAPPER = env_bool("ENABLE_UNIVERSAL_DATA_MAPPER", False)
+    UNIVERSAL_IMPORT_MAX_BYTES = env_int("UNIVERSAL_IMPORT_MAX_BYTES", 52_428_800)
     METRICS_TOKEN = os.getenv("METRICS_TOKEN", "").strip()
     READINESS_MAX_DB_LATENCY_MS = env_int("READINESS_MAX_DB_LATENCY_MS", 2000)
     OBSERVABILITY_SLOW_REQUEST_MS = env_int("OBSERVABILITY_SLOW_REQUEST_MS", 2000)

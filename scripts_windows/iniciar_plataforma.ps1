@@ -168,7 +168,7 @@ Write-Host "Base seleccionada: $DatabaseBackend ($SafeDb)"
 # Variables de aplicación. El proceso backend hereda este entorno; no se escriben secretos en el script hijo.
 $env:APP_ENV = 'development'
 $env:FLASK_ENV = 'development'
-$env:APP_VERSION = '2.7.0-centro-planeacion-psicosocial'
+$env:APP_VERSION = '2.7.1-universal-data-mapper'
 $env:SERVER_MODE = if ($TunnelMode) { 'TUNEL_ONLINE' } else { 'LOCAL' }
 $env:PUBLIC_TUNNEL_MODE = if ($TunnelMode) { 'true' } else { 'false' }
 $env:PROJECT_INSTANCE_ID = $ProjectInstanceId

@@ -170,7 +170,7 @@ def test_tunnel_host_login() -> None:
 
 
 def test_static_contracts() -> None:
-    env = require(".env.example", "APP_VERSION=2.7.0-centro-planeacion-psicosocial", "PROJECT_INSTANCE_ID=")
+    env = require(".env.example", "APP_VERSION=2.7.1-universal-data-mapper", "PROJECT_INSTANCE_ID=")
     assert_true("AdminLocal2026*" not in env, ".env.example contiene credencial local")
 
     require("INICIAR_PLATAFORMA_LOCAL.bat", "iniciar_plataforma.ps1", "-Mode Local")

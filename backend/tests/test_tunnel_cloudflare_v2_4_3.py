@@ -83,7 +83,7 @@ def main() -> None:
     require(
         launcher,
         "PRIMERA INFANCIA 2.7.0",
-        "$env:APP_VERSION = '2.7.0-centro-planeacion-psicosocial'",
+        "$env:APP_VERSION = '2.7.1-universal-data-mapper'",
         "/api/health",
         "PROJECT_INSTANCE_ID",
     )
@@ -107,7 +107,7 @@ def main() -> None:
     require(read("DIAGNOSTICAR_TUNEL_CLOUDFLARE.bat"), "diagnosticar_login_tunel.ps1")
 
     env = read(".env.example")
-    require(env, "APP_VERSION=2.7.0-centro-planeacion-psicosocial")
+    require(env, "APP_VERSION=2.7.1-universal-data-mapper")
 
     print("PASS test_tunnel_cloudflare_v2_4_3")
 

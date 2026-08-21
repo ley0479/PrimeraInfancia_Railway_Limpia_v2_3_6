@@ -13,6 +13,7 @@ if str(BACKEND) not in sys.path:
 
 from services.data_import import UniversalMappingService
 from services.data_import.normalizers import normalize_header, normalize_unit_code
+from services.data_import.file_security import validate_tabular_source
 
 
 HEADERS = [
@@ -101,6 +102,14 @@ class UniversalMapperRegressionTests(unittest.TestCase):
             decision = confirmed["mapping"]["unidad.nombre"]
             self.assertEqual(decision["selected"]["column_id"], unit_name["id"])
             self.assertIn("administrator_confirmed", decision["selected"]["reasons"])
+
+    def test_real_signature_is_checked(self):
+        with tempfile.TemporaryDirectory() as folder:
+            fake = Path(folder) / "fake.xlsx"; fake.write_text("not an excel", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "firma real"):
+                validate_tabular_source(str(fake), ".xlsx")
+            valid = Path(folder) / "valid.xlsx"; build_fixture(valid)
+            self.assertTrue(validate_tabular_source(str(valid), ".xlsx")["signature_valid"])
 
 
 if __name__ == "__main__":

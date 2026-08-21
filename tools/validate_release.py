@@ -879,7 +879,7 @@ def check_security_text_invariants() -> None:
         "TENANT_STORAGE_ISOLATION=true",
         "MULTI_TENANT_SCHEMA_VERSION=3",
         "SYNC_MANAGED_TEMPLATES=true",
-        "APP_VERSION=2.7.0-centro-planeacion-psicosocial",
+        "APP_VERSION=2.7.1-universal-data-mapper",
         "REQUIRE_POSTGRESQL_IN_PRODUCTION=true",
         "INTEGRITY_ENGINE_ENABLED=true",
         "METRICS_ENABLED=true",
@@ -1348,7 +1348,7 @@ def main() -> int:
     skipped = [item for item in RESULTS if item["status"] == "SKIP"]
     summary = {
         "root": ROOT.name,
-        "version": "2.7.0-centro-planeacion-psicosocial",
+        "version": "2.7.1-universal-data-mapper",
         "generated_at": "2026-08-06",
         "checks": len(RESULTS),
         "passed": sum(item["status"] == "PASS" for item in RESULTS),

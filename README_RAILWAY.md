@@ -149,7 +149,7 @@ Use `.env.example` únicamente como inventario. En Railway configure, como míni
 
 ```env
 APP_ENV=production
-APP_VERSION=2.7.0-centro-planeacion-psicosocial
+APP_VERSION=2.7.1-universal-data-mapper
 DATA_DIR=/data
 DATABASE_URL=postgresql://USUARIO:PASSWORD@HOST:5432/BASE
 REQUIRE_POSTGRESQL_IN_PRODUCTION=true
@@ -432,3 +432,22 @@ Antes de datos reales, ejecute la prueba de aceptación con dos fundaciones desc
 - El frontend heredado todavía utiliza Tailwind Play CDN; para una operación final debe compilarse CSS estático.
 - La entrega está sanitizada, pero la privacidad futura depende de los archivos y datos que los usuarios carguen.
 - Antes de información real, pruebe roles, bloqueo, respaldos, restauración, persistencia, descarga y manejo de incidentes.
+
+## 17. Motor Universal de bases tabulares
+
+El predeploy crea de forma aditiva las tablas de importación, perfiles, staging, auditoría e identificadores externos. El importador anterior permanece disponible. Para el piloto, configure:
+
+```env
+ENABLE_UNIVERSAL_DATA_MAPPER=true
+UNIVERSAL_IMPORT_MAX_BYTES=52428800
+```
+
+La activación debe hacerse únicamente después de que el predeploy termine correctamente. Flujo de comprobación:
+
+```bash
+PYTHONPATH=backend python backend/tests/test_universal_data_mapper_regression.py
+PYTHONPATH=backend python backend/tests/test_universal_import_http_contract.py
+PYTHONPATH=backend python backend/tests/test_universal_import_e2e_sqlite.py
+```
+
+En Base Maestra, use “Motor Universal de Lectura y Mapeo”, revise la hoja y los campos propuestos, guarde el mapeo, valide e importe al staging. La publicación sigue requiriendo consolidar y publicar expresamente desde Base Maestra.

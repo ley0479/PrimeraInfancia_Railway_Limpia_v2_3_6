@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from pathlib import Path
 
 from flask import Blueprint, g, jsonify, request
@@ -10,6 +11,7 @@ from modules.seguridad.services import require_roles
 from modules.seguridad.tenant_context import current_tenant_id, tenant_path
 from services.data_import import UniversalMappingService
 from services.data_import.service import file_sha256
+from services.data_import.file_security import validate_tabular_source
 
 from .repository import UniversalImportRepository
 
@@ -36,12 +38,21 @@ def register_importaciones_universales(app, database_path: str, upload_folder: s
         ext=Path(file.filename).suffix.lower()
         if ext not in ALLOWED: return jsonify({"error":"Formato tabular no permitido."}),400
         tenant,user_id=context(); os.makedirs(storage,exist_ok=True)
-        name=secure_filename(file.filename) or f"fuente{ext}"; path=Path(os.fspath(storage))/name; file.save(path)
+        limit=int(app.config.get("UNIVERSAL_IMPORT_MAX_BYTES",os.getenv("UNIVERSAL_IMPORT_MAX_BYTES","52428800")))
+        if request.content_length and request.content_length > limit: return jsonify({"error":"El archivo excede el tamaño permitido."}),413
+        safe=secure_filename(file.filename) or f"fuente{ext}"; name=f"{uuid.uuid4().hex}_{safe}"; path=Path(os.fspath(storage))/name; file.save(path)
+        if path.stat().st_size > limit:
+            path.unlink(missing_ok=True); return jsonify({"error":"El archivo excede el tamaño permitido."}),413
+        try: security=validate_tabular_source(str(path),ext)
+        except ValueError as exc:
+            path.unlink(missing_ok=True); return jsonify({"error":str(exc)}),400
         digest=file_sha256(str(path)); previous=repo.find_hash(tenant,digest)
-        if previous: return jsonify({"error":"Este archivo ya fue importado anteriormente.","importacion_id":previous["id"],"estado":previous["estado"]}),409
+        if previous:
+            path.unlink(missing_ok=True); return jsonify({"error":"Este archivo ya fue importado anteriormente.","importacion_id":previous["id"],"estado":previous["estado"]}),409
         import_id=repo.create({"tenant_id":tenant,"usuario_id":user_id,"nombre_archivo":file.filename,"nombre_guardado":name,"tipo_archivo":ext,"hash_sha256":digest})
         try:
             service=UniversalMappingService(); result=service.analyze(str(path),request.form.get("tabla") or None)
+            result["source_security"]=security
             reusable=repo.confirmed_mapping(tenant,result["structure_fingerprint"])
             if reusable:
                 result=service.analyze(str(path),result["selected_table"],reusable)
@@ -64,6 +75,20 @@ def register_importaciones_universales(app, database_path: str, upload_folder: s
     def tables(import_id):
         tenant,_=context(); item=repo.get(import_id,tenant)
         return (jsonify({"tablas":item["resultado"].get("inspection",{}).get("tables",[])}),200) if item else (jsonify({"error":"Importación no encontrada."}),404)
+
+    @bp.put("/<int:import_id>/tabla")
+    @require_roles(*ROLES)
+    def select_table(import_id):
+        tenant,_=context(); item=repo.get(import_id,tenant); data=request.get_json(silent=True) or {}; table=data.get("table_id")
+        if not item: return jsonify({"error":"Importación no encontrada."}),404
+        available={entry["id"] for entry in item["resultado"].get("inspection",{}).get("tables",[])}
+        if table not in available: return jsonify({"error":"La hoja o tabla seleccionada no existe."}),400
+        path=Path(os.fspath(storage))/item["nombre_guardado"]
+        try:
+            service=UniversalMappingService(); result=service.analyze(str(path),table)
+            state=repo.update_analysis(import_id,tenant,result); total=repo.replace_staging(import_id,tenant,service.staging_rows(str(path),result))
+            return jsonify({"importacion_id":import_id,"estado":state,"staged_rows":total,**result}),200
+        except Exception as exc: return jsonify({"error":f"No se pudo cambiar la tabla: {exc}"}),400
 
     @bp.get("/<int:import_id>/mapeo")
     @require_roles(*ROLES,"COORDINADOR")
