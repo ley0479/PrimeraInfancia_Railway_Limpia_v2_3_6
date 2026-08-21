@@ -151,9 +151,10 @@ class CentroDocumentalRepository:
             if not connection.execute("SELECT id FROM doc_instancias WHERE id=? AND fundacion_id=?",(instance_id,tenant)).fetchone(): raise KeyError("Documento no encontrado.")
             number=int(connection.execute("SELECT COALESCE(MAX(version),0)+1 n FROM doc_versiones WHERE documento_id=? AND fundacion_id=?",(instance_id,tenant)).fetchone()["n"])
             cursor=connection.execute("INSERT INTO doc_versiones(documento_id,fundacion_id,version,estado,contenido_json,archivo_word,archivo_pdf,hash_sha256,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?)",(instance_id,tenant,number,"GENERADA",json.dumps(content,ensure_ascii=False),word_path,pdf_path,digest,user_id,now_iso()))
+            version_id=int(cursor.lastrowid)
             connection.execute("UPDATE doc_instancias SET version_actual=?,actualizado_en=? WHERE id=? AND fundacion_id=?",(number,now_iso(),instance_id,tenant)); connection.commit()
-        self.audit(tenant,"DOCUMENTO_VERSION",int(cursor.lastrowid),"GENERADA",user_id,{"documento_id":instance_id,"version":number})
-        return {"id":int(cursor.lastrowid),"version":number,"archivo_word":word_path,"archivo_pdf":pdf_path,"sha256":digest}
+        self.audit(tenant,"DOCUMENTO_VERSION",version_id,"GENERADA",user_id,{"documento_id":instance_id,"version":number})
+        return {"id":version_id,"version":number,"archivo_word":word_path,"archivo_pdf":pdf_path,"sha256":digest}
 
     def get_generated_version(self, instance_id: int, tenant: int, number: int | None = None) -> dict | None:
         with self.connect() as connection:

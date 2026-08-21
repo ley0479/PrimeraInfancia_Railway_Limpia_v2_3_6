@@ -33,6 +33,9 @@ def run():
         evidence=root/"foto.jpg"; evidence.write_bytes(b"fake-image-content"); digest=hashlib.sha256(evidence.read_bytes()).hexdigest()
         saved=repo.add_evidence(document["id"],1,{"actividad_id":50,"requisito":"FOTO","nombre_original":"foto.jpg","nombre_seguro":"safe.jpg","ruta_privada":str(evidence),"mime_type":"image/jpeg","tamano_bytes":evidence.stat().st_size,"hash_sha256":digest},1)
         assert saved["version"]==1 and repo.get_evidence(saved["id"],2) is None and len(repo.list_evidence(document["id"],1))==1
+        generated=repo.record_version(document["id"],1,{"estado":"BORRADOR"},"documento.docx",None,"abc123",1)
+        assert generated["id"]>0 and generated["version"]==1
+        assert repo.get_generated_version(document["id"],1)["id"]==generated["id"]
     print("PASS test_centro_documental_integrations_v7")
 
 
