@@ -7,7 +7,7 @@ import os
 import json
 
 from openpyxl import Workbook
-from PIL import Image
+from PIL import Image,ImageDraw
 from docx import Document
 
 from modules.idp_documental.repository import IDPRepository
@@ -175,10 +175,16 @@ def main():
         try: repo.approve(invalid_id,1,10)
         except ValueError: invalid_blocked=True
         require(invalid_blocked,'Permitio aprobar inconsistencias criticas')
-        image_path=root/'foto_asistencia.jpg'; Image.new('RGB',(1200,1600),'white').save(image_path)
+        image_path=root/'foto_asistencia.jpg'; image=Image.new('RGB',(1200,1600),'white'); drawing=ImageDraw.Draw(image); drawing.rectangle((80,80,1120,1520),outline='black',width=6)
+        for line,text in enumerate(['LISTADO DE ASISTENCIA','Nombre Documento UDS Firma','ANA PEREZ 1001 UCA 1 SI']*8): drawing.text((120,140+line*52),text,fill='black')
+        image.save(image_path)
         image_id,_=create(repo,1,image_path)
         image_doc=repo.get_document(image_id,1)
         require(image_doc['estado']=='REQUIERE_OCR','La imagen no quedo pendiente de OCR')
+        blank_path=root/'foto_blanca.jpg'; Image.new('RGB',(1200,1600),'white').save(blank_path); blank_raw=read_document_ocr(blank_path)
+        require(blank_raw['motor']=='CONTROL_CALIDAD' and blank_raw['calidad']['rechazo_automatico'],'No rechazo una imagen sin contraste')
+        low_path=root/'foto_pequena.jpg'; Image.new('RGB',(400,500),'gray').save(low_path); low_raw=read_document_ocr(low_path)
+        require('RESOLUCION_INSUFICIENTE' in low_raw['calidad']['problemas'],'No rechazo resolucion insuficiente')
         class AzureResponse:
             def __init__(self,status_code,payload=None,headers=None): self.status_code=status_code; self._payload=payload or {}; self.headers=headers or {}
             def json(self): return self._payload

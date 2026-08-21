@@ -190,16 +190,33 @@ def _ocr_image_text(image) -> str:
         raise RuntimeError('OCR local no disponible. Instala y configura el ejecutable Tesseract.') from exc
 
 
+def analyze_image_quality(image) -> dict:
+    from PIL import ImageFilter,ImageStat
+    sample=image.convert('L').copy(); sample.thumbnail((1200,1200))
+    stats=ImageStat.Stat(sample); brightness=float(stats.mean[0]); contrast=float(stats.stddev[0])
+    sharpness=float(ImageStat.Stat(sample.filter(ImageFilter.FIND_EDGES)).var[0])
+    issues=[]
+    if min(image.size)<600: issues.append('RESOLUCION_INSUFICIENTE')
+    if contrast<4: issues.append('CONTRASTE_INSUFICIENTE')
+    if brightness<10: issues.append('IMAGEN_DEMASIADO_OSCURA')
+    if brightness>252: issues.append('IMAGEN_SOBREEXPUESTA')
+    if sharpness<2: issues.append('POSIBLE_DESENFOQUE')
+    critical=any(issue in issues for issue in {'RESOLUCION_INSUFICIENTE','CONTRASTE_INSUFICIENTE','IMAGEN_DEMASIADO_OSCURA','IMAGEN_SOBREEXPUESTA'})
+    return {'ancho_px':image.width,'alto_px':image.height,'legible':not critical,'requiere_revision':bool(issues) or min(image.size)<1200,'brillo':round(brightness,2),'contraste':round(contrast,2),'nitidez_bordes':round(sharpness,2),'problemas':issues,'rechazo_automatico':critical}
+
+
 def read_document_ocr(path: Path) -> dict:
     ext=path.suffix.lower(); pages=[]; fragments=[]
     if ext in IMAGE_EXTENSIONS:
         from PIL import Image,ImageOps
         with Image.open(path) as source:
             image=ImageOps.exif_transpose(source).convert('RGB')
-            quality={'ancho_px':image.width,'alto_px':image.height,'legible':min(image.size)>=800,'requiere_revision':min(image.size)<1200}
-            if min(image.size)<600:
-                return {'motor':'CONTROL_CALIDAD','texto':'','requiere_ocr':True,'calidad':quality,'advertencia':'La imagen tiene resolución insuficiente. Toma otra fotografía completa y nítida.'}
-            text=_ocr_image_text(image); fragments.append(text); pages.append({'pagina':1,'texto':text})
+            quality=analyze_image_quality(image)
+            if quality['rechazo_automatico']:
+                return {'motor':'CONTROL_CALIDAD','texto':'','requiere_ocr':True,'calidad':quality,'advertencia':'La fotografía no cumple la calidad mínima. Toma una imagen completa, enfocada, bien iluminada y con mayor resolución.'}
+            prepared=ImageOps.autocontrast(image.convert('L')).convert('RGB')
+            quality['correcciones_aplicadas']=['ORIENTACION_EXIF','AUTOCONTRASTE']
+            text=_ocr_image_text(prepared); fragments.append(text); pages.append({'pagina':1,'texto':text})
     elif ext=='.pdf':
         try: import fitz
         except Exception as exc: raise RuntimeError('PyMuPDF no está disponible para convertir el PDF escaneado.') from exc
@@ -285,9 +302,10 @@ def read_document(path: Path) -> dict:
     if ext in IMAGE_EXTENSIONS:
         quality = {'legible': None, 'requiere_revision': True}
         try:
-            from PIL import Image
+            from PIL import Image,ImageOps
             with Image.open(path) as image:
-                quality.update({'ancho_px': image.width, 'alto_px': image.height, 'modo': image.mode, 'legible': min(image.size) >= 800})
+                corrected=ImageOps.exif_transpose(image)
+                quality=analyze_image_quality(corrected); quality['modo']=corrected.mode
         except Exception:
             pass
         return {'motor': 'IMAGEN_PENDIENTE_OCR', 'texto': '', 'requiere_ocr': True, 'calidad': quality}
