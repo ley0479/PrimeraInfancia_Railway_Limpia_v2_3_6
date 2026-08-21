@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
-from .services import connect, init_schema, now_iso, public_document, validate_against_master
+from .services import connect, init_schema, now_iso, public_document, resolve_official_template_version, validate_against_master
 
 
 def _assign_path(root: dict, dotted_path: str, value: Any) -> None:
@@ -107,6 +107,9 @@ class IDPRepository:
     def complete_extraction(self, document_id: int, tenant_id: int, raw: dict, canonical: dict, fields: list[dict], classification: tuple[str,float,str], user_id=None):
         kind, confidence, rule = classification; now = now_iso()
         needs_ocr = bool(raw.get('requiere_ocr'))
+        template_version=resolve_official_template_version(self.database_path,tenant_id,kind)
+        canonical['version_plantilla']=template_version.get('version') if template_version else None
+        canonical.setdefault('metadatos',{})['plantilla_oficial']=template_version
         validation = validate_against_master(self.database_path,tenant_id,canonical) if not needs_ocr else {'semaforo':'GRIS','errores_criticos':0,'advertencias':1,'coincidencias':0,'total':0,'resultados':[{'ruta_canonica':'documento','regla':'OCR_REQUERIDO','nivel':'ADVERTENCIA','estado':'PENDIENTE','mensaje':'Conecte un motor OCR para continuar.','esperado':None,'evidencia':{}}]}
         status = 'REQUIERE_OCR' if needs_ocr else 'REQUIERE_REVISION'
         conn = connect(self.database_path)
@@ -116,7 +119,7 @@ class IDPRepository:
         self._store_validations(conn,document_id,tenant_id,validation,now)
         conn.execute("UPDATE idp_ejecuciones SET etapa=?,estado='COMPLETADO',motor=?,fin=? WHERE documento_id=? AND fundacion_id=? AND estado='EN_PROCESO'",('PENDIENTE_OCR' if needs_ocr else 'REVISION_HUMANA',raw.get('motor'),now,document_id,tenant_id))
         conn.commit(); conn.close()
-        self.audit(tenant_id,'EXTRACCION_COMPLETADA',document_id,user_id,'REVISION_HUMANA',status,{'motor':raw.get('motor'),'tipo_documento':kind,'confianza_clasificacion':confidence,'regla_clasificacion':rule,'campos':len(fields)})
+        self.audit(tenant_id,'EXTRACCION_COMPLETADA',document_id,user_id,'REVISION_HUMANA',status,{'motor':raw.get('motor'),'tipo_documento':kind,'confianza_clasificacion':confidence,'regla_clasificacion':rule,'campos':len(fields),'plantilla_version_id':template_version.get('id') if template_version else None})
 
     def restart_extraction(self, document_id: int, tenant_id: int, user_id=None):
         conn=connect(self.database_path); row=conn.execute("SELECT id FROM idp_documentos WHERE id=? AND fundacion_id=?",(document_id,tenant_id)).fetchone()

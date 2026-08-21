@@ -37,6 +37,9 @@ def main():
         conn.execute("INSERT INTO master_ninos VALUES(1,'1001','ANA PEREZ','UCA 1','ACTIVO',1,1)")
         conn.execute("INSERT INTO master_ninos VALUES(2,'1002','LUIS DIAZ','UCA 1','ACTIVO',1,1)")
         conn.execute("INSERT INTO master_ninos VALUES(3,'1001','OTRA FUNDACION','UCA X','ACTIVO',1,2)")
+        conn.execute("CREATE TABLE plantillas_oficiales_versiones(id INTEGER PRIMARY KEY,tipo_formato TEXT,codigo TEXT,nombre TEXT,version TEXT,fecha_vigencia TEXT,fecha_vigencia_fin TEXT,estado TEXT,hash_sha256 TEXT,mapeo_json TEXT,fundacion_id INTEGER,updated_at TEXT)")
+        conn.execute("INSERT INTO plantillas_oficiales_versiones VALUES(1,'LISTADO_ASISTENCIA_USUARIOS','ICBF-ASIS','Asistencia oficial','2026.03','2026-03-01',NULL,'vigente','hash-tenant-1','{\"campos\":{\"documento\":{}}}',1,'2026-03-01')")
+        conn.execute("INSERT INTO plantillas_oficiales_versiones VALUES(2,'LISTADO_ASISTENCIA_USUARIOS','ICBF-ASIS','Otra fundacion','2099.01','2099-01-01',NULL,'vigente','hash-tenant-2','{}',2,'2099-01-01')")
         conn.commit(); conn.close()
         document_id,digest=create(repo,1,book)
         item=repo.get_document(document_id,1)
@@ -44,6 +47,8 @@ def main():
         require(item['estado']=='REQUIERE_REVISION','Estado incorrecto')
         require(len(item['resultado_canonico']['participantes'])==2,'No extrajo participantes')
         require(item['resultado_canonico']['participantes'][0]['documento']=='1001','Documento mal mapeado')
+        require(item['resultado_canonico']['version_plantilla']=='2026.03','No vinculo la version oficial del tenant')
+        require(item['resultado_canonico']['metadatos']['plantilla_oficial']['id']==1,'Mezclo versiones oficiales entre fundaciones')
         require(item['validaciones']['semaforo']=='VERDE','La planilla valida no quedo en verde')
         require(item['validaciones']['coincidencias']==2,'No valido los participantes contra Base Maestra')
         generation_blocked=False

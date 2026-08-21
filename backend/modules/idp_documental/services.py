@@ -349,6 +349,26 @@ def _document_key(value: Any) -> str:
     return re.sub(r'[^A-Za-z0-9]', '', str(value or '')).upper()
 
 
+def resolve_official_template_version(database_path: str, tenant_id: int, document_type: str) -> dict | None:
+    aliases={
+        'LISTADO_ASISTENCIA':('LISTADO_ASISTENCIA','LISTADO_ASISTENCIA_USUARIOS','ASISTENCIA_USUARIOS'),
+        'RAM':('RAM','RAN','RRAN'),
+        'RPP':('RPP','RPP','RPP'),
+        'BIENESTARINA':('BIENESTARINA','BIENESTARINA','BIENESTARINA'),
+    }.get(str(document_type or '').upper(),(str(document_type or '').upper(),)*3)
+    try:
+        conn=connect(database_path)
+        row=conn.execute("""SELECT id,tipo_formato,codigo,nombre,version,fecha_vigencia,fecha_vigencia_fin,estado,hash_sha256,mapeo_json FROM plantillas_oficiales_versiones WHERE COALESCE(fundacion_id,1)=? AND UPPER(tipo_formato) IN (?,?,?) AND LOWER(COALESCE(estado,'')) IN ('vigente','activa','publicada') ORDER BY COALESCE(fecha_vigencia,'') DESC,COALESCE(updated_at,'') DESC,id DESC LIMIT 1""",(tenant_id,*aliases)).fetchone(); conn.close()
+    except Exception:
+        return None
+    if not row: return None
+    item=dict(row)
+    try: mapping=json.loads(item.pop('mapeo_json',None) or '{}')
+    except Exception: mapping={}
+    item['mapeo_resumen']={'campos':len(mapping.get('fields') or mapping.get('campos') or mapping) if isinstance(mapping,dict) else 0}
+    return item
+
+
 def validate_against_master(database_path: str, tenant_id: int, canonical: dict) -> dict:
     participants = list(canonical.get('participantes') or [])
     results: list[dict] = []
