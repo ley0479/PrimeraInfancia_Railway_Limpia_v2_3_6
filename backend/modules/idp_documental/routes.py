@@ -98,6 +98,20 @@ def register_idp_documental(app, database_path: str, data_dir: str) -> None:
         repo.audit(user['fundacion_id'],'DOCUMENTO_DESCARGADO',document_id,user['id'],'REVISION_HUMANA',conn.get('estado'))
         return send_file(path,as_attachment=True,download_name=row['nombre_original'])
 
+    @bp.route('/documentos/<int:document_id>/vista-previa', methods=['GET'])
+    @require_roles(*ALLOWED_ROLES)
+    def preview_original(document_id: int):
+        user=_user(); db=connect(database_path); row=db.execute('SELECT ruta_privada,nombre_original,extension,estado FROM idp_documentos WHERE id=? AND fundacion_id=?',(document_id,user['fundacion_id'])).fetchone(); db.close()
+        if not row: return jsonify({'error':'Documento no encontrado.'}),404
+        if str(row['extension']).lower() not in ({'.pdf'} | {'.png','.jpg','.jpeg','.bmp','.tif','.tiff','.heif','.heic'}):
+            return jsonify({'error':'Este formato se revisa mediante descarga del original.'}),415
+        path=Path(row['ruta_privada'])
+        if not path.exists(): return jsonify({'error':'Original privado no disponible.'}),404
+        repo.audit(user['fundacion_id'],'DOCUMENTO_VISUALIZADO',document_id,user['id'],'REVISION_HUMANA',row['estado'])
+        response=send_file(path,as_attachment=False,download_name=row['nombre_original'],conditional=True)
+        response.headers['Cache-Control']='private, no-store, max-age=0'; response.headers['Pragma']='no-cache'
+        return response
+
     @bp.route('/documentos/<int:document_id>/campos/<int:field_id>', methods=['PATCH'])
     @require_roles(*ALLOWED_ROLES)
     def correct_field(document_id: int, field_id: int):
