@@ -108,6 +108,14 @@ def main():
         invalid_nutrition=root/'FORMATO_PESO_TALLA_INVALIDO.xlsx'; invalid_nutrition_wb=Workbook(); invalid_nutrition_ws=invalid_nutrition_wb.active; invalid_nutrition_ws.append(['PESO KG TALLA CM VALORACION NUTRICIONAL']); invalid_nutrition_ws.append(['Fecha','Nombre','Documento','Peso','Talla']); invalid_nutrition_ws.append(['20/08/2026','ANA PEREZ','1001','999','10']); invalid_nutrition_wb.save(invalid_nutrition)
         invalid_nutrition_id,_=create(repo,1,invalid_nutrition); invalid_nutrition_doc=repo.get_document(invalid_nutrition_id,1)
         require(invalid_nutrition_doc['validaciones']['semaforo']=='ROJO' and invalid_nutrition_doc['validaciones']['errores_criticos']>=2,'No bloqueo rangos nutricionales imposibles')
+        planning_word=root/'PLANEACION_PEDAGOGICA.docx'; planning=Document(); planning.add_heading('PLANEACION PEDAGOGICA',0); planning.add_paragraph('UDS: UCA 1'); planning.add_paragraph('Fecha programada: 22/08/2026'); planning.add_paragraph('Tema: Los colores de mi entorno'); planning.add_paragraph('Intencionalidad pedagógica: Fortalecer la exploración y expresión creativa'); planning.add_paragraph('Experiencia pedagógica: Recorrido guiado y creación con materiales del entorno'); planning.add_paragraph('Responsable: Docente titular'); planning.add_paragraph('Recursos: Papel, colores y elementos naturales'); planning.save(planning_word)
+        planning_id,_=create(repo,1,planning_word); planning_doc=repo.get_document(planning_id,1); planning_data=planning_doc['resultado_canonico']['planeacion']
+        require(planning_doc['tipo_documento']=='PLANEACION_PEDAGOGICA','No clasifico la planeacion pedagogica')
+        require(planning_data['fecha_programada']=='2026-08-22' and 'exploración' in planning_data['objetivo'],'No estructuro los campos de planeacion')
+        require(planning_doc['validaciones']['semaforo']=='VERDE','Marco incorrectamente la planeacion completa')
+        incomplete_planning=root/'PLANEACION_PEDAGOGICA_INCOMPLETA.docx'; incomplete=Document(); incomplete.add_paragraph('PLANEACION PEDAGOGICA'); incomplete.add_paragraph('Tema: Actividad sin desarrollo'); incomplete.save(incomplete_planning)
+        incomplete_id,_=create(repo,1,incomplete_planning); incomplete_doc=repo.get_document(incomplete_id,1)
+        require(incomplete_doc['validaciones']['semaforo']=='ROJO' and incomplete_doc['validaciones']['errores_criticos']>=2,'No bloqueo planeacion sin intencionalidad ni experiencia')
         invalid_book=root/'LISTADO_ASISTENCIA_INVALIDO.xlsx'
         invalid_wb=Workbook(); invalid_ws=invalid_wb.active; invalid_ws.append(['LISTADO DE ASISTENCIA']); invalid_ws.append(['Nombre completo','Documento','UDS','Asistio']); invalid_ws.append(['PERSONA INEXISTENTE','9999','UCA 1','SI']); invalid_wb.save(invalid_book)
         invalid_id,_=create(repo,1,invalid_book)

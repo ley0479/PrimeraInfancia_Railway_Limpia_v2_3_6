@@ -298,6 +298,20 @@ NUTRITION_HEADER_ALIASES = {
     'perimetro_braquial_cm':('perimetro braquial','perimetro braquial cm','pb cm'),
     'unidad':('uds','uca','unidad','unidad de servicio'),
 }
+PLANNING_LABEL_ALIASES = {
+    'unidad':('uds','uca','unidad','unidad de servicio'),
+    'periodo':('periodo','mes','vigencia'),
+    'tema':('tema','nombre de la experiencia','titulo'),
+    'objetivo':('objetivo','intencionalidad','intencionalidad pedagogica','proposito'),
+    'actividad':('actividad','experiencia pedagogica','experiencia','desarrollo'),
+    'fecha_programada':('fecha','fecha programada','fecha de realizacion'),
+    'poblacion_objetivo':('poblacion objetivo','grupo etario','participantes'),
+    'evidencia_requerida':('evidencia','evidencia requerida','entregables','soportes'),
+    'tipo_encuentro':('tipo de encuentro','tipo actividad','modalidad'),
+    'responsable':('responsable','docente','agente educativo','th a cargo'),
+    'recursos':('recursos','materiales'),
+    'observaciones':('observaciones','valoracion','evaluacion'),
+}
 
 
 def _mapped_header(value: Any) -> str | None:
@@ -327,6 +341,13 @@ def _numeric_measure(value: Any) -> float | None:
     match=re.search(r'-?\d+(?:[.,]\d+)?',str(value).replace(' ','').replace(',','.'))
     try: return float(match.group(0)) if match else None
     except ValueError: return None
+
+
+def _planning_label(value: Any) -> str | None:
+    text=normalize(value).rstrip(':')
+    for field,aliases in PLANNING_LABEL_ALIASES.items():
+        if text in aliases or any(len(alias)>=5 and text.startswith(alias) for alias in aliases): return field
+    return None
 
 
 def _schedule_date(value: Any) -> str | None:
@@ -376,6 +397,36 @@ def _canonicalize_nutrition(raw: dict, canonical: dict, fields: list[dict]) -> N
                     canonical['valoraciones'].append(record)
                     if record.get('unidad'): canonical['unidad_servicio'].setdefault('nombre',record['unidad'])
             return
+
+
+def _canonicalize_planning(raw: dict, canonical: dict, fields: list[dict]) -> None:
+    planning={}; evidence={}
+    paragraphs=raw.get('parrafos') or []
+    for position,item in enumerate(paragraphs):
+        text=str(item.get('texto') or '').strip(); label_part,value_part=(text.split(':',1)+[''])[:2] if ':' in text else (text,'')
+        field=_planning_label(label_part)
+        if not field: continue
+        value=value_part.strip()
+        if not value and position+1<len(paragraphs) and not _planning_label(paragraphs[position+1].get('texto')): value=str(paragraphs[position+1].get('texto') or '').strip()
+        if value: planning[field]=_schedule_date(value) if field=='fecha_programada' else value; evidence[field]={'parrafo':item.get('indice'),'texto':text}
+    for sheet in raw.get('hojas') or []:
+        rows=sheet.get('filas') or []
+        for row in rows:
+            values=row.get('valores') or []
+            if len(values)>=2:
+                field=_planning_label(values[0]); value=values[1]
+                if field and value not in (None,'') and field not in planning: planning[field]=_schedule_date(value) if field=='fecha_programada' else str(value).strip(); evidence[field]={'hoja':sheet['nombre'],'fila':row.get('fila'),'columna':2}
+        for position,row in enumerate(rows):
+            mapping={field:column for column,value in enumerate(row.get('valores') or []) if (field:=_planning_label(value))}
+            if len(mapping)<2 or position+1>=len(rows): continue
+            values=rows[position+1].get('valores') or []
+            for field,column in mapping.items():
+                value=values[column] if column<len(values) else None
+                if value not in (None,'') and field not in planning: planning[field]=_schedule_date(value) if field=='fecha_programada' else str(value).strip(); evidence[field]={'hoja':sheet['nombre'],'fila':rows[position+1].get('fila'),'columna':column+1}
+            break
+    canonical['planeacion']=planning
+    if planning.get('unidad'): canonical['unidad_servicio']['nombre']=planning['unidad']
+    for field,value in planning.items(): fields.append({'ruta':f'planeacion.{field}','valor':value,'texto_original':value,'confianza':.94 if not raw.get('origen_ocr') else .74,'evidencia':evidence.get(field) or {},'regla':'etiqueta_planeacion'})
 
 
 def _canonicalize_ocr_attendance(raw: dict, canonical: dict, fields: list[dict]) -> None:
@@ -432,6 +483,7 @@ def canonicalize(raw: dict, document_type: str) -> tuple[dict, list[dict]]:
         _canonicalize_ocr_attendance(raw,canonical,fields)
     if document_type=='CRONOGRAMA': _canonicalize_schedule(raw,canonical,fields)
     if document_type=='PESO_TALLA': _canonicalize_nutrition(raw,canonical,fields)
+    if document_type=='PLANEACION_PEDAGOGICA': _canonicalize_planning(raw,canonical,fields)
     fields.append({'ruta': 'tipo_documento', 'valor': document_type, 'texto_original': document_type, 'confianza': 1.0, 'evidencia': {}, 'regla': 'clasificador_reglas'})
     return canonical, fields
 
@@ -533,9 +585,20 @@ def validate_nutrition(database_path: str, tenant_id: int, canonical: dict) -> d
     return {'semaforo':'ROJO' if critical else ('AMARILLO' if warnings else 'VERDE'),'errores_criticos':critical,'advertencias':warnings,'coincidencias':matches,'total':len(records),'resultados':results}
 
 
+def validate_planning(canonical: dict) -> dict:
+    planning=canonical.get('planeacion') or {}; results=[]
+    for field,label in (('objetivo','objetivo o intencionalidad pedagógica'),('actividad','actividad o experiencia pedagógica')):
+        if not planning.get(field): results.append({'ruta_canonica':f'planeacion.{field}','regla':f'{field.upper()}_REQUERIDO','nivel':'CRITICO','estado':'ERROR','mensaje':f'No se identificó {label}.','esperado':None,'evidencia':{}})
+    for field,label in (('fecha_programada','fecha programada'),('responsable','responsable'),('unidad','UDS/UCA')):
+        if not planning.get(field): results.append({'ruta_canonica':f'planeacion.{field}','regla':f'{field.upper()}_RECOMENDADO','nivel':'ADVERTENCIA','estado':'REVISAR','mensaje':f'No se identificó {label}; el sistema no completó el dato por suposición.','esperado':None,'evidencia':{}})
+    critical=sum(item['nivel']=='CRITICO' for item in results); warnings=sum(item['nivel']=='ADVERTENCIA' for item in results)
+    return {'semaforo':'ROJO' if critical else ('AMARILLO' if warnings else 'VERDE'),'errores_criticos':critical,'advertencias':warnings,'coincidencias':len(planning),'total':len(PLANNING_LABEL_ALIASES),'resultados':results}
+
+
 def validate_canonical(database_path: str, tenant_id: int, canonical: dict) -> dict:
     if canonical.get('tipo_documento')=='CRONOGRAMA': return validate_schedule(canonical)
     if canonical.get('tipo_documento')=='PESO_TALLA': return validate_nutrition(database_path,tenant_id,canonical)
+    if canonical.get('tipo_documento')=='PLANEACION_PEDAGOGICA': return validate_planning(canonical)
     return validate_against_master(database_path,tenant_id,canonical)
 
 
