@@ -121,11 +121,30 @@ jobs:
           PY
 
       - name: Full integrity gate
+        id: full_integrity_gate
+        continue-on-error: true
         run: |
           python backend/tools/integrity_gate.py \
             --root "$GITHUB_WORKSPACE" \
             --report "$RUNNER_TEMP/pi-evidence/integrity_gate_ci.json" \
             --skip-manifest
+
+      - name: Report integrity gate failure
+        if: steps.full_integrity_gate.outcome == 'failure'
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = Path(os.environ["RUNNER_TEMP"]) / "pi-evidence" / "integrity_gate_ci.json"
+          payload = json.loads(report.read_text(encoding="utf-8"))
+          failures = [item for item in payload.get("checks", []) if item.get("status") == "FAIL"]
+          for item in failures:
+              detail = str(item.get("detail") or "sin detalle").replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+              print(f"::error title=Integrity gate: {item.get('name', 'FAIL')}::{detail}")
+          raise SystemExit(1)
+          PY
 
       - name: Safe repair policy dry run
         run: |
