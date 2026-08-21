@@ -136,7 +136,7 @@ jobs:
       # validate_release.py valida un paquete distribuible con SHA256SUMS y
       # estructura payload/. El checkout fuente no es ese artefacto; ejecutarlo
       # aquí producía fallos falsos por manifiestos de empaquetado históricos.
-      - name: Document Center regression
+      - name: Release package validator replacement - Document Center regression
         run: |
           export PYTHONPATH="$GITHUB_WORKSPACE/backend"
           python backend/tests/test_centro_documental_core_v7.py
