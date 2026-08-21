@@ -131,6 +131,11 @@ def main():
         incomplete_rpp=root/'RPP_INCOMPLETO.docx'; rpp_incomplete=Document(); rpp_incomplete.add_heading('RPP RACION PREPARADA',0); rpp_incomplete.add_paragraph('Fecha: 20/08/2026'); rpp_incomplete.save(incomplete_rpp)
         incomplete_rpp_id,_=create(repo,1,incomplete_rpp); incomplete_rpp_doc=repo.get_document(incomplete_rpp_id,1)
         require(incomplete_rpp_doc['validaciones']['semaforo']=='ROJO' and incomplete_rpp_doc['validaciones']['errores_criticos']>=4,'No bloqueo el RPP incompleto')
+        ram_book=root/'FORMATO_RAM_V3.xlsx'; ram_wb=Workbook(); ram_ws=ram_wb.active; ram_ws.title='FORMATO RAM'; ram_ws.append(['FORMATO RAM F27 MT1 PP']); ram_ws.append(['Tipo documento','Documento beneficiario','Primer nombre','Segundo nombre','Primer apellido','Segundo apellido','Día 1','Día 2','Total asistencias','Total inasistencias','UDS']); ram_ws.append(['RC','1001','ANA','','PEREZ','','A','I','1','1','UCA 1']); ram_wb.save(ram_book)
+        ram_id,_=create(repo,1,ram_book); ram_doc=repo.get_document(ram_id,1); ram_participant=ram_doc['resultado_canonico']['participantes'][0]
+        require(ram_doc['tipo_documento']=='RAM' and ram_participant['nombre_completo']=='ANA PEREZ','No estructuro la identidad RAM')
+        require(ram_participant['asistencia_dias']=={'1':'A','2':'I'} and ram_participant['total_asistencias']=='1','No conservo dias y totales RAM')
+        require(ram_doc['validaciones']['semaforo']=='VERDE','No valido RAM contra Base Maestra')
         invalid_book=root/'LISTADO_ASISTENCIA_INVALIDO.xlsx'
         invalid_wb=Workbook(); invalid_ws=invalid_wb.active; invalid_ws.append(['LISTADO DE ASISTENCIA']); invalid_ws.append(['Nombre completo','Documento','UDS','Asistio']); invalid_ws.append(['PERSONA INEXISTENTE','9999','UCA 1','SI']); invalid_wb.save(invalid_book)
         invalid_id,_=create(repo,1,invalid_book)

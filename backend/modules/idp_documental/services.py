@@ -294,6 +294,19 @@ HEADER_ALIASES = {
     'firma_presente': ('firma', 'firma del asistente'),
     'unidad': ('uds', 'uca', 'unidad', 'unidad de servicio'),
 }
+RAM_HEADER_ALIASES = {
+    'tipo_documento':('tipo documento','tipo de documento','tipo doc'),
+    'documento':('documento','documento beneficiario','identificacion','cedula','nui'),
+    'primer_nombre':('primer nombre',),
+    'segundo_nombre':('segundo nombre',),
+    'primer_apellido':('primer apellido',),
+    'segundo_apellido':('segundo apellido',),
+    'nombre_completo':('nombre','nombre completo','nombres y apellidos','beneficiario'),
+    'unidad':('uds','uca','unidad','unidad de servicio'),
+    'total_asistencias':('total asistencias','total asistencia'),
+    'total_inasistencias':('total inasistencias','inasistencias'),
+    'causa_retiro':('causa retiro','causa de retiro'),
+}
 SCHEDULE_HEADER_ALIASES = {
     'fecha':('fecha','fecha actividad','fecha de actividad','fecha programada'),
     'fecha_limite':('fecha limite','fecha de entrega','entrega','vence','vencimiento'),
@@ -360,6 +373,19 @@ def _mapped_header(value: Any) -> str | None:
         if text in aliases or any(len(alias) >= 4 and alias in text for alias in aliases):
             return field
     return None
+
+
+def _mapped_ram_header(value: Any) -> str | None:
+    text=normalize(value)
+    for field,aliases in RAM_HEADER_ALIASES.items():
+        if text in aliases: return field
+    return None
+
+
+def _ram_day_header(value: Any) -> int | None:
+    text=normalize(value)
+    match=re.fullmatch(r'(?:dia )?([1-9]|[12][0-9]|3[01])',text)
+    return int(match.group(1)) if match else None
 
 
 def _mapped_schedule_header(value: Any) -> str | None:
@@ -446,6 +472,36 @@ def _canonicalize_nutrition(raw: dict, canonical: dict, fields: list[dict]) -> N
             return
 
 
+def _canonicalize_ram(raw: dict, canonical: dict, fields: list[dict]) -> None:
+    canonical['participantes']=[]
+    for sheet in raw.get('hojas') or []:
+        rows=sheet.get('filas') or []
+        for position,row in enumerate(rows):
+            values=row.get('valores') or []
+            mapping={field:column for column,value in enumerate(values) if (field:=_mapped_ram_header(value))}
+            day_columns={day:column for column,value in enumerate(values) if (day:=_ram_day_header(value))}
+            if 'documento' not in mapping or not ({'nombre_completo','primer_nombre','primer_apellido'} & set(mapping)): continue
+            for data_row in rows[position+1:]:
+                row_values=data_row.get('valores') or []; participant={}; index=len(canonical['participantes'])
+                for field,column in mapping.items():
+                    value=row_values[column] if column<len(row_values) else None
+                    if value in (None,''): continue
+                    if field=='unidad': canonical['unidad_servicio'].setdefault('nombre',str(value).strip()); continue
+                    participant[field]=str(value).strip()
+                    fields.append({'ruta':f'participantes.{index}.{field}','valor':participant[field],'texto_original':value,'confianza':.98,'evidencia':{'hoja':sheet['nombre'],'fila':data_row.get('fila'),'columna':column+1},'regla':'encabezado_ram'})
+                name_parts=[participant.pop(field,None) for field in ('primer_nombre','segundo_nombre','primer_apellido','segundo_apellido')]
+                if not participant.get('nombre_completo') and any(name_parts): participant['nombre_completo']=' '.join(part for part in name_parts if part)
+                attendance={}
+                for day,column in day_columns.items():
+                    value=row_values[column] if column<len(row_values) else None
+                    if value not in (None,''): attendance[str(day)]=str(value).strip().upper()
+                if day_columns:
+                    participant['asistencia_dias']=attendance
+                    fields.append({'ruta':f'participantes.{index}.asistencia_dias','valor':attendance,'texto_original':attendance,'confianza':.98,'evidencia':{'hoja':sheet['nombre'],'fila':data_row.get('fila'),'columnas':len(day_columns)},'regla':'dias_ram'})
+                if participant.get('documento') or participant.get('nombre_completo'): canonical['participantes'].append(participant)
+            return
+
+
 def _canonicalize_planning(raw: dict, canonical: dict, fields: list[dict]) -> None:
     planning={}; evidence={}
     paragraphs=raw.get('parrafos') or []
@@ -524,7 +580,7 @@ def _canonicalize_ocr_attendance(raw: dict, canonical: dict, fields: list[dict])
 def canonicalize(raw: dict, document_type: str) -> tuple[dict, list[dict]]:
     canonical = {'tipo_documento': document_type, 'version_plantilla': None, 'periodo': {}, 'fundacion': {}, 'unidad_servicio': {}, 'actividad': {}, 'participantes': [], 'metadatos': {'motor': raw.get('motor'), 'requiere_ocr': bool(raw.get('requiere_ocr'))}}
     fields = []
-    if document_type in {'LISTADO_ASISTENCIA', 'RAM'} and raw.get('hojas'):
+    if document_type == 'LISTADO_ASISTENCIA' and raw.get('hojas'):
         for sheet in raw['hojas']:
             rows = sheet.get('filas') or []
             for position, row in enumerate(rows):
@@ -545,6 +601,7 @@ def canonicalize(raw: dict, document_type: str) -> tuple[dict, list[dict]]:
                     if any(participant.get(key) not in (None, '') for key in ('documento', 'nombre_completo')):
                         canonical['participantes'].append(participant)
                 break
+    if document_type=='RAM': _canonicalize_ram(raw,canonical,fields)
     if document_type in {'LISTADO_ASISTENCIA','RAM'} and raw.get('origen_ocr') and not canonical['participantes']:
         _canonicalize_ocr_attendance(raw,canonical,fields)
     if document_type=='CRONOGRAMA': _canonicalize_schedule(raw,canonical,fields)
