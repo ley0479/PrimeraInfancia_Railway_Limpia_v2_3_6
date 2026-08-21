@@ -3,10 +3,12 @@ from __future__ import annotations
 from datetime import datetime
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import unicodedata
 import zipfile
+import time
 from difflib import SequenceMatcher
 from typing import Any
 
@@ -18,6 +20,7 @@ from .schema import IDP_SCHEMA_SQL
 ALLOWED_EXTENSIONS = {'.xlsx', '.xlsm', '.docx', '.pptx', '.pdf', '.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.heif', '.heic'}
 MAX_FILE_SIZE = 50 * 1024 * 1024
 IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.heif', '.heic'}
+AZURE_API_VERSION = '2024-11-30'
 
 
 def now_iso() -> str:
@@ -195,6 +198,58 @@ def read_document_ocr(path: Path) -> dict:
     return {'motor':'TESSERACT_LOCAL','texto':combined,'paginas':pages,'requiere_ocr':False,'calidad':quality,'origen_ocr':True}
 
 
+def azure_document_intelligence_configured() -> bool:
+    return bool(str(os.environ.get('AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT') or '').strip() and str(os.environ.get('AZURE_DOCUMENT_INTELLIGENCE_KEY') or '').strip())
+
+
+def _azure_result_to_raw(payload: dict) -> dict:
+    result=payload.get('analyzeResult') or {}; content=str(result.get('content') or '')
+    pages=[]
+    for index,page in enumerate(result.get('pages') or [],1):
+        lines=page.get('lines') or []; pages.append({'pagina':page.get('pageNumber') or index,'texto':'\n'.join(str(line.get('content') or '') for line in lines),'ancho':page.get('width'),'alto':page.get('height'),'unidad':page.get('unit')})
+    sheets=[]
+    for table_index,table in enumerate(result.get('tables') or [],1):
+        row_count=int(table.get('rowCount') or 0); column_count=int(table.get('columnCount') or 0); matrix=[[None for _ in range(column_count)] for _ in range(row_count)]; confidences=[[None for _ in range(column_count)] for _ in range(row_count)]
+        for cell in table.get('cells') or []:
+            row=int(cell.get('rowIndex') or 0); column=int(cell.get('columnIndex') or 0)
+            if row<row_count and column<column_count: matrix[row][column]=cell.get('content'); confidences[row][column]=cell.get('confidence')
+        sheets.append({'nombre':f'TABLA_OCR_{table_index}','filas':[{'fila':row+1,'valores':values,'confianzas':confidences[row]} for row,values in enumerate(matrix)],'max_filas_leidas':row_count})
+    return {'motor':'AZURE_DOCUMENT_INTELLIGENCE','texto':content or '\n'.join(page['texto'] for page in pages),'paginas':pages,'hojas':sheets,'requiere_ocr':False,'origen_ocr':True,'modelo_azure':result.get('modelId'),'api_version':result.get('apiVersion') or AZURE_API_VERSION}
+
+
+def read_document_azure(path: Path) -> dict:
+    endpoint=str(os.environ.get('AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT') or '').strip().rstrip('/'); key=str(os.environ.get('AZURE_DOCUMENT_INTELLIGENCE_KEY') or '').strip()
+    if not endpoint or not key: raise RuntimeError('Azure Document Intelligence no está configurado.')
+    import requests
+    model=str(os.environ.get('AZURE_DOCUMENT_INTELLIGENCE_MODEL') or 'prebuilt-layout').strip(); api_version=str(os.environ.get('AZURE_DOCUMENT_INTELLIGENCE_API_VERSION') or AZURE_API_VERSION).strip(); timeout=max(15,int(os.environ.get('AZURE_DOCUMENT_INTELLIGENCE_TIMEOUT_SECONDS','120')))
+    url=f'{endpoint}/documentintelligence/documentModels/{model}:analyze?api-version={api_version}'
+    mime={'.pdf':'application/pdf','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.bmp':'image/bmp','.tif':'image/tiff','.tiff':'image/tiff','.heif':'image/heif','.heic':'image/heif'}.get(path.suffix.lower(),'application/octet-stream')
+    with path.open('rb') as stream: response=requests.post(url,headers={'Ocp-Apim-Subscription-Key':key,'Content-Type':mime},data=stream,timeout=30)
+    if response.status_code!=202: raise RuntimeError(f'Azure rechazó el documento (HTTP {response.status_code}).')
+    operation=response.headers.get('Operation-Location')
+    if not operation: raise RuntimeError('Azure no devolvió la ubicación del resultado.')
+    deadline=time.monotonic()+timeout
+    while time.monotonic()<deadline:
+        result_response=requests.get(operation,headers={'Ocp-Apim-Subscription-Key':key},timeout=30)
+        if result_response.status_code>=400: raise RuntimeError(f'Azure no pudo consultar el resultado (HTTP {result_response.status_code}).')
+        payload=result_response.json(); status=str(payload.get('status') or '').lower()
+        if status=='succeeded': return _azure_result_to_raw(payload)
+        if status in {'failed','canceled'}: raise RuntimeError('Azure no pudo analizar el documento.')
+        time.sleep(1)
+    raise TimeoutError('Azure Document Intelligence excedió el tiempo máximo de análisis.')
+
+
+def read_document_intelligent(path: Path) -> dict:
+    native=read_document(path)
+    if not native.get('requiere_ocr'): return native
+    if azure_document_intelligence_configured():
+        try: return read_document_azure(path)
+        except Exception as exc:
+            fallback=read_document_ocr(path); fallback['advertencia_azure']=str(exc)[:300]; return fallback
+    if path.suffix.lower() in IMAGE_EXTENSIONS or path.suffix.lower()=='.pdf': return read_document_ocr(path)
+    return native
+
+
 def read_document(path: Path) -> dict:
     ext = path.suffix.lower()
     if ext in {'.xlsx', '.xlsm'}:
@@ -275,11 +330,12 @@ def canonicalize(raw: dict, document_type: str) -> tuple[dict, list[dict]]:
                     participant = {}
                     for field, col in mapping.items():
                         value = values[col] if col < len(values) else None
+                        row_confidences=data_row.get('confianzas') or []; field_confidence=float(row_confidences[col] or 0.82) if col<len(row_confidences) else (0.98 if value not in (None,'') else 0.0)
                         if field == 'unidad' and value and not canonical['unidad_servicio'].get('nombre'):
                             canonical['unidad_servicio']['nombre'] = str(value)
                         elif field not in {'unidad'}:
                             participant[field] = value
-                            fields.append({'ruta': f'participantes.{len(canonical["participantes"])}.{field}', 'valor': value, 'texto_original': value, 'confianza': 0.98 if value not in (None, '') else 0.0, 'evidencia': {'hoja': sheet['nombre'], 'fila': data_row['fila'], 'columna': col + 1}, 'regla': 'encabezado_excel'})
+                            fields.append({'ruta': f'participantes.{len(canonical["participantes"])}.{field}', 'valor': value, 'texto_original': value, 'confianza': field_confidence, 'evidencia': {'hoja': sheet['nombre'], 'fila': data_row['fila'], 'columna': col + 1}, 'regla': 'tabla_azure' if raw.get('motor')=='AZURE_DOCUMENT_INTELLIGENCE' else 'encabezado_excel'})
                     if any(participant.get(key) not in (None, '') for key in ('documento', 'nombre_completo')):
                         canonical['participantes'].append(participant)
                 break

@@ -3,12 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 from unittest.mock import patch
+import os
 
 from openpyxl import Workbook
 from PIL import Image
 
 from modules.idp_documental.repository import IDPRepository
-from modules.idp_documental.services import attendance_official_payload, canonicalize, classify_document, connect, read_document, read_document_ocr, sha256_file
+from modules.idp_documental.services import attendance_official_payload, canonicalize, classify_document, connect, read_document, read_document_azure, read_document_ocr, sha256_file
 from modules.idp_documental.worker import process_next
 
 
@@ -98,6 +99,16 @@ def main():
         image_id,_=create(repo,1,image_path)
         image_doc=repo.get_document(image_id,1)
         require(image_doc['estado']=='REQUIERE_OCR','La imagen no quedo pendiente de OCR')
+        class AzureResponse:
+            def __init__(self,status_code,payload=None,headers=None): self.status_code=status_code; self._payload=payload or {}; self.headers=headers or {}
+            def json(self): return self._payload
+        azure_payload={'status':'succeeded','analyzeResult':{'apiVersion':'2024-11-30','modelId':'prebuilt-layout','content':'LISTADO DE ASISTENCIA ANA PEREZ 1001 UCA 1','pages':[{'pageNumber':1,'width':1000,'height':1400,'unit':'pixel','lines':[{'content':'LISTADO DE ASISTENCIA'}]}],'tables':[{'rowCount':2,'columnCount':4,'cells':[{'rowIndex':0,'columnIndex':0,'content':'Nombre completo','confidence':.99},{'rowIndex':0,'columnIndex':1,'content':'Documento','confidence':.99},{'rowIndex':0,'columnIndex':2,'content':'UDS','confidence':.99},{'rowIndex':0,'columnIndex':3,'content':'Asistio','confidence':.99},{'rowIndex':1,'columnIndex':0,'content':'ANA PEREZ','confidence':.93},{'rowIndex':1,'columnIndex':1,'content':'1001','confidence':.97},{'rowIndex':1,'columnIndex':2,'content':'UCA 1','confidence':.91},{'rowIndex':1,'columnIndex':3,'content':'SI','confidence':.89}]}]}}
+        with patch.dict(os.environ,{'AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT':'https://example.cognitiveservices.azure.com','AZURE_DOCUMENT_INTELLIGENCE_KEY':'secret'},clear=False),patch('requests.post',return_value=AzureResponse(202,headers={'Operation-Location':'https://example/result'})),patch('requests.get',return_value=AzureResponse(200,azure_payload)):
+            azure_raw=read_document_azure(image_path)
+        azure_classification=classify_document(azure_raw['texto'],image_path.name); azure_canonical,azure_fields=canonicalize(azure_raw,azure_classification[0])
+        require(azure_raw['motor']=='AZURE_DOCUMENT_INTELLIGENCE' and len(azure_raw['hojas'])==1,'No convirtio la respuesta Azure')
+        require(azure_canonical['participantes'][0]['documento']=='1001','No mapeo la tabla Azure al canonico')
+        require(any(field['regla']=='tabla_azure' and field['confianza']>.9 for field in azure_fields),'No conservo confianza Azure por campo')
         blocked=False
         try: repo.approve(image_id,1,10)
         except ValueError: blocked=True

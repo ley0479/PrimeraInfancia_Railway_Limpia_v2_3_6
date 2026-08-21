@@ -8,7 +8,7 @@ import uuid
 from modules.seguridad.tenant_context import tenant_context
 
 from .repository import IDPRepository
-from .services import canonicalize, classify_document, read_document
+from .services import canonicalize, classify_document, read_document_intelligent
 
 
 def process_next(database_path: str, worker_id: str | None=None) -> bool:
@@ -21,7 +21,7 @@ def process_next(database_path: str, worker_id: str | None=None) -> bool:
         with tenant_context(tenant_id,role='SYSTEM',username=identity,source='idp-worker'):
             source=repo.queued_document_source(document_id,tenant_id)
             if not source: raise KeyError('Documento encolado no encontrado.')
-            path=Path(source['ruta_privada']); raw=read_document(path); classification=classify_document(raw.get('texto') or '',source['nombre_original']); canonical,fields=canonicalize(raw,classification[0]); canonical['fundacion']['id']=tenant_id
+            path=Path(source['ruta_privada']); raw=read_document_intelligent(path); classification=classify_document(raw.get('texto') or '',source['nombre_original']); canonical,fields=canonicalize(raw,classification[0]); canonical['fundacion']['id']=tenant_id
             repo.complete_extraction(document_id,tenant_id,raw,canonical,fields,classification,source.get('usuario_carga_id')); repo.finish_job(job['id'],tenant_id)
     except Exception as exc:
         with tenant_context(tenant_id,role='SYSTEM',username=identity,source='idp-worker'):

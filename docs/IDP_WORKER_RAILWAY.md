@@ -12,6 +12,18 @@ La aplicación web conserva el procesamiento síncrono mientras `IDP_ASYNC_ENABL
 6. Definir `IDP_WORKER_POLL_SECONDS=2` en el worker.
 7. Confirmar que el worker está activo y después definir `IDP_ASYNC_ENABLED=1` en el servicio web.
 
+## Azure Document Intelligence
+
+Configurar estas variables únicamente en el servicio worker:
+
+- `AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT`: endpoint HTTPS del recurso.
+- `AZURE_DOCUMENT_INTELLIGENCE_KEY`: clave privada; nunca debe guardarse en Git.
+- `AZURE_DOCUMENT_INTELLIGENCE_MODEL=prebuilt-layout`.
+- `AZURE_DOCUMENT_INTELLIGENCE_API_VERSION=2024-11-30`.
+- `AZURE_DOCUMENT_INTELLIGENCE_TIMEOUT_SECONDS=120`.
+
+Si Azure no está configurado o falla temporalmente, el worker usa Tesseract local como respaldo y conserva la advertencia técnica sin exponer la clave.
+
 ## Reversión segura
 
 Definir `IDP_ASYNC_ENABLED=0` o eliminar la variable en el servicio web. Las cargas nuevas volverán al procesamiento síncrono y los trabajos ya persistidos permanecerán auditables en `idp_trabajos_cola`.
