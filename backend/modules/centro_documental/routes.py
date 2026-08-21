@@ -56,7 +56,7 @@ def register_centro_documental(app, database_path: str, data_dir: str) -> None:
 
     @blueprint.before_request
     def feature_guard():
-        if not _enabled("ENABLE_DOCUMENT_AUTOMATION", False):
+        if not _enabled("ENABLE_DOCUMENT_AUTOMATION", True):
             return jsonify({"error": "El Centro Documental todavía no está habilitado.", "codigo": "FEATURE_DISABLED"}), 404
         return None
 
@@ -65,8 +65,8 @@ def register_centro_documental(app, database_path: str, data_dir: str) -> None:
     def state():
         return jsonify({
             "habilitado": True,
-            "mapeo_plantillas": _enabled("ENABLE_TEMPLATE_MAPPING", False),
-            "catalogos_respuesta": _enabled("ENABLE_RESPONSE_CATALOGS", False),
+            "mapeo_plantillas": _enabled("ENABLE_TEMPLATE_MAPPING", True),
+            "catalogos_respuesta": _enabled("ENABLE_RESPONSE_CATALOGS", True),
             "ia_borradores": _enabled("ENABLE_AI_DOCUMENT_DRAFTS", False),
             "ia_finalizacion": False,
             "capture": {"estado": "PLANTILLA_PENDIENTE", "generacion_habilitada": False},
@@ -81,7 +81,7 @@ def register_centro_documental(app, database_path: str, data_dir: str) -> None:
     @blueprint.post("/plantillas")
     @require_roles(*ADMIN_ROLES)
     def upload_template():
-        if not _enabled("ENABLE_TEMPLATE_MAPPING", False):
+        if not _enabled("ENABLE_TEMPLATE_MAPPING", True):
             return jsonify({"error": "El mapeo de plantillas no está habilitado."}), 409
         upload = request.files.get("file")
         if not upload or not upload.filename:
@@ -180,7 +180,7 @@ def register_centro_documental(app, database_path: str, data_dir: str) -> None:
     @blueprint.get("/catalogos")
     @require_roles(*PROFESSIONAL_ROLES)
     def catalogs():
-        if not _enabled("ENABLE_RESPONSE_CATALOGS",False): return jsonify({"error":"Los catálogos documentales aún no están habilitados."}),409
+        if not _enabled("ENABLE_RESPONSE_CATALOGS",True): return jsonify({"error":"Los catálogos documentales aún no están habilitados."}),409
         user=_user(); return jsonify({"catalogos":repository.list_catalogs(user["fundacion_id"],request.args.get("componente", ""))})
 
     @blueprint.post("")
