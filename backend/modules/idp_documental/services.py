@@ -289,6 +289,15 @@ SCHEDULE_HEADER_ALIASES = {
     'modulo':('modulo','componente','area'),
     'periodicidad':('periodicidad','frecuencia','recurrencia'),
 }
+NUTRITION_HEADER_ALIASES = {
+    'documento':('documento','identificacion','cedula','nui'),
+    'nombre_completo':('nombre','nombre completo','nombres y apellidos','beneficiario','participante'),
+    'fecha':('fecha','fecha valoracion','fecha de valoracion'),
+    'peso_kg':('peso','peso kg','peso en kg','peso kilogramo'),
+    'talla_cm':('talla','talla cm','estatura','longitud cm'),
+    'perimetro_braquial_cm':('perimetro braquial','perimetro braquial cm','pb cm'),
+    'unidad':('uds','uca','unidad','unidad de servicio'),
+}
 
 
 def _mapped_header(value: Any) -> str | None:
@@ -304,6 +313,20 @@ def _mapped_schedule_header(value: Any) -> str | None:
     for field,aliases in SCHEDULE_HEADER_ALIASES.items():
         if text in aliases or any(len(alias)>=4 and alias in text for alias in aliases): return field
     return None
+
+
+def _mapped_nutrition_header(value: Any) -> str | None:
+    text=normalize(value)
+    for field,aliases in NUTRITION_HEADER_ALIASES.items():
+        if text in aliases or any(len(alias)>=4 and alias in text for alias in aliases): return field
+    return None
+
+
+def _numeric_measure(value: Any) -> float | None:
+    if value in (None,''): return None
+    match=re.search(r'-?\d+(?:[.,]\d+)?',str(value).replace(' ','').replace(',','.'))
+    try: return float(match.group(0)) if match else None
+    except ValueError: return None
 
 
 def _schedule_date(value: Any) -> str | None:
@@ -330,6 +353,28 @@ def _canonicalize_schedule(raw: dict, canonical: dict, fields: list[dict]) -> No
                     if value is not None: activity[field]=value
                     fields.append({'ruta':f'actividades.{index}.{field}','valor':value,'texto_original':raw_value,'confianza':.96 if value is not None and not raw.get('origen_ocr') else (.76 if value is not None else 0),'evidencia':{'hoja':sheet['nombre'],'fila':data_row.get('fila'),'columna':column+1},'regla':'encabezado_cronograma'})
                 if activity.get('actividad'): canonical['actividades'].append(activity)
+            return
+
+
+def _canonicalize_nutrition(raw: dict, canonical: dict, fields: list[dict]) -> None:
+    canonical['valoraciones']=[]
+    for sheet in raw.get('hojas') or []:
+        rows=sheet.get('filas') or []
+        for position,row in enumerate(rows):
+            mapping={field:column for column,value in enumerate(row.get('valores') or []) if (field:=_mapped_nutrition_header(value))}
+            if not ({'documento','nombre_completo'} & set(mapping)) or not ({'peso_kg','talla_cm'} & set(mapping)): continue
+            for data_row in rows[position+1:]:
+                values=data_row.get('valores') or []; record={}; index=len(canonical['valoraciones'])
+                for field,column in mapping.items():
+                    raw_value=values[column] if column<len(values) else None
+                    if field in {'peso_kg','talla_cm','perimetro_braquial_cm'}: value=_numeric_measure(raw_value)
+                    elif field=='fecha': value=_schedule_date(raw_value)
+                    else: value=str(raw_value).strip() if raw_value not in (None,'') else None
+                    if value is not None: record[field]=value
+                    fields.append({'ruta':f'valoraciones.{index}.{field}','valor':value,'texto_original':raw_value,'confianza':.96 if value is not None and not raw.get('origen_ocr') else (.76 if value is not None else 0),'evidencia':{'hoja':sheet['nombre'],'fila':data_row.get('fila'),'columna':column+1},'regla':'encabezado_peso_talla'})
+                if record.get('documento') or record.get('nombre_completo'):
+                    canonical['valoraciones'].append(record)
+                    if record.get('unidad'): canonical['unidad_servicio'].setdefault('nombre',record['unidad'])
             return
 
 
@@ -386,6 +431,7 @@ def canonicalize(raw: dict, document_type: str) -> tuple[dict, list[dict]]:
     if document_type in {'LISTADO_ASISTENCIA','RAM'} and raw.get('origen_ocr') and not canonical['participantes']:
         _canonicalize_ocr_attendance(raw,canonical,fields)
     if document_type=='CRONOGRAMA': _canonicalize_schedule(raw,canonical,fields)
+    if document_type=='PESO_TALLA': _canonicalize_nutrition(raw,canonical,fields)
     fields.append({'ruta': 'tipo_documento', 'valor': document_type, 'texto_original': document_type, 'confianza': 1.0, 'evidencia': {}, 'regla': 'clasificador_reglas'})
     return canonical, fields
 
@@ -465,8 +511,31 @@ def validate_schedule(canonical: dict) -> dict:
     return {'semaforo':'ROJO' if critical else ('AMARILLO' if warnings else 'VERDE'),'errores_criticos':critical,'advertencias':warnings,'coincidencias':len(activities),'total':len(activities),'resultados':results}
 
 
+def validate_nutrition(database_path: str, tenant_id: int, canonical: dict) -> dict:
+    records=list(canonical.get('valoraciones') or []); results=[]; matches=0; seen=set()
+    try:
+        conn=connect(database_path); rows=conn.execute("SELECT documento,nombre_completo,unidad_servicio,estado,activo FROM master_ninos WHERE COALESCE(fundacion_id,1)=?",(tenant_id,)).fetchall(); conn.close(); master={_document_key(row['documento']):dict(row) for row in rows}
+    except Exception: master={}
+    if not records: results.append({'ruta_canonica':'valoraciones','regla':'VALORACIONES_REQUERIDAS','nivel':'CRITICO','estado':'ERROR','mensaje':'No se identificaron filas de peso y talla.','esperado':None,'evidencia':{}})
+    for index,record in enumerate(records):
+        path=f'valoraciones.{index}'; document=_document_key(record.get('documento')); date=record.get('fecha'); key=(document,date)
+        if not document: results.append({'ruta_canonica':f'{path}.documento','regla':'DOCUMENTO_OBLIGATORIO','nivel':'CRITICO','estado':'ERROR','mensaje':'La valoración no tiene documento o NUI.','esperado':None,'evidencia':{'indice':index}})
+        elif document not in master: results.append({'ruta_canonica':f'{path}.documento','regla':'EXISTE_BASE_MAESTRA','nivel':'CRITICO','estado':'ERROR','mensaje':'El documento no existe en la Base Maestra de esta fundación.','esperado':None,'evidencia':{'indice':index}})
+        else: matches+=1; record['validado_base_maestra']=True
+        if key in seen: results.append({'ruta_canonica':path,'regla':'VALORACION_DUPLICADA','nivel':'CRITICO','estado':'ERROR','mensaje':'La valoración está repetida para el participante y fecha.','esperado':None,'evidencia':{'indice':index}})
+        seen.add(key)
+        if not date: results.append({'ruta_canonica':f'{path}.fecha','regla':'FECHA_REQUERIDA','nivel':'ADVERTENCIA','estado':'REVISAR','mensaje':'No se identificó una fecha válida para la valoración.','esperado':None,'evidencia':{'indice':index}})
+        weight=record.get('peso_kg'); height=record.get('talla_cm'); arm=record.get('perimetro_braquial_cm')
+        if weight is None or not 1<=weight<=120: results.append({'ruta_canonica':f'{path}.peso_kg','regla':'RANGO_PESO','nivel':'CRITICO','estado':'ERROR','mensaje':'El peso debe ser numérico y estar entre 1 y 120 kg.','esperado':{'min':1,'max':120},'evidencia':{'indice':index}})
+        if height is None or not 30<=height<=220: results.append({'ruta_canonica':f'{path}.talla_cm','regla':'RANGO_TALLA','nivel':'CRITICO','estado':'ERROR','mensaje':'La talla debe ser numérica y estar entre 30 y 220 cm.','esperado':{'min':30,'max':220},'evidencia':{'indice':index}})
+        if arm is not None and not 5<=arm<=60: results.append({'ruta_canonica':f'{path}.perimetro_braquial_cm','regla':'RANGO_PERIMETRO_BRAQUIAL','nivel':'CRITICO','estado':'ERROR','mensaje':'El perímetro braquial está fuera del rango técnico configurado.','esperado':{'min':5,'max':60},'evidencia':{'indice':index}})
+    critical=sum(item['nivel']=='CRITICO' for item in results); warnings=sum(item['nivel']=='ADVERTENCIA' for item in results)
+    return {'semaforo':'ROJO' if critical else ('AMARILLO' if warnings else 'VERDE'),'errores_criticos':critical,'advertencias':warnings,'coincidencias':matches,'total':len(records),'resultados':results}
+
+
 def validate_canonical(database_path: str, tenant_id: int, canonical: dict) -> dict:
     if canonical.get('tipo_documento')=='CRONOGRAMA': return validate_schedule(canonical)
+    if canonical.get('tipo_documento')=='PESO_TALLA': return validate_nutrition(database_path,tenant_id,canonical)
     return validate_against_master(database_path,tenant_id,canonical)
 
 

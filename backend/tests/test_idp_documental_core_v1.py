@@ -101,6 +101,13 @@ def main():
         for column,value in enumerate(['21/08/2026','Taller pedagógico','Docente']): table.rows[1].cells[column].text=value
         word.save(schedule_word); word_id,_=create(repo,1,schedule_word); word_doc=repo.get_document(word_id,1)
         require(word_doc['tipo_documento']=='CRONOGRAMA' and word_doc['resultado_canonico']['actividades'][0]['responsable']=='Docente','No estructuro la tabla Word del cronograma')
+        nutrition_book=root/'FORMATO_PESO_TALLA.xlsx'; nutrition_wb=Workbook(); nutrition_ws=nutrition_wb.active; nutrition_ws.append(['VALORACION NUTRICIONAL PESO KG TALLA CM']); nutrition_ws.append(['Fecha','Nombre completo','Documento','Peso kg','Talla cm','Perimetro braquial cm','UDS']); nutrition_ws.append(['20/08/2026','ANA PEREZ','1001','12,5','90.2','15','UCA 1']); nutrition_wb.save(nutrition_book)
+        nutrition_id,_=create(repo,1,nutrition_book); nutrition_doc=repo.get_document(nutrition_id,1); valuation=nutrition_doc['resultado_canonico']['valoraciones'][0]
+        require(nutrition_doc['tipo_documento']=='PESO_TALLA' and valuation['peso_kg']==12.5 and valuation['talla_cm']==90.2,'No estructuro peso y talla')
+        require(valuation['validado_base_maestra'] and nutrition_doc['validaciones']['semaforo']=='VERDE','No valido la valoracion contra Base Maestra')
+        invalid_nutrition=root/'FORMATO_PESO_TALLA_INVALIDO.xlsx'; invalid_nutrition_wb=Workbook(); invalid_nutrition_ws=invalid_nutrition_wb.active; invalid_nutrition_ws.append(['PESO KG TALLA CM VALORACION NUTRICIONAL']); invalid_nutrition_ws.append(['Fecha','Nombre','Documento','Peso','Talla']); invalid_nutrition_ws.append(['20/08/2026','ANA PEREZ','1001','999','10']); invalid_nutrition_wb.save(invalid_nutrition)
+        invalid_nutrition_id,_=create(repo,1,invalid_nutrition); invalid_nutrition_doc=repo.get_document(invalid_nutrition_id,1)
+        require(invalid_nutrition_doc['validaciones']['semaforo']=='ROJO' and invalid_nutrition_doc['validaciones']['errores_criticos']>=2,'No bloqueo rangos nutricionales imposibles')
         invalid_book=root/'LISTADO_ASISTENCIA_INVALIDO.xlsx'
         invalid_wb=Workbook(); invalid_ws=invalid_wb.active; invalid_ws.append(['LISTADO DE ASISTENCIA']); invalid_ws.append(['Nombre completo','Documento','UDS','Asistio']); invalid_ws.append(['PERSONA INEXISTENTE','9999','UCA 1','SI']); invalid_wb.save(invalid_book)
         invalid_id,_=create(repo,1,invalid_book)
