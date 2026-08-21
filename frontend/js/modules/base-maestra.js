@@ -273,13 +273,15 @@
         status.innerHTML = `<strong>${esc(data.estado || 'ANALIZADO')}</strong> · Hoja: ${esc(data.selected_table || '—')} · Encabezado fila ${esc(data.preview?.header_row || '—')} · ${esc(data.preview?.rows?.length || 0)} registros de vista · ${esc(units.count || 0)} unidades. ${data.requires_confirmation ? '<span class="text-amber-200">Requiere confirmación.</span>' : '<span class="text-emerald-200">Mapeo de unidad con confianza alta.</span>'}`;
         status.classList.remove('hidden');
         const important = ['regional.nombre', 'municipio.codigo', 'municipio.nombre', 'centro_zonal.nombre', 'unidad.codigo', 'unidad.nombre', 'participante.numero_documento', 'participante.nombre_completo'];
+        const columns = data.preview?.columns || [];
         const rows = important.map(field => {
             const decision = data.mapping?.[field] || {};
             const selected = decision.selected;
             const rejected = (decision.rejected || []).map(item => `${item.original_header}: ${item.reasons?.join(', ')}`).join(' · ');
-            return `<tr class="border-b border-slate-800"><td class="px-3 py-2 text-slate-200">${esc(field)}</td><td class="px-3 py-2">${esc(selected?.original_header || 'No detectado')}</td><td class="px-3 py-2">${esc(selected?.score ?? '—')} · ${badge(selected?.confidence || decision.status)}</td><td class="px-3 py-2 text-xs text-slate-500">${esc((selected?.reasons || []).join(', '))}${rejected ? `<br>Descartadas: ${esc(rejected)}` : ''}</td></tr>`;
+            const options = ['<option value="">No existe en esta base</option>', ...columns.map(column => `<option value="${esc(column.id)}" ${column.id === selected?.column_id ? 'selected' : ''}>${esc(column.original_header || column.flattened_header)}</option>`)].join('');
+            return `<tr class="border-b border-slate-800"><td class="px-3 py-2 text-slate-200">${esc(field)}</td><td class="px-3 py-2"><select class="bm-input text-xs" data-universal-field="${esc(field)}">${options}</select></td><td class="px-3 py-2">${esc(selected?.score ?? '—')} · ${badge(selected?.confidence || decision.status)}</td><td class="px-3 py-2 text-xs text-slate-500">${esc((selected?.reasons || []).join(', '))}${rejected ? `<br>Descartadas: ${esc(rejected)}` : ''}</td></tr>`;
         }).join('');
-        mappingBox.innerHTML = `<table class="w-full min-w-[760px] text-sm"><thead class="bg-slate-900 text-slate-300"><tr><th class="px-3 py-2 text-left">Campo canónico</th><th class="px-3 py-2 text-left">Columna propuesta</th><th class="px-3 py-2 text-left">Confianza</th><th class="px-3 py-2 text-left">Explicación</th></tr></thead><tbody>${rows}</tbody></table>`;
+        mappingBox.innerHTML = `<table class="w-full min-w-[760px] text-sm"><thead class="bg-slate-900 text-slate-300"><tr><th class="px-3 py-2 text-left">Campo canónico</th><th class="px-3 py-2 text-left">Columna propuesta</th><th class="px-3 py-2 text-left">Confianza</th><th class="px-3 py-2 text-left">Explicación</th></tr></thead><tbody>${rows}</tbody></table><div class="mt-3 flex flex-wrap gap-2"><button onclick="baseMaestraConfirmarMapeoUniversal()" class="bm-btn bm-btn-warning">Guardar y validar mapeo</button><button onclick="baseMaestraImportarUniversal()" class="bm-btn bm-btn-success">Importar a staging de Base Maestra</button></div>`;
         mappingBox.classList.remove('hidden');
     }
 
@@ -297,6 +299,29 @@
             if (/404/.test(String(error.message))) mensaje('El Motor Universal está desactivado. Se habilitará al final del despliegue.', 'info');
             else mensaje(error.message || 'No se pudo analizar la fuente.', 'error');
         } finally { if (typeof ocultarCargando === 'function') ocultarCargando(); }
+    }
+
+    async function baseMaestraConfirmarMapeoUniversal() {
+        if (!state.universalImportId) return mensaje('Analiza primero una fuente.', 'warning');
+        const mapping = {};
+        document.querySelectorAll('[data-universal-field]').forEach(select => { if (select.value) mapping[select.dataset.universalField] = select.value; });
+        try {
+            const data = await fetchJson(`${universalApi()}/${state.universalImportId}/mapeo`, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({mapping})});
+            state.universalResult.mapping = data.mapping; state.universalResult.units = data.units; state.universalResult.requires_confirmation = false;
+            renderUniversal(state.universalResult);
+            const validation = await fetchJson(`${universalApi()}/${state.universalImportId}/validar`, {method:'POST'});
+            mensaje(`Mapeo v${data.version} guardado. ${validation.errores?.length || 0} errores y ${validation.advertencias?.length || 0} advertencias.`, validation.errores?.length ? 'warning' : 'success');
+        } catch (error) { mensaje(error.message || 'No se pudo confirmar el mapeo.', 'error'); }
+    }
+
+    async function baseMaestraImportarUniversal() {
+        if (!state.universalImportId) return mensaje('Analiza y confirma primero una fuente.', 'warning');
+        if (!confirm('¿Importar los registros validados al staging de Base Maestra? Aún no se publicarán.')) return;
+        try {
+            const data = await fetchJson(`${universalApi()}/${state.universalImportId}/confirmar`, {method:'POST'});
+            mensaje(`${data.registros_importados} registros importados; ${data.registros_omitidos} omitidos. ${data.siguiente_paso}.`, data.registros_omitidos ? 'warning' : 'success');
+            await baseMaestraCargarResumen();
+        } catch (error) { mensaje(error.message || 'No se pudo importar el staging.', 'error'); }
     }
 
     async function baseMaestraValidarCarga(cargaId) {
@@ -385,6 +410,8 @@
     window.baseMaestraCargarResumen = baseMaestraCargarResumen;
     window.baseMaestraCargarFuente = baseMaestraCargarFuente;
     window.baseMaestraAnalizarUniversal = baseMaestraAnalizarUniversal;
+    window.baseMaestraConfirmarMapeoUniversal = baseMaestraConfirmarMapeoUniversal;
+    window.baseMaestraImportarUniversal = baseMaestraImportarUniversal;
     window.baseMaestraValidarCarga = baseMaestraValidarCarga;
     window.baseMaestraValidarPendientes = baseMaestraValidarPendientes;
     window.baseMaestraConsolidar = baseMaestraConsolidar;

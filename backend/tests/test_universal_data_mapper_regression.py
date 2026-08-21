@@ -81,6 +81,27 @@ class UniversalMapperRegressionTests(unittest.TestCase):
         self.assertEqual(normalize_unit_code("1234567890123.0"), "1234567890123")
         self.assertEqual(normalize_unit_code("1.234E+12"), "1234000000000")
 
+    def test_every_staged_field_keeps_provenance(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "source.xlsx"; build_fixture(path)
+            service = UniversalMappingService(); result = service.analyze(str(path))
+            rows = list(service.staging_rows(str(path), result, chunk_size=37))
+            self.assertEqual(len(rows), 417)
+            unit = rows[0]["provenance"]["unidad.nombre"]
+            self.assertEqual(unit["original_header"], "Nombre de la unidad de servicio")
+            self.assertEqual(unit["source_table"], "ICBFCUEBeneficiariosPIActivosRe")
+            self.assertIn("score", unit)
+
+    def test_manual_confirmation_overrides_ambiguous_alias(self):
+        result = self.analyze()
+        unit_name = next(c for c in result["preview"]["columns"] if c["original_header"] == "Nombre de la unidad de servicio")
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "source.xlsx"; build_fixture(path)
+            confirmed = UniversalMappingService().analyze(str(path), confirmed={"unidad.nombre": unit_name["id"]})
+            decision = confirmed["mapping"]["unidad.nombre"]
+            self.assertEqual(decision["selected"]["column_id"], unit_name["id"])
+            self.assertIn("administrator_confirmed", decision["selected"]["reasons"])
+
 
 if __name__ == "__main__":
     unittest.main()

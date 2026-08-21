@@ -8,7 +8,7 @@ from typing import Any
 from .adapters import CsvAdapter, DocumentExtractionAdapter, ExcelAdapter, JsonAdapter, RelationalDatabaseAdapter
 from .catalog import CATALOG_VERSION, FORMAT_REQUIREMENTS
 from .mapper import map_columns
-from .normalizers import normalize_text, normalize_unit_code
+from .normalizers import normalize_document_number, normalize_person_name, normalize_text, normalize_unit_code
 
 
 class UniversalMappingService:
@@ -43,6 +43,35 @@ class UniversalMappingService:
             "structure_fingerprint": adapter.get_source_fingerprint(source, selected),
             "requires_confirmation": any(decision.status != "AUTO" for field, decision in mapping.items() if field in {"unidad.codigo", "unidad.nombre"}),
         }
+
+    def staging_rows(self, source: str, analysis: dict[str, Any], chunk_size: int = 2000):
+        """Entrega filas canónicas con evidencia; no realiza escrituras."""
+        adapter = self.adapter_for(source)
+        mapping = analysis["mapping"]
+        headers = {column["id"]: column for column in analysis["preview"]["columns"]}
+        selected = {field: decision.get("selected") for field, decision in mapping.items() if decision.get("selected")}
+        number = analysis["preview"]["header_row"] + analysis["preview"]["header_depth"]
+        for chunk in adapter.read_chunks(source, analysis["selected_table"], chunk_size):
+            for raw in chunk:
+                number += 1
+                canonical = {}
+                provenance = {}
+                for field, decision in selected.items():
+                    column_id = decision["column_id"]
+                    original = raw.get(column_id)
+                    value = normalize_text(original)
+                    if field == "unidad.codigo": value = normalize_unit_code(original)
+                    elif field == "participante.numero_documento": value = normalize_document_number(original)
+                    elif field.startswith("participante.") and any(token in field for token in ("nombre", "apellido")): value = normalize_person_name(original)
+                    canonical[field] = value or None
+                    column = headers[column_id]
+                    provenance[field] = {
+                        "source_table": analysis["selected_table"], "source_row": number,
+                        "original_header": column["original_header"], "normalized_header": column["normalized_header"],
+                        "original_value": original, "normalized_value": value or None,
+                        "canonical_field": field, "score": decision["score"], "rule": decision["reasons"],
+                    }
+                yield {"row_number": number, "original": raw, "canonical": canonical, "provenance": provenance}
 
     @staticmethod
     def detect_units(preview, mapping) -> dict[str, Any]:

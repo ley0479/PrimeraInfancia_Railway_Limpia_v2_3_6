@@ -41,7 +41,7 @@ def score_column(field: str, column: ColumnDescriptor, values: list[Any], confir
         score += 25; reasons.append("code_value_profile")
     if field.endswith(".nombre") and profile["non_empty"] and profile["alpha_ratio"] + profile["alphanumeric_ratio"] >= .5:
         score += 25; reasons.append("name_value_profile")
-    if confirmed: score += 50; reasons.append("previously_confirmed")
+    if confirmed: score += 200; reasons.append("administrator_confirmed")
     return CandidateScore(field, column.id, column.original_header, score, "LOW", reasons)
 
 

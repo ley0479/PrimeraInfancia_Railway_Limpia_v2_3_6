@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -39,6 +40,70 @@ class UniversalImportRepository:
               (state,"Esperando confirmación" if result["requires_confirmation"] else "Validación completada",result["selected_table"],result["preview"]["header_row"],len(result["preview"]["rows"]),units["count"],result["structure_fingerprint"],json.dumps(result,ensure_ascii=False,default=str),now,import_id,tenant_id))
             conn.execute("INSERT INTO auditoria_importaciones_universal(importacion_id,tenant_id,evento,detalle_json,creado_en) VALUES(?,?,?,?,?)",(import_id,tenant_id,"ANALIZADA",json.dumps({"estado":state,"unidades":units["count"]}),now)); conn.commit()
         return state
+    def replace_staging(self, import_id: int, tenant_id: int, rows) -> int:
+        total=0
+        with self.connect() as conn:
+            conn.execute("DELETE FROM importaciones_filas_staging WHERE importacion_id=? AND tenant_id=?",(import_id,tenant_id))
+            for item in rows:
+                normalized=json.dumps({"canonical":item["canonical"],"provenance":item["provenance"]},ensure_ascii=False,default=str)
+                original=json.dumps(item["original"],ensure_ascii=False,default=str)
+                digest=hashlib.sha256(normalized.encode()).hexdigest()
+                conn.execute("INSERT INTO importaciones_filas_staging(importacion_id,tenant_id,numero_fila,hash_fila,original_json,normalizado_json) VALUES(?,?,?,?,?,?)",(import_id,tenant_id,item["row_number"],digest,original,normalized)); total += 1
+            conn.execute("UPDATE importaciones_universales SET cantidad_filas=?,actualizado_en=? WHERE id=? AND tenant_id=?",(total,now_iso(),import_id,tenant_id)); conn.commit()
+        return total
+
+    def confirmed_mapping(self, tenant_id: int, fingerprint: str):
+        with self.connect() as conn:
+            row=conn.execute("SELECT mapeo_json FROM perfiles_mapeo_universal WHERE tenant_id IN (0,?) AND fingerprint_estructura=? AND estado='PUBLICADO' ORDER BY CASE WHEN tenant_id=? THEN 0 ELSE 1 END, version DESC LIMIT 1",(tenant_id,fingerprint,tenant_id)).fetchone()
+            return json.loads(row["mapeo_json"]) if row else None
+
+    def validate(self, import_id: int, tenant_id: int):
+        item=self.get(import_id,tenant_id)
+        if not item: raise ValueError("Importación no encontrada")
+        errors=[]; warnings=[]
+        mapping=item["resultado"].get("mapping",{})
+        for field in ("unidad.nombre","participante.numero_documento"):
+            decision=mapping.get(field,{})
+            if not decision.get("selected"): errors.append({"field":field,"code":"REQUIRED_FIELD_NOT_MAPPED"})
+            elif decision.get("status") != "AUTO" and not item.get("perfil_mapeo_id"): errors.append({"field":field,"code":"MAPPING_REQUIRES_CONFIRMATION"})
+        units=item["resultado"].get("units",{})
+        if units.get("missing_name"): warnings.append({"field":"unidad.nombre","code":"MISSING_VALUES","count":units["missing_name"]})
+        state="LISTO_PARA_IMPORTAR" if not errors else "REQUIERE_CONFIRMACION"
+        with self.connect() as conn:
+            conn.execute("UPDATE importaciones_universales SET estado=?,porcentaje=?,etapa_actual=?,cantidad_errores=?,cantidad_advertencias=?,errores_json=?,actualizado_en=? WHERE id=? AND tenant_id=?",(state,90 if not errors else 75,"Validación completada",len(errors),len(warnings),json.dumps(errors+warnings),now_iso(),import_id,tenant_id)); conn.commit()
+        return {"estado":state,"errores":errors,"advertencias":warnings,"formatos":item["resultado"].get("format_compatibility",{})}
+
+    def cancel(self, import_id: int, tenant_id: int, user_id=None):
+        with self.connect() as conn:
+            cur=conn.execute("UPDATE importaciones_universales SET estado='CANCELADO',etapa_actual='Cancelado por usuario',actualizado_en=? WHERE id=? AND tenant_id=? AND estado NOT IN ('COMPLETADO','CANCELADO')",(now_iso(),import_id,tenant_id))
+            conn.commit(); return bool(cur.rowcount)
+
+    def import_to_base_master(self, import_id: int, tenant_id: int, user_id=None, username="sistema"):
+        item=self.get(import_id,tenant_id)
+        if not item: raise ValueError("Importación no encontrada")
+        if item["estado"] != "LISTO_PARA_IMPORTAR": raise ValueError("La importación debe validarse y confirmar su mapeo antes de importar.")
+        now=now_iso()
+        with self.connect() as conn:
+            corporation=conn.execute("SELECT id FROM corporaciones WHERE fundacion_id=? ORDER BY id LIMIT 1",(tenant_id,)).fetchone()
+            corporation_id=int(corporation["id"]) if corporation else None
+            cur=conn.execute("""INSERT INTO cargas_archivos(tipo_fuente,nombre_archivo_original,nombre_archivo_guardado,extension,fecha_carga,usuario_id,usuario,corporacion_id,fundacion_id,total_registros,registros_validos,registros_error,estado,columnas_json,errores_json,metadata_json,fecha_actualizacion)
+                VALUES('cuentame',?,?,?,?,?,?,?,?,?,?,0,'validado','[]','[]',?,?)""",
+                (item["nombre_archivo"],item["nombre_guardado"],item["tipo_archivo"],now,user_id,username,corporation_id,tenant_id,item["cantidad_filas"],item["cantidad_filas"],json.dumps({"origen":"MOTOR_UNIVERSAL","importacion_id":import_id,"perfil_id":item["perfil_mapeo_id"]}),now))
+            load_id=int(cur.lastrowid); imported=0; skipped=0
+            rows=conn.execute("SELECT numero_fila,original_json,normalizado_json FROM importaciones_filas_staging WHERE importacion_id=? AND tenant_id=? ORDER BY numero_fila",(import_id,tenant_id)).fetchall()
+            seen=set()
+            for staged in rows:
+                bundle=json.loads(staged["normalizado_json"]); data=bundle.get("canonical",{}); doc=data.get("participante.numero_documento")
+                if not doc or doc in seen: skipped += 1; continue
+                seen.add(doc)
+                first=data.get("participante.primer_nombre") or ""; second=data.get("participante.segundo_nombre") or ""; last=data.get("participante.primer_apellido") or ""; second_last=data.get("participante.segundo_apellido") or ""
+                names=" ".join(v for v in (first,second) if v).strip(); surnames=" ".join(v for v in (last,second_last) if v).strip(); full=data.get("participante.nombre_completo") or " ".join(v for v in (names,surnames) if v).strip()
+                conn.execute("""INSERT INTO staging_cuentame(carga_id,fila,documento,tipo_documento,nombres,apellidos,nombre_completo,fecha_nacimiento,grupo_etario,sexo,estado,unidad_servicio,codigo_unidad,corporacion_id,fundacion_id,datos_json,errores_json,fecha_creacion)
+                  VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(load_id,staged["numero_fila"],doc,data.get("participante.tipo_documento"),names,surnames,full,data.get("participante.fecha_nacimiento"),data.get("participante.grupo_etario"),data.get("participante.sexo"),data.get("participante.estado") or "ACTIVO",data.get("unidad.nombre"),data.get("unidad.codigo"),corporation_id,tenant_id,staged["original_json"],"[]",now)); imported += 1
+            result=item["resultado"]; result["base_maestra_carga_id"]=load_id; result["import_summary"]={"imported":imported,"skipped":skipped}
+            conn.execute("UPDATE importaciones_universales SET estado=?,porcentaje=100,etapa_actual='Importado a staging de Base Maestra',resultado_json=?,actualizado_en=? WHERE id=? AND tenant_id=?",("COMPLETADO_CON_ADVERTENCIAS" if skipped else "COMPLETADO",json.dumps(result,ensure_ascii=False,default=str),now,import_id,tenant_id))
+            conn.execute("INSERT INTO auditoria_importaciones_universal(importacion_id,tenant_id,usuario_id,evento,detalle_json,creado_en) VALUES(?,?,?,?,?,?)",(import_id,tenant_id,user_id,"IMPORTADO_BASE_MAESTRA",json.dumps({"carga_id":load_id,"importados":imported,"omitidos":skipped}),now)); conn.commit()
+        return {"estado":"COMPLETADO_CON_ADVERTENCIAS" if skipped else "COMPLETADO","base_maestra_carga_id":load_id,"registros_importados":imported,"registros_omitidos":skipped,"siguiente_paso":"Consolidar y publicar desde Base Maestra"}
     def get(self, import_id: int, tenant_id: int):
         with self.connect() as conn:
             row=conn.execute("SELECT * FROM importaciones_universales WHERE id=? AND tenant_id=?",(import_id,tenant_id)).fetchone()

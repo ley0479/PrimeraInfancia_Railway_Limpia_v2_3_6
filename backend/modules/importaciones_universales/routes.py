@@ -41,8 +41,14 @@ def register_importaciones_universales(app, database_path: str, upload_folder: s
         if previous: return jsonify({"error":"Este archivo ya fue importado anteriormente.","importacion_id":previous["id"],"estado":previous["estado"]}),409
         import_id=repo.create({"tenant_id":tenant,"usuario_id":user_id,"nombre_archivo":file.filename,"nombre_guardado":name,"tipo_archivo":ext,"hash_sha256":digest})
         try:
-            result=UniversalMappingService().analyze(str(path),request.form.get("tabla") or None)
+            service=UniversalMappingService(); result=service.analyze(str(path),request.form.get("tabla") or None)
+            reusable=repo.confirmed_mapping(tenant,result["structure_fingerprint"])
+            if reusable:
+                result=service.analyze(str(path),result["selected_table"],reusable)
+                result["reused_profile"]=True
             state=repo.update_analysis(import_id,tenant,result)
+            total=repo.replace_staging(import_id,tenant,service.staging_rows(str(path),result))
+            result["staged_rows"]=total
             return jsonify({"importacion_id":import_id,"estado":state,**result}),201
         except Exception as exc:
             return jsonify({"error":f"No se pudo analizar la fuente: {exc}","importacion_id":import_id}),400
@@ -70,7 +76,15 @@ def register_importaciones_universales(app, database_path: str, upload_folder: s
     def save_mapping(import_id):
         tenant,user_id=context(); data=request.get_json(silent=True) or {}; mapping=data.get("mapping")
         if not isinstance(mapping,dict): return jsonify({"error":"mapping debe ser un objeto JSON."}),400
-        try: return jsonify(repo.save_profile(import_id,tenant,user_id,mapping)),200
+        try:
+            item=repo.get(import_id,tenant)
+            if not item: raise ValueError("Importación no encontrada")
+            path=Path(os.fspath(storage))/item["nombre_guardado"]
+            service=UniversalMappingService(); result=service.analyze(str(path),item.get("tabla_seleccionada"),mapping)
+            repo.update_analysis(import_id,tenant,result)
+            repo.replace_staging(import_id,tenant,service.staging_rows(str(path),result))
+            saved=repo.save_profile(import_id,tenant,user_id,mapping)
+            return jsonify({**saved,"mapping":result["mapping"],"units":result["units"]}),200
         except ValueError as exc: return jsonify({"error":str(exc)}),404
 
     @bp.get("/<int:import_id>/unidades")
@@ -82,5 +96,31 @@ def register_importaciones_universales(app, database_path: str, upload_folder: s
     @bp.get("/<int:import_id>/auditoria")
     @require_roles(*ROLES,"COORDINADOR")
     def audit(import_id): tenant,_=context(); return jsonify({"eventos":repo.audit(import_id,tenant)}),200
+
+    @bp.post("/<int:import_id>/validar")
+    @require_roles(*ROLES)
+    def validate(import_id):
+        tenant,_=context()
+        try: return jsonify(repo.validate(import_id,tenant)),200
+        except ValueError as exc: return jsonify({"error":str(exc)}),404
+
+    @bp.get("/<int:import_id>/errores")
+    @require_roles(*ROLES,"COORDINADOR")
+    def errors(import_id):
+        tenant,_=context(); item=repo.get(import_id,tenant)
+        return (jsonify({"errores":item["errores"]}),200) if item else (jsonify({"error":"Importación no encontrada."}),404)
+
+    @bp.post("/<int:import_id>/cancelar")
+    @require_roles(*ROLES)
+    def cancel(import_id):
+        tenant,user_id=context()
+        return (jsonify({"estado":"CANCELADO"}),200) if repo.cancel(import_id,tenant,user_id) else (jsonify({"error":"No se puede cancelar esta importación."}),409)
+
+    @bp.post("/<int:import_id>/confirmar")
+    @require_roles(*ROLES)
+    def confirm(import_id):
+        tenant,user_id=context(); user=getattr(g,"current_user",{}) or {}
+        try: return jsonify(repo.import_to_base_master(import_id,tenant,user_id,user.get("username") or "sistema")),200
+        except ValueError as exc: return jsonify({"error":str(exc)}),409
 
     app.register_blueprint(bp)
