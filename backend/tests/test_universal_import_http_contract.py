@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+import ast
 from io import BytesIO
 from pathlib import Path
 
@@ -40,6 +41,13 @@ class FakeService:
 
 
 def main():
+    source=Path(routes.__file__).read_text(encoding="utf-8"); tree=ast.parse(source)
+    write_functions={"analyze","select_table","save_mapping","validate","cancel","confirm"}
+    for node in ast.walk(tree):
+        if isinstance(node,ast.FunctionDef) and node.name in write_functions:
+            role_calls=[decorator for decorator in node.decorator_list if isinstance(decorator,ast.Call) and getattr(decorator.func,"id","")=="require_roles"]
+            assert role_calls,f"{node.name} no declara roles"
+            rendered=ast.unparse(role_calls[0]); assert "COORDINADOR" not in rendered and "DOCENTE" not in rendered and "PSICOSOCIAL" not in rendered,f"{node.name} permite escritura operativa no autorizada"
     originals = routes.UniversalImportRepository, routes.UniversalMappingService, routes.require_roles, routes.validate_tabular_source
     routes.UniversalImportRepository = FakeRepository; routes.UniversalMappingService = FakeService
     routes.require_roles = lambda *roles: (lambda function: function)

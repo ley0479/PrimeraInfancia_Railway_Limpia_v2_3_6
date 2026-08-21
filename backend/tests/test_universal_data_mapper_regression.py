@@ -5,6 +5,7 @@ import tempfile
 import unittest
 import csv
 import json
+import pandas as pd
 from pathlib import Path
 
 from openpyxl import Workbook
@@ -156,6 +157,16 @@ class UniversalMapperRegressionTests(unittest.TestCase):
             ndjson=Path(folder)/"source.ndjson"
             ndjson.write_text(json.dumps(dict(zip(headers,record)),ensure_ascii=False)+"\n",encoding="utf-8")
             json_result=UniversalMappingService().analyze(str(ndjson)); self.assertEqual(json_result["mapping"]["unidad.nombre"]["selected"]["original_header"],"Nombre de la unidad de servicio")
+
+    def test_xlsm_and_ods_are_read_structurally(self):
+        headers=HEADERS[:11]; record=["RC","1001","ANA","PEREZ","ACTIVO","Chocó","27001","QUIBDÓ","CZ 1","000012345678","UDS NATIVA"]
+        with tempfile.TemporaryDirectory() as folder:
+            xlsm=Path(folder)/"source.xlsm"; workbook=Workbook(); sheet=workbook.active; sheet.title="DATOS"; sheet.append(headers); sheet.append(record); workbook.save(xlsm)
+            self.assertTrue(validate_tabular_source(str(xlsm),".xlsm")["signature_valid"])
+            self.assertEqual(UniversalMappingService().analyze(str(xlsm))["units"]["items"][0]["code"],"000012345678")
+            ods=Path(folder)/"source.ods"; pd.DataFrame([record],columns=headers).to_excel(ods,index=False,engine="odf")
+            self.assertTrue(validate_tabular_source(str(ods),".ods")["signature_valid"])
+            self.assertEqual(UniversalMappingService().analyze(str(ods))["units"]["items"][0]["name"],"UDS NATIVA")
 
 
 if __name__ == "__main__":

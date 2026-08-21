@@ -31,7 +31,9 @@ def main():
         service=UniversalMappingService(); analysis=service.analyze(str(source)); repo.update_analysis(import_id,7,analysis)
         assert repo.replace_staging(import_id,7,service.staging_rows(str(source),analysis,chunk_size=53)) == 417
         mapping={field:decision["selected"]["column_id"] for field,decision in analysis["mapping"].items() if decision.get("selected")}
-        repo.save_profile(import_id,7,11,mapping); validation=repo.validate(import_id,7); assert not validation["errores"],validation
+        profile_v1=repo.save_profile(import_id,7,11,mapping); assert profile_v1["version"] == 1
+        profile_v2=repo.save_profile(import_id,7,11,mapping); assert profile_v2["version"] == 2,"Una corrección nueva debe crear versión, no sobrescribir"
+        validation=repo.validate(import_id,7); assert not validation["errores"],validation
         imported=repo.import_to_base_master(import_id,7,11,"tester")
         assert imported["registros_importados"] == 417 and imported["registros_omitidos"] == 0,imported
         assert repo.find_hash(7,digest)["id"] == import_id
