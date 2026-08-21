@@ -117,7 +117,7 @@ def register_motor_plantillas(app, database_path: str, templates_folder: str, ou
     def estado_ram_v3():
         mes = request.args.get('mes', type=int) or datetime.now().month
         anio = request.args.get('anio', type=int) or request.args.get('año', type=int) or datetime.now().year
-        version = repo.get_applicable('RAM', mes, anio)
+        version = repo.get_applicable('RAM',mes,anio,current_user().get('fundacion_id'))
         actual_hash = sha256_file(ram_template_path) if ram_template_path.exists() else None
         return jsonify({
             'periodo': f'{anio:04d}-{mes:02d}',
@@ -232,7 +232,7 @@ def register_motor_plantillas(app, database_path: str, templates_folder: str, ou
     @bp.route('/plantillas/<int:plantilla_id>/detectar', methods=['GET'])
     @require_roles(*ALLOWED_ROLES)
     def detectar(plantilla_id: int):
-        plantilla = repo.get_template(plantilla_id)
+        plantilla = repo.get_template(plantilla_id,current_user().get('fundacion_id'))
         if not plantilla:
             return jsonify({'error': 'Plantilla no encontrada.'}), 404
         if not os.path.exists(plantilla['ruta_archivo']):
@@ -243,7 +243,7 @@ def register_motor_plantillas(app, database_path: str, templates_folder: str, ou
     @bp.route('/plantillas/<int:plantilla_id>/mapeo', methods=['GET'])
     @require_roles(*ALLOWED_ROLES)
     def obtener_mapeo(plantilla_id: int):
-        plantilla = repo.get_template(plantilla_id)
+        plantilla = repo.get_template(plantilla_id,current_user().get('fundacion_id'))
         if not plantilla:
             return jsonify({'error': 'Plantilla no encontrada.'}), 404
         return jsonify({'plantilla': plantilla, 'mapeo': repo.get_active_mapping(plantilla_id)})
@@ -251,7 +251,7 @@ def register_motor_plantillas(app, database_path: str, templates_folder: str, ou
     @bp.route('/plantillas/<int:plantilla_id>/mapeo', methods=['POST'])
     @require_roles(*ALLOWED_ROLES)
     def guardar_mapeo(plantilla_id: int):
-        plantilla = repo.get_template(plantilla_id)
+        plantilla = repo.get_template(plantilla_id,current_user().get('fundacion_id'))
         if not plantilla:
             return jsonify({'error': 'Plantilla no encontrada.'}), 404
         data = request.get_json(silent=True) or {}
@@ -273,7 +273,7 @@ def register_motor_plantillas(app, database_path: str, templates_folder: str, ou
     @bp.route('/plantillas/<int:plantilla_id>/validar', methods=['POST'])
     @require_roles(*ALLOWED_ROLES)
     def validar(plantilla_id: int):
-        plantilla = repo.get_template(plantilla_id)
+        plantilla = repo.get_template(plantilla_id,current_user().get('fundacion_id'))
         if not plantilla:
             return jsonify({'error': 'Plantilla no encontrada.'}), 404
         data = request.get_json(silent=True) or {}
@@ -284,7 +284,7 @@ def register_motor_plantillas(app, database_path: str, templates_folder: str, ou
     @bp.route('/plantillas/<int:plantilla_id>/probar-unidad', methods=['POST'])
     @require_roles(*ALLOWED_ROLES)
     def probar_unidad(plantilla_id: int):
-        plantilla = repo.get_template(plantilla_id)
+        plantilla = repo.get_template(plantilla_id,current_user().get('fundacion_id'))
         if not plantilla:
             return jsonify({'error': 'Plantilla no encontrada.'}), 404
         if not os.path.exists(plantilla['ruta_archivo']):
@@ -334,12 +334,12 @@ def register_motor_plantillas(app, database_path: str, templates_folder: str, ou
     @require_roles(*ALLOWED_ROLES)
     def listar_versiones():
         tipo = request.args.get('tipo_formato') or request.args.get('tipo')
-        return jsonify({'versiones': repo.list_versions(tipo)})
+        return jsonify({'versiones': repo.list_versions(tipo,current_user().get('fundacion_id'))})
 
     @bp.route('/<tipo_formato>/vigente', methods=['GET'])
     @require_roles(*ALLOWED_ROLES)
     def obtener_vigente(tipo_formato: str):
-        vigente = repo.get_vigente(tipo_formato)
+        vigente = repo.get_vigente(tipo_formato,current_user().get('fundacion_id'))
         if not vigente:
             return jsonify({'error': f'No existe plantilla vigente para {tipo_formato}.'}), 404
         return jsonify({'vigente': vigente})
@@ -347,16 +347,16 @@ def register_motor_plantillas(app, database_path: str, templates_folder: str, ou
     @bp.route('/plantillas/<int:plantilla_id>/versiones', methods=['GET'])
     @require_roles(*ALLOWED_ROLES)
     def versiones_por_plantilla(plantilla_id: int):
-        plantilla = repo.get_template(plantilla_id)
+        plantilla = repo.get_template(plantilla_id,current_user().get('fundacion_id'))
         if not plantilla:
             return jsonify({'error': 'Plantilla no encontrada.'}), 404
         tipo = plantilla.get('tipo') or ''
-        return jsonify({'plantilla': plantilla, 'versiones': [v for v in repo.list_versions(tipo) if int(v.get('mp_plantilla_id') or 0) == plantilla_id or (v.get('tipo_formato') or '') == tipo]})
+        return jsonify({'plantilla': plantilla, 'versiones': [v for v in repo.list_versions(tipo,current_user().get('fundacion_id')) if int(v.get('mp_plantilla_id') or 0) == plantilla_id]})
 
     @bp.route('/version/<int:version_id>/estructura', methods=['GET'])
     @require_roles(*ALLOWED_ROLES)
     def estructura_version(version_id: int):
-        versiones = [v for v in repo.list_versions() if int(v.get('id') or 0) == version_id]
+        versiones = [v for v in repo.list_versions(fundacion_id=current_user().get('fundacion_id')) if int(v.get('id') or 0) == version_id]
         if not versiones:
             return jsonify({'error': 'Versión no encontrada.'}), 404
         version = versiones[0]
@@ -368,7 +368,7 @@ def register_motor_plantillas(app, database_path: str, templates_folder: str, ou
     @bp.route('/version/<int:version_id>/mapeo', methods=['POST'])
     @require_roles(*ALLOWED_ROLES)
     def guardar_mapeo_version(version_id: int):
-        versiones = [v for v in repo.list_versions() if int(v.get('id') or 0) == version_id]
+        versiones = [v for v in repo.list_versions(fundacion_id=current_user().get('fundacion_id')) if int(v.get('id') or 0) == version_id]
         if not versiones:
             return jsonify({'error': 'Versión no encontrada.'}), 404
         version = versiones[0]
@@ -383,6 +383,8 @@ def register_motor_plantillas(app, database_path: str, templates_folder: str, ou
     @bp.route('/version/<int:version_id>/productos', methods=['GET', 'POST'])
     @require_roles(*ALLOWED_ROLES)
     def productos_version(version_id: int):
+        if not any(int(v.get('id') or 0)==version_id for v in repo.list_versions(fundacion_id=current_user().get('fundacion_id'))):
+            return jsonify({'error':'Versión no encontrada.'}),404
         if request.method == 'GET':
             return jsonify({'productos': repo.get_products(version_id)})
         data = request.get_json(silent=True) or {}
@@ -393,11 +395,11 @@ def register_motor_plantillas(app, database_path: str, templates_folder: str, ou
     @bp.route('/version/<int:version_id>/probar', methods=['POST'])
     @require_roles(*ALLOWED_ROLES)
     def probar_version(version_id: int):
-        versiones = [v for v in repo.list_versions() if int(v.get('id') or 0) == version_id]
+        versiones = [v for v in repo.list_versions(fundacion_id=current_user().get('fundacion_id')) if int(v.get('id') or 0) == version_id]
         if not versiones:
             return jsonify({'error': 'Versión no encontrada.'}), 404
         version = versiones[0]
-        plantilla = repo.get_template(int(version.get('mp_plantilla_id') or 0))
+        plantilla = repo.get_template(int(version.get('mp_plantilla_id') or 0),current_user().get('fundacion_id'))
         if not plantilla:
             return jsonify({'error': 'Plantilla base no encontrada.'}), 404
         data = request.get_json(silent=True) or {}

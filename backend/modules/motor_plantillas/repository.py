@@ -76,9 +76,9 @@ class MotorPlantillasRepository:
             result.append(item)
         return result
 
-    def get_template(self, plantilla_id: int) -> dict | None:
+    def get_template(self, plantilla_id: int, fundacion_id: int | None = None) -> dict | None:
         conn = connect(self.database_path)
-        row = conn.execute("SELECT * FROM mp_plantillas WHERE id=?", (plantilla_id,)).fetchone()
+        row = conn.execute("SELECT * FROM mp_plantillas WHERE id=? AND fundacion_id=?", (plantilla_id, fundacion_id)).fetchone() if fundacion_id is not None else conn.execute("SELECT * FROM mp_plantillas WHERE id=?", (plantilla_id,)).fetchone()
         conn.close()
         item = row_to_dict(row)
         if item:
@@ -154,20 +154,21 @@ class MotorPlantillasRepository:
         }
 
     # ===== ALPHA52 — Motor de Plantillas Versionado =====
-    def _ensure_oficial(self, conn, tipo_formato: str, codigo: str | None, nombre: str) -> int:
+    def _ensure_oficial(self, conn, tipo_formato: str, codigo: str | None, nombre: str, fundacion_id: int) -> int:
         tipo = (tipo_formato or 'OTROS').upper()
-        row = conn.execute("SELECT id FROM plantillas_oficiales WHERE tipo_formato=? AND COALESCE(codigo,'')=COALESCE(?, '') LIMIT 1", (tipo, codigo or '')).fetchone()
+        row = conn.execute("SELECT id FROM plantillas_oficiales WHERE tipo_formato=? AND COALESCE(codigo,'')=COALESCE(?, '') AND fundacion_id=? LIMIT 1", (tipo, codigo or '', fundacion_id)).fetchone()
         if row:
             return int(row['id'])
         cur = conn.execute("""
-            INSERT INTO plantillas_oficiales (tipo_formato, codigo, nombre, descripcion, activo, created_at, updated_at)
-            VALUES (?, ?, ?, ?, 1, ?, ?)
-        """, (tipo, codigo or '', nombre or tipo, f'Plantilla oficial versionada para {tipo}', now_iso(), now_iso()))
+            INSERT INTO plantillas_oficiales (tipo_formato, codigo, nombre, descripcion, activo, fundacion_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 1, ?, ?, ?)
+        """, (tipo, codigo or '', nombre or tipo, f'Plantilla oficial versionada para {tipo}', fundacion_id, now_iso(), now_iso()))
         return int(cur.lastrowid)
 
     def create_template_version_record(self, plantilla_id: int, data: dict, user: dict) -> int:
         conn = connect(self.database_path)
-        plantilla = conn.execute("SELECT * FROM mp_plantillas WHERE id=?", (plantilla_id,)).fetchone()
+        fundacion_id=int(user.get('fundacion_id') or 1)
+        plantilla = conn.execute("SELECT * FROM mp_plantillas WHERE id=? AND fundacion_id=?", (plantilla_id,fundacion_id)).fetchone()
         if not plantilla:
             conn.close()
             raise ValueError('Plantilla base no encontrada')
@@ -175,14 +176,14 @@ class MotorPlantillasRepository:
         tipo = (data.get('tipo_formato') or p.get('tipo') or 'OTROS').upper()
         codigo = data.get('codigo') or p.get('codigo') or ''
         nombre = data.get('nombre') or p.get('nombre') or p.get('nombre_original') or tipo
-        oficial_id = self._ensure_oficial(conn, tipo, codigo, nombre)
+        oficial_id = self._ensure_oficial(conn, tipo, codigo, nombre, fundacion_id)
         cur = conn.execute("""
             INSERT INTO plantillas_oficiales_versiones
             (plantilla_oficial_id, mp_plantilla_id, tipo_formato, codigo, nombre, version,
              fecha_vigencia, fecha_vigencia_fin, estado, estado_publicacion,
              archivo_path, hash_sha256, manual_path, reglas_json, archivo_original,
-             observaciones, mapeo_json, productos_json, usuario_carga, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             observaciones, mapeo_json, productos_json, usuario_carga, fundacion_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             oficial_id, plantilla_id, tipo, codigo, nombre, data.get('version') or p.get('version') or '1.0',
             data.get('fecha_vigencia') or p.get('fecha_vigencia') or '', data.get('fecha_vigencia_fin') or '',
@@ -192,7 +193,7 @@ class MotorPlantillasRepository:
             p.get('nombre_original'), data.get('observaciones') or p.get('observaciones') or '',
             json.dumps(data.get('mapeo') or [], ensure_ascii=False),
             json.dumps(data.get('productos') or [], ensure_ascii=False),
-            user.get('usuario_id'), now_iso(), now_iso()
+            user.get('usuario_id'), fundacion_id, now_iso(), now_iso()
         ))
         version_id = int(cur.lastrowid)
         conn.execute("UPDATE mp_plantillas SET plantilla_oficial_version_id=?, estado=?, codigo=?, fecha_vigencia=?, observaciones=?, fecha_actualizacion=? WHERE id=?", (
@@ -219,10 +220,14 @@ class MotorPlantillasRepository:
                 item['productos'] = []
         return item
 
-    def list_versions(self, tipo_formato: str | None = None) -> list[dict]:
+    def list_versions(self, tipo_formato: str | None = None, fundacion_id: int | None = None) -> list[dict]:
         conn = connect(self.database_path)
-        if tipo_formato:
+        if tipo_formato and fundacion_id is not None:
+            rows = conn.execute("SELECT * FROM plantillas_oficiales_versiones WHERE tipo_formato=? AND fundacion_id=? ORDER BY created_at DESC", (tipo_formato.upper(),fundacion_id)).fetchall()
+        elif tipo_formato:
             rows = conn.execute("SELECT * FROM plantillas_oficiales_versiones WHERE tipo_formato=? ORDER BY created_at DESC", (tipo_formato.upper(),)).fetchall()
+        elif fundacion_id is not None:
+            rows = conn.execute("SELECT * FROM plantillas_oficiales_versiones WHERE fundacion_id=? ORDER BY created_at DESC",(fundacion_id,)).fetchall()
         else:
             rows = conn.execute("SELECT * FROM plantillas_oficiales_versiones ORDER BY created_at DESC").fetchall()
         conn.close()
@@ -299,11 +304,11 @@ class MotorPlantillasRepository:
         self.log('GUARDAR_MAPEO', plantilla_id=plantilla_id, mapeo_id=mapeo_id, usuario_id=user.get('usuario_id'), fundacion_id=user.get('fundacion_id'), detalle={'validacion': validation})
         return mapeo_id
 
-    def get_vigente(self, tipo_formato: str) -> dict | None:
+    def get_vigente(self, tipo_formato: str, fundacion_id: int) -> dict | None:
         conn = connect(self.database_path)
-        row = conn.execute("SELECT * FROM plantillas_oficiales_versiones WHERE tipo_formato=? AND LOWER(estado)='vigente' ORDER BY updated_at DESC, id DESC LIMIT 1", (tipo_formato.upper(),)).fetchone()
+        row = conn.execute("SELECT * FROM plantillas_oficiales_versiones WHERE tipo_formato=? AND fundacion_id=? AND LOWER(estado)='vigente' ORDER BY updated_at DESC, id DESC LIMIT 1", (tipo_formato.upper(),fundacion_id)).fetchone()
         if not row:
-            row = conn.execute("SELECT * FROM mp_plantillas WHERE tipo=? AND UPPER(estado) IN ('VIGENTE','ACTIVA') ORDER BY fecha_actualizacion DESC, id DESC LIMIT 1", (tipo_formato.upper(),)).fetchone()
+            row = conn.execute("SELECT * FROM mp_plantillas WHERE tipo=? AND fundacion_id=? AND UPPER(estado) IN ('VIGENTE','ACTIVA') ORDER BY fecha_actualizacion DESC, id DESC LIMIT 1", (tipo_formato.upper(),fundacion_id)).fetchone()
             if row:
                 item = row_to_dict(row)
                 conn.close()
@@ -312,41 +317,43 @@ class MotorPlantillasRepository:
         item = row_to_dict(row)
         return item
 
-    def get_applicable(self, tipo_formato: str, mes: int, anio: int) -> dict | None:
+    def get_applicable(self, tipo_formato: str, mes: int, anio: int, fundacion_id: int) -> dict | None:
         """Obtiene la versión aplicable al primer día del periodo solicitado."""
         tipo = (tipo_formato or '').upper()
         report_date = f"{int(anio):04d}-{int(mes):02d}-01"
         conn = connect(self.database_path)
         row = conn.execute("""
             SELECT * FROM plantillas_oficiales_versiones
-            WHERE tipo_formato=?
+            WHERE tipo_formato=? AND fundacion_id=?
               AND LOWER(COALESCE(estado,'')) IN ('vigente','programado','historico','activa')
               AND (COALESCE(fecha_vigencia,'')='' OR substr(fecha_vigencia,1,10)<=?)
               AND (COALESCE(fecha_vigencia_fin,'')='' OR substr(fecha_vigencia_fin,1,10)>=?)
             ORDER BY CASE WHEN COALESCE(fecha_vigencia,'')='' THEN 1 ELSE 0 END,
                      substr(fecha_vigencia,1,10) DESC, updated_at DESC, id DESC
             LIMIT 1
-        """, (tipo, report_date, report_date)).fetchone()
+        """, (tipo,fundacion_id,report_date,report_date)).fetchone()
         conn.close()
         return row_to_dict(row)
 
     def mark_version_vigente(self, version_id: int, user: dict) -> dict:
         conn = connect(self.database_path)
-        row = conn.execute("SELECT * FROM plantillas_oficiales_versiones WHERE id=?", (version_id,)).fetchone()
+        fundacion_id=int(user.get('fundacion_id') or 1)
+        row = conn.execute("SELECT * FROM plantillas_oficiales_versiones WHERE id=? AND fundacion_id=?", (version_id,fundacion_id)).fetchone()
         if not row:
             conn.close()
             raise ValueError('Versión de plantilla no encontrada')
         item = dict(row)
         tipo = item.get('tipo_formato')
-        conn.execute("UPDATE plantillas_oficiales_versiones SET estado='historico', updated_at=? WHERE tipo_formato=? AND id<>?", (now_iso(), tipo, version_id))
-        conn.execute("UPDATE plantillas_oficiales_versiones SET estado='vigente', updated_at=? WHERE id=?", (now_iso(), version_id))
-        conn.execute("UPDATE mp_plantillas SET estado='HISTORICO', fecha_actualizacion=? WHERE tipo=?", (now_iso(), tipo))
+        conn.execute("UPDATE plantillas_oficiales_versiones SET estado='historico', updated_at=? WHERE tipo_formato=? AND fundacion_id=? AND id<>?", (now_iso(), tipo,fundacion_id,version_id))
+        conn.execute("UPDATE plantillas_oficiales_versiones SET estado='vigente', updated_at=? WHERE id=? AND fundacion_id=?", (now_iso(),version_id,fundacion_id))
+        conn.execute("UPDATE mp_plantillas SET estado='HISTORICO', fecha_actualizacion=? WHERE tipo=? AND fundacion_id=?", (now_iso(),tipo,fundacion_id))
         if item.get('mp_plantilla_id'):
             conn.execute("UPDATE mp_plantillas SET estado='VIGENTE', fecha_actualizacion=? WHERE id=?", (now_iso(), item['mp_plantilla_id']))
         conn.execute("""
-            INSERT INTO plantillas_oficiales_auditoria (accion, tipo_formato, version_id, mp_plantilla_id, usuario_id, detalle_json, created_at)
-            VALUES ('MARCAR_VIGENTE', ?, ?, ?, ?, ?, ?)
-        """, (tipo, version_id, item.get('mp_plantilla_id'), user.get('usuario_id'), json.dumps({'version': item.get('version')}, ensure_ascii=False), now_iso()))
+            INSERT INTO plantillas_oficiales_auditoria
+            (accion, tipo_formato, version_id, mp_plantilla_id, usuario_id, fundacion_id, detalle_json, created_at)
+            VALUES ('MARCAR_VIGENTE', ?, ?, ?, ?, ?, ?, ?)
+        """, (tipo,version_id,item.get('mp_plantilla_id'),user.get('usuario_id'),fundacion_id,json.dumps({'version':item.get('version')},ensure_ascii=False),now_iso()))
         conn.commit()
         conn.close()
         self.log('MARCAR_VERSION_VIGENTE', plantilla_id=item.get('mp_plantilla_id'), usuario_id=user.get('usuario_id'), fundacion_id=user.get('fundacion_id'), detalle={'version_id': version_id, 'tipo': tipo})
@@ -355,11 +362,12 @@ class MotorPlantillasRepository:
     def rollback(self, tipo_formato: str, user: dict) -> dict:
         conn = connect(self.database_path)
         tipo = tipo_formato.upper()
+        fundacion_id=int(user.get('fundacion_id') or 1)
         row = conn.execute("""
             SELECT * FROM plantillas_oficiales_versiones
-            WHERE tipo_formato=? AND LOWER(estado) IN ('historico','activa','vigente')
+            WHERE tipo_formato=? AND fundacion_id=? AND LOWER(estado) IN ('historico','activa','vigente')
             ORDER BY CASE WHEN LOWER(estado)='historico' THEN 0 ELSE 1 END, updated_at DESC, id DESC LIMIT 1
-        """, (tipo,)).fetchone()
+        """, (tipo,fundacion_id)).fetchone()
         conn.close()
         if not row:
             raise ValueError('No hay versión anterior para restaurar')
