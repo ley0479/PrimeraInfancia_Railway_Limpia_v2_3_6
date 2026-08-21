@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+import csv
+import json
 from pathlib import Path
 
 from openpyxl import Workbook
@@ -110,6 +112,50 @@ class UniversalMapperRegressionTests(unittest.TestCase):
                 validate_tabular_source(str(fake), ".xlsx")
             valid = Path(folder) / "valid.xlsx"; build_fixture(valid)
             self.assertTrue(validate_tabular_source(str(valid), ".xlsx")["signature_valid"])
+
+    def test_single_unit_is_valid_even_when_territory_is_constant(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/"single.xlsx"; build_fixture(path)
+            workbook=__import__("openpyxl").load_workbook(path); sheet=workbook["ICBFCUEBeneficiariosPIActivosRe"]
+            for row in range(2,419): sheet.cell(row,10).value="000000001234"; sheet.cell(row,11).value="UDS ÚNICA"
+            workbook.save(path); workbook.close()
+            result=UniversalMappingService().analyze(str(path))
+            self.assertEqual(result["units"]["count"],1)
+            self.assertEqual(result["units"]["items"][0]["code"],"000000001234")
+            self.assertEqual(result["units"]["items"][0]["name"],"UDS ÚNICA")
+
+    def test_missing_unit_code_is_not_invented(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/"without-code.xlsx"; build_fixture(path)
+            workbook=__import__("openpyxl").load_workbook(path); sheet=workbook["ICBFCUEBeneficiariosPIActivosRe"]
+            sheet.cell(1,10).value="Referencia auxiliar"
+            for row in range(2,419): sheet.cell(row,10).value=None
+            workbook.save(path); workbook.close()
+            result=UniversalMappingService().analyze(str(path))
+            self.assertIsNone(result["mapping"]["unidad.codigo"]["selected"])
+            self.assertEqual(result["units"]["count"],39)
+            self.assertEqual(result["units"]["missing_code"],417)
+
+    def test_duplicate_headers_keep_distinct_internal_ids(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/"duplicate.xlsx"; build_fixture(path)
+            workbook=__import__("openpyxl").load_workbook(path); sheet=workbook["ICBFCUEBeneficiariosPIActivosRe"]
+            sheet.cell(1,12).value="Nombre de la unidad de servicio"
+            workbook.save(path); workbook.close()
+            result=UniversalMappingService().analyze(str(path))
+            duplicates=[c for c in result["preview"]["columns"] if c["normalized_header"]=="nombre de la unidad de servicio"]
+            self.assertEqual(len(duplicates),2); self.assertNotEqual(duplicates[0]["id"],duplicates[1]["id"])
+
+    def test_csv_and_ndjson_use_same_canonical_mapper(self):
+        headers=HEADERS[:11]
+        record=["RC","1001","ANA","PEREZ","ACTIVO","Chocó","27001","QUIBDÓ","CZ 1","001234567890","UDS CSV"]
+        with tempfile.TemporaryDirectory() as folder:
+            csv_path=Path(folder)/"source.csv"
+            with csv_path.open("w",newline="",encoding="utf-8") as stream: csv.writer(stream).writerows([headers,record])
+            csv_result=UniversalMappingService().analyze(str(csv_path)); self.assertEqual(csv_result["units"]["items"][0]["name"],"UDS CSV")
+            ndjson=Path(folder)/"source.ndjson"
+            ndjson.write_text(json.dumps(dict(zip(headers,record)),ensure_ascii=False)+"\n",encoding="utf-8")
+            json_result=UniversalMappingService().analyze(str(ndjson)); self.assertEqual(json_result["mapping"]["unidad.nombre"]["selected"]["original_header"],"Nombre de la unidad de servicio")
 
 
 if __name__ == "__main__":

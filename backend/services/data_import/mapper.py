@@ -33,6 +33,8 @@ def score_column(field: str, column: ColumnDescriptor, values: list[Any], confir
     if field == "unidad.codigo":
         if "codigo" in tokens: score += 20; reasons.append("contains_code")
         if {"unidad", "servicio"}.issubset(tokens): score += 35; reasons.append("contains_unit_service")
+        if not ({"codigo", "id", "identificador"} & set(tokens)) and header not in aliases:
+            score -= 80; reasons.append("missing_code_semantics")
     for term, penalty in NEGATIVE_TERMS.get(field, {}).items():
         if set(term.split()).issubset(set(tokens)):
             score += penalty; reasons.append(f"negative:{term}")
