@@ -15,6 +15,7 @@ pytz
 requests
 reportlab
 pypdf
+PyMuPDF>=1.24,<2.0
 odfpy
 lxml
 beautifulsoup4

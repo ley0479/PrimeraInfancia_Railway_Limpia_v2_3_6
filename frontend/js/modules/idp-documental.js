@@ -49,7 +49,8 @@
         const validationSummary=`<div class="idp-validation-summary ${String(summary.semaforo||'GRIS').toLowerCase()}"><div><small>Semáforo</small><strong>${esc(summary.semaforo||'GRIS')}</strong></div><div><small>Coincidencias</small><strong>${Number(summary.coincidencias||0)} / ${Number(summary.total||0)}</strong></div><div><small>Errores críticos</small><strong>${Number(summary.errores_criticos||0)}</strong></div><div><small>Advertencias</small><strong>${Number(summary.advertencias||0)}</strong></div></div>`;
         const approvalBlocked=doc.estado==='REQUIERE_OCR'||doc.estado==='APROBADO'||Number(summary.errores_criticos||0)>0;
         const canGenerate=doc.estado==='APROBADO'&&doc.tipo_documento==='LISTADO_ASISTENCIA';
-        target.innerHTML=`<div class="idp-card p-5"><div class="idp-detail-head"><div><p class="idp-eyebrow">${esc(doc.tipo_documento)}</p><h3>${esc(doc.nombre_original)}</h3><p>Motor: ${esc(doc.motor_lectura||'Pendiente')} · Clasificación ${(Number(doc.confianza_clasificacion||0)*100).toFixed(0)}%</p></div>${badge(doc.estado)}</div><div class="idp-progress"><span style="width:${Math.max(0,Math.min(100,Number(doc.progreso||0)))}%"></span></div>${validationSummary}<div class="idp-actions"><button class="idp-btn secondary" onclick="IDPDocumental.download(${Number(doc.id)})">Descargar original</button><button class="idp-btn primary" ${approvalBlocked?'disabled':''} onclick="IDPDocumental.approve(${Number(doc.id)})">Aprobar sin importar</button>${canGenerate?`<button class="idp-btn primary" onclick="IDPDocumental.downloadOfficial(${Number(doc.id)})">Generar listado oficial</button>`:''}</div>${validations}<div class="idp-fields">${fields||'<div class="idp-empty">No hay campos estructurados. Requiere mapeo u OCR.</div>'}</div></div>`;
+        const canRetryOcr=doc.estado==='REQUIERE_OCR'||doc.estado==='ERROR';
+        target.innerHTML=`<div class="idp-card p-5"><div class="idp-detail-head"><div><p class="idp-eyebrow">${esc(doc.tipo_documento)}</p><h3>${esc(doc.nombre_original)}</h3><p>Motor: ${esc(doc.motor_lectura||'Pendiente')} · Clasificación ${(Number(doc.confianza_clasificacion||0)*100).toFixed(0)}%</p></div>${badge(doc.estado)}</div><div class="idp-progress"><span style="width:${Math.max(0,Math.min(100,Number(doc.progreso||0)))}%"></span></div>${validationSummary}<div class="idp-actions"><button class="idp-btn secondary" onclick="IDPDocumental.download(${Number(doc.id)})">Descargar original</button>${canRetryOcr?`<button class="idp-btn primary" onclick="IDPDocumental.retryOcr(${Number(doc.id)})">Reintentar OCR</button>`:''}<button class="idp-btn primary" ${approvalBlocked?'disabled':''} onclick="IDPDocumental.approve(${Number(doc.id)})">Aprobar sin importar</button>${canGenerate?`<button class="idp-btn primary" onclick="IDPDocumental.downloadOfficial(${Number(doc.id)})">Generar listado oficial</button>`:''}</div>${validations}<div class="idp-fields">${fields||'<div class="idp-empty">No hay campos estructurados. Requiere mapeo u OCR.</div>'}</div></div>`;
     }
 
     async function load() {
@@ -97,10 +98,16 @@
         window.descargarArchivoAutenticado(`${backendUrl}/api/idp/documentos/${id}/listado-oficial`).then(()=>message('Listado oficial generado para imprimir.','success')).catch(error=>message(error.message,'error'));
     }
 
+    async function retryOcr(id) {
+        message('Ejecutando OCR y controles de calidad...','info');
+        try { const data=await api(`/documentos/${id}/reintentar-ocr`,{method:'POST'}); state.selected=data.documento; message(data.message,'success'); await load(); renderDetail(); }
+        catch(error){message(error.message,'error'); await select(id);}
+    }
+
     function init() {
         if(!state.initialized){state.initialized=true;$('idp-upload')?.addEventListener('click',upload);}
         load();
     }
-    window.IDPDocumental={init,load,select,upload,correct,approve,download,downloadOfficial};
+    window.IDPDocumental={init,load,select,upload,correct,approve,download,downloadOfficial,retryOcr};
     window.idpDocumentalInit=init;
 })();

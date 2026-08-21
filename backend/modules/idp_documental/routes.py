@@ -11,7 +11,7 @@ from modules.seguridad.services import require_roles
 from modules.seguridad.tenant_context import tenant_storage_root
 
 from .repository import IDPRepository
-from .services import ALLOWED_EXTENSIONS, MAX_FILE_SIZE, attendance_official_payload, canonicalize, classify_document, read_document, sha256_file, validate_file_signature
+from .services import ALLOWED_EXTENSIONS, MAX_FILE_SIZE, attendance_official_payload, canonicalize, classify_document, connect, read_document, read_document_ocr, sha256_file, validate_file_signature
 
 
 ALLOWED_ROLES = ('SUPERADMIN', 'GERENTE', 'COORDINADOR', 'AUXILIAR_ADMINISTRATIVO')
@@ -115,6 +115,21 @@ def register_idp_documental(app, database_path: str, data_dir: str) -> None:
         except KeyError as exc: return jsonify({'error':str(exc)}),404
         except ValueError as exc: return jsonify({'error':str(exc)}),409
         return jsonify({'message':'Documento aprobado. Aún no se ha importado a módulos funcionales.','documento':repo.get_document(document_id,user['fundacion_id'])})
+
+    @bp.route('/documentos/<int:document_id>/reintentar-ocr', methods=['POST'])
+    @require_roles(*ALLOWED_ROLES)
+    def retry_ocr(document_id: int):
+        user=_user(); db=connect(database_path); row=db.execute('SELECT ruta_privada,nombre_original,estado FROM idp_documentos WHERE id=? AND fundacion_id=?',(document_id,user['fundacion_id'])).fetchone(); db.close()
+        if not row: return jsonify({'error':'Documento no encontrado.'}),404
+        if row['estado'] not in {'REQUIERE_OCR','ERROR'}: return jsonify({'error':'El documento no está pendiente de OCR.'}),409
+        try:
+            repo.restart_extraction(document_id,user['fundacion_id'],user['id'])
+            raw=read_document_ocr(Path(row['ruta_privada'])); classification=classify_document(raw.get('texto') or '',row['nombre_original']); canonical,fields=canonicalize(raw,classification[0]); canonical['fundacion']['id']=user['fundacion_id']
+            repo.complete_extraction(document_id,user['fundacion_id'],raw,canonical,fields,classification,user['id'])
+        except Exception as exc:
+            repo.fail_extraction(document_id,user['fundacion_id'],type(exc).__name__.upper(),user['id'])
+            return jsonify({'error':str(exc),'documento':repo.get_document(document_id,user['fundacion_id'])}),409
+        return jsonify({'message':'OCR ejecutado. Revisa los campos y validaciones antes de aprobar.','documento':repo.get_document(document_id,user['fundacion_id'])})
 
     @bp.route('/documentos/<int:document_id>/listado-oficial', methods=['GET'])
     @require_roles(*ALLOWED_ROLES)

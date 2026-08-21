@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 import tempfile
+from unittest.mock import patch
 
 from openpyxl import Workbook
 from PIL import Image
 
 from modules.idp_documental.repository import IDPRepository
-from modules.idp_documental.services import attendance_official_payload, canonicalize, classify_document, connect, read_document, sha256_file
+from modules.idp_documental.services import attendance_official_payload, canonicalize, classify_document, connect, read_document, read_document_ocr, sha256_file
 
 
 def require(condition, message):
@@ -80,6 +81,15 @@ def main():
         try: repo.approve(image_id,1,10)
         except ValueError: blocked=True
         require(blocked,'Permitio aprobar una imagen sin OCR')
+        repo.restart_extraction(image_id,1,10)
+        with patch('modules.idp_documental.services._ocr_image_text',return_value='LISTADO DE ASISTENCIA\nNombre Documento UDS Firma'):
+            ocr_raw=read_document_ocr(image_path)
+        ocr_classification=classify_document(ocr_raw['texto'],image_path.name); ocr_canonical,ocr_fields=canonicalize(ocr_raw,ocr_classification[0]); ocr_canonical['fundacion']['id']=1
+        repo.complete_extraction(image_id,1,ocr_raw,ocr_canonical,ocr_fields,ocr_classification,10)
+        ocr_doc=repo.get_document(image_id,1)
+        require(ocr_doc['estado']=='REQUIERE_REVISION' and ocr_doc['motor_lectura']=='TESSERACT_LOCAL','El reintento OCR no avanzo a revision')
+        require(ocr_doc['validaciones']['errores_criticos']>0,'El OCR sin filas estructuradas no exigio revision')
+        require(any(event['evento']=='OCR_REINTENTADO' for event in ocr_doc['eventos']),'No audito el reintento OCR')
         print('IDP core PASS: clasificacion, canonico, tenant, Base Maestra, correccion y aprobacion')
 
 

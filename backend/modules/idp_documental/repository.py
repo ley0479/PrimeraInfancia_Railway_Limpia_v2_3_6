@@ -67,6 +67,15 @@ class IDPRepository:
         conn.commit(); conn.close()
         self.audit(tenant_id,'EXTRACCION_COMPLETADA',document_id,user_id,'REVISION_HUMANA',status,{'motor':raw.get('motor'),'tipo_documento':kind,'confianza_clasificacion':confidence,'regla_clasificacion':rule,'campos':len(fields)})
 
+    def restart_extraction(self, document_id: int, tenant_id: int, user_id=None):
+        conn=connect(self.database_path); row=conn.execute("SELECT id FROM idp_documentos WHERE id=? AND fundacion_id=?",(document_id,tenant_id)).fetchone()
+        if not row: conn.close(); raise KeyError('Documento no encontrado.')
+        now=now_iso(); attempt=conn.execute("SELECT COALESCE(MAX(intento),0)+1 AS siguiente FROM idp_ejecuciones WHERE documento_id=? AND fundacion_id=?",(document_id,tenant_id)).fetchone()['siguiente']
+        conn.execute("DELETE FROM idp_campos_extraidos WHERE documento_id=? AND fundacion_id=?",(document_id,tenant_id)); conn.execute("DELETE FROM idp_resultados_validacion WHERE documento_id=? AND fundacion_id=?",(document_id,tenant_id))
+        conn.execute("UPDATE idp_documentos SET estado='PROCESANDO',etapa='EXTRAYENDO_OCR',progreso=45,error_codigo=NULL,error_mensaje=NULL,fecha_actualizacion=? WHERE id=? AND fundacion_id=?",(now,document_id,tenant_id))
+        conn.execute("INSERT INTO idp_ejecuciones(documento_id,fundacion_id,intento,etapa,estado,motor,inicio) VALUES(?,?,?,'EXTRAYENDO_OCR','EN_PROCESO','TESSERACT_LOCAL',?)",(document_id,tenant_id,attempt,now)); conn.commit(); conn.close()
+        self.audit(tenant_id,'OCR_REINTENTADO',document_id,user_id,'EXTRAYENDO_OCR','PROCESANDO',{'intento':attempt})
+
     @staticmethod
     def _store_validations(conn, document_id: int, tenant_id: int, validation: dict, now: str):
         conn.execute("DELETE FROM idp_resultados_validacion WHERE documento_id=? AND fundacion_id=?",(document_id,tenant_id))

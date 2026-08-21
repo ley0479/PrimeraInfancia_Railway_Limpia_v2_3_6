@@ -154,6 +154,47 @@ def _read_pdf(path: Path) -> dict:
     return {'motor': 'PYMUPDF_NATIVE', 'texto': combined, 'paginas': pages, 'requiere_ocr': len(combined) < 20}
 
 
+def _ocr_image_text(image) -> str:
+    try:
+        import pytesseract
+        try:
+            return pytesseract.image_to_string(image,lang='spa+eng')
+        except Exception:
+            return pytesseract.image_to_string(image)
+    except Exception as exc:
+        raise RuntimeError('OCR local no disponible. Instala y configura el ejecutable Tesseract.') from exc
+
+
+def read_document_ocr(path: Path) -> dict:
+    ext=path.suffix.lower(); pages=[]; fragments=[]
+    if ext in IMAGE_EXTENSIONS:
+        from PIL import Image,ImageOps
+        with Image.open(path) as source:
+            image=ImageOps.exif_transpose(source).convert('RGB')
+            quality={'ancho_px':image.width,'alto_px':image.height,'legible':min(image.size)>=800,'requiere_revision':min(image.size)<1200}
+            if min(image.size)<600:
+                return {'motor':'CONTROL_CALIDAD','texto':'','requiere_ocr':True,'calidad':quality,'advertencia':'La imagen tiene resolución insuficiente. Toma otra fotografía completa y nítida.'}
+            text=_ocr_image_text(image); fragments.append(text); pages.append({'pagina':1,'texto':text})
+    elif ext=='.pdf':
+        try: import fitz
+        except Exception as exc: raise RuntimeError('PyMuPDF no está disponible para convertir el PDF escaneado.') from exc
+        document=fitz.open(str(path))
+        try:
+            for index,page in enumerate(document,1):
+                pixmap=page.get_pixmap(matrix=fitz.Matrix(2,2),alpha=False)
+                from PIL import Image
+                image=Image.frombytes('RGB',(pixmap.width,pixmap.height),pixmap.samples)
+                text=_ocr_image_text(image); fragments.append(text); pages.append({'pagina':index,'texto':text})
+        finally: document.close()
+        quality={'paginas':len(pages),'requiere_revision':True}
+    else:
+        raise ValueError('El reintento OCR solo admite imágenes y PDF.')
+    combined='\n'.join(fragments).strip()
+    if len(combined)<20:
+        return {'motor':'TESSERACT_LOCAL','texto':combined,'paginas':pages,'requiere_ocr':True,'calidad':quality,'advertencia':'El motor OCR no encontró texto suficiente. Revisa enfoque, iluminación y recorte.'}
+    return {'motor':'TESSERACT_LOCAL','texto':combined,'paginas':pages,'requiere_ocr':False,'calidad':quality,'origen_ocr':True}
+
+
 def read_document(path: Path) -> dict:
     ext = path.suffix.lower()
     if ext in {'.xlsx', '.xlsm'}:
@@ -227,6 +268,8 @@ def _document_key(value: Any) -> str:
 def validate_against_master(database_path: str, tenant_id: int, canonical: dict) -> dict:
     participants = list(canonical.get('participantes') or [])
     results: list[dict] = []
+    if canonical.get('tipo_documento') in {'LISTADO_ASISTENCIA','RAM'} and not participants:
+        results.append({'ruta_canonica':'participantes','regla':'PARTICIPANTES_REQUERIDOS','nivel':'CRITICO','estado':'ERROR','mensaje':'No se identificaron filas de participantes. Revisa el mapeo antes de aprobar.','esperado':None,'evidencia':{}})
     try:
         conn = connect(database_path)
         rows = conn.execute("""SELECT documento,nombre_completo,unidad_servicio,estado,activo FROM master_ninos WHERE COALESCE(fundacion_id,1)=?""", (tenant_id,)).fetchall()
