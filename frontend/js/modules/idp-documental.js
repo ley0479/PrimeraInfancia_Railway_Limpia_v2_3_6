@@ -1,6 +1,6 @@
 (function () {
     'use strict';
-    const state = { documents: [], selected: null, initialized: false, previewUrl: null };
+    const state = { documents: [], selected: null, initialized: false, previewUrl: null, pollTimer: null };
     const $ = (id) => document.getElementById(id);
     const esc = (value) => String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
 
@@ -60,8 +60,13 @@
     }
 
     async function select(id) {
-        try { const data=await api(`/documentos/${id}`); state.selected=data.documento; renderList(); renderDetail(); await loadPreview(); }
+        try { const data=await api(`/documentos/${id}`); state.selected=data.documento; renderList(); renderDetail(); await loadPreview(); schedulePoll(); }
         catch(error){message(error.message,'error');}
+    }
+
+    function schedulePoll() {
+        if(state.pollTimer){clearTimeout(state.pollTimer);state.pollTimer=null;}
+        if(['EN_COLA','PROCESANDO'].includes(state.selected?.estado))state.pollTimer=setTimeout(()=>select(state.selected.id),2000);
     }
 
     async function upload() {

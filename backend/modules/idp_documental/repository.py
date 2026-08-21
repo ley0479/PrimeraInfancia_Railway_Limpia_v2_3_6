@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime
+import uuid
+from datetime import datetime, timedelta
 from typing import Any
 
 from .services import connect, init_schema, now_iso, public_document, validate_against_master
@@ -64,6 +65,44 @@ class IDPRepository:
         conn.commit(); conn.close()
         self.audit(data['fundacion_id'],'DOCUMENTO_RECIBIDO',document_id,data.get('usuario_id'),'RECIBIDO','RECIBIDO',{'extension':data['extension'],'tamano_bytes':data['tamano_bytes'],'sha256':data['sha256']})
         return document_id
+
+    def enqueue_extraction(self, document_id: int, tenant_id: int) -> dict:
+        conn=connect(self.database_path); now=now_iso(); job_id=uuid.uuid4().hex
+        existing=conn.execute("SELECT * FROM idp_trabajos_cola WHERE documento_id=? AND fundacion_id=? AND tipo_trabajo='EXTRAER_DOCUMENTO'",(document_id,tenant_id)).fetchone()
+        if existing: result=dict(existing); conn.close(); return result
+        conn.execute("""INSERT INTO idp_trabajos_cola(id,documento_id,fundacion_id,tipo_trabajo,estado,etapa,progreso,intentos,max_intentos,disponible_desde,fecha_creacion,fecha_actualizacion) VALUES(?,?,?,'EXTRAER_DOCUMENTO','PENDIENTE','EN_COLA',10,0,3,?,?,?)""",(job_id,document_id,tenant_id,now,now,now))
+        conn.execute("UPDATE idp_documentos SET estado='EN_COLA',etapa='EN_COLA',progreso=10,fecha_actualizacion=? WHERE id=? AND fundacion_id=?",(now,document_id,tenant_id)); conn.commit(); conn.close()
+        self.audit(tenant_id,'DOCUMENTO_ENCOLADO',document_id,None,'EN_COLA','EN_COLA',{'trabajo_id':job_id})
+        return {'id':job_id,'documento_id':document_id,'fundacion_id':tenant_id,'estado':'PENDIENTE','etapa':'EN_COLA','progreso':10,'intentos':0,'max_intentos':3}
+
+    def claim_job(self, worker_id: str):
+        conn=connect(self.database_path); now=now_iso()
+        stale_before=(datetime.now()-timedelta(minutes=10)).isoformat(timespec='seconds')
+        stale=conn.execute("SELECT id,documento_id,fundacion_id FROM idp_trabajos_cola WHERE estado='PROCESANDO' AND fecha_bloqueo<?",(stale_before,)).fetchall()
+        for abandoned in stale:
+            conn.execute("UPDATE idp_trabajos_cola SET estado='REINTENTO',etapa='EN_COLA',progreso=10,bloqueado_por=NULL,fecha_bloqueo=NULL,disponible_desde=?,fecha_actualizacion=? WHERE id=? AND estado='PROCESANDO'",(now,now,abandoned['id']))
+            conn.execute("UPDATE idp_documentos SET estado='EN_COLA',etapa='EN_COLA',progreso=10,fecha_actualizacion=? WHERE id=? AND fundacion_id=?",(now,abandoned['documento_id'],abandoned['fundacion_id']))
+        if stale: conn.commit()
+        candidates=conn.execute("SELECT id FROM idp_trabajos_cola WHERE estado IN ('PENDIENTE','REINTENTO') AND disponible_desde<=? AND intentos<max_intentos ORDER BY fecha_creacion LIMIT 10",(now,)).fetchall()
+        for candidate in candidates:
+            cur=conn.execute("UPDATE idp_trabajos_cola SET estado='PROCESANDO',etapa='VALIDANDO_ARCHIVO',progreso=20,intentos=intentos+1,bloqueado_por=?,fecha_bloqueo=?,fecha_actualizacion=? WHERE id=? AND estado IN ('PENDIENTE','REINTENTO')",(worker_id,now,now,candidate['id']))
+            if cur.rowcount:
+                conn.execute("UPDATE idp_documentos SET estado='PROCESANDO',etapa='VALIDANDO_ARCHIVO',progreso=20,fecha_actualizacion=? WHERE id=(SELECT documento_id FROM idp_trabajos_cola WHERE id=?)",(now,candidate['id'])); conn.commit()
+                job=conn.execute("SELECT * FROM idp_trabajos_cola WHERE id=?",(candidate['id'],)).fetchone(); conn.close(); return dict(job)
+        conn.commit(); conn.close(); return None
+
+    def queued_document_source(self, document_id: int, tenant_id: int):
+        conn=connect(self.database_path); row=conn.execute("SELECT ruta_privada,nombre_original,usuario_carga_id FROM idp_documentos WHERE id=? AND fundacion_id=?",(document_id,tenant_id)).fetchone(); conn.close()
+        return dict(row) if row else None
+
+    def finish_job(self, job_id: str, tenant_id: int):
+        conn=connect(self.database_path); now=now_iso(); conn.execute("UPDATE idp_trabajos_cola SET estado='COMPLETADO',etapa='COMPLETADO',progreso=100,fecha_fin=?,fecha_actualizacion=? WHERE id=? AND fundacion_id=?",(now,now,job_id,tenant_id)); conn.commit(); conn.close()
+
+    def retry_or_fail_job(self, job_id: str, tenant_id: int, error_code: str):
+        conn=connect(self.database_path); row=conn.execute("SELECT intentos,max_intentos FROM idp_trabajos_cola WHERE id=? AND fundacion_id=?",(job_id,tenant_id)).fetchone(); now=now_iso(); final=not row or int(row['intentos'])>=int(row['max_intentos'])
+        conn.execute("UPDATE idp_trabajos_cola SET estado=?,etapa=?,progreso=?,error_codigo=?,error_mensaje='El procesamiento documental no pudo completarse.',bloqueado_por=NULL,fecha_bloqueo=NULL,disponible_desde=?,fecha_fin=?,fecha_actualizacion=? WHERE id=? AND fundacion_id=?",('ERROR' if final else 'REINTENTO','ERROR' if final else 'EN_COLA',100 if final else 10,error_code,now,now if final else None,now,job_id,tenant_id))
+        if not final: conn.execute("UPDATE idp_documentos SET estado='EN_COLA',etapa='EN_COLA',progreso=10,fecha_actualizacion=? WHERE id=(SELECT documento_id FROM idp_trabajos_cola WHERE id=? AND fundacion_id=?)",(now,job_id,tenant_id))
+        conn.commit(); conn.close(); return final
 
     def complete_extraction(self, document_id: int, tenant_id: int, raw: dict, canonical: dict, fields: list[dict], classification: tuple[str,float,str], user_id=None):
         kind, confidence, rule = classification; now = now_iso()

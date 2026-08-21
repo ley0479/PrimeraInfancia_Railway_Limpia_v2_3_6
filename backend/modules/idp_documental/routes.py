@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import re
 import uuid
 
@@ -66,6 +67,9 @@ def register_idp_documental(app, database_path: str, data_dir: str) -> None:
             destination = storage(user['fundacion_id']) / stored_name
             temporary.replace(destination)
             document_id = repo.create_document({'fundacion_id':user['fundacion_id'],'nombre_original':original,'nombre_guardado':stored_name,'ruta_privada':str(destination),'extension':extension,'mime_type':uploaded.mimetype,'tamano_bytes':size,'sha256':digest,'usuario_id':user['id']})
+            if str(os.environ.get('IDP_ASYNC_ENABLED','0')).strip().lower() in {'1','true','yes','on'}:
+                job=repo.enqueue_extraction(document_id,user['fundacion_id'])
+                return jsonify({'message':'Documento recibido y enviado a la cola persistente.','trabajo':job,'documento':repo.get_document(document_id,user['fundacion_id'])}),202
             try:
                 raw = read_document(destination)
                 classification = classify_document(raw.get('texto') or '', original)

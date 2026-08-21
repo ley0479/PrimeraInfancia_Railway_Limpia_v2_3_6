@@ -9,6 +9,7 @@ from PIL import Image
 
 from modules.idp_documental.repository import IDPRepository
 from modules.idp_documental.services import attendance_official_payload, canonicalize, classify_document, connect, read_document, read_document_ocr, sha256_file
+from modules.idp_documental.worker import process_next
 
 
 def require(condition, message):
@@ -73,6 +74,16 @@ def main():
         require(attendance_count==2 and other_tenant_count==0,'Fallo persistencia o aislamiento del lote importado')
         require([row['asistio'] for row in imported_rows]==[1,0],'Interpreto incorrectamente SI/NO al importar')
         require(any(event['evento']=='ASISTENCIA_IMPORTADA' for event in imported_doc['eventos']),'No audito la importacion')
+        queued_book=root/'LISTADO_ASISTENCIA_COLA.xlsx'
+        queue_wb=Workbook(); queue_ws=queue_wb.active; queue_ws.append(['LISTADO DE ASISTENCIA EN COLA']); queue_ws.append(['Nombre completo','Documento','UDS','Asistio']); queue_ws.append(['ANA PEREZ','1001','UCA 1','SI']); queue_wb.save(queued_book)
+        queue_id=repo.create_document({'fundacion_id':1,'nombre_original':queued_book.name,'nombre_guardado':queued_book.name,'ruta_privada':str(queued_book),'extension':'.xlsx','mime_type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','tamano_bytes':queued_book.stat().st_size,'sha256':sha256_file(queued_book),'usuario_id':10})
+        queued_job=repo.enqueue_extraction(queue_id,1)
+        require(repo.get_document(queue_id,1)['estado']=='EN_COLA','No marco el documento en cola')
+        require(process_next(str(db),'WORKER-PRUEBA'),'El worker no reclamo el trabajo pendiente')
+        queue_doc=repo.get_document(queue_id,1)
+        require(queue_doc['estado']=='REQUIERE_REVISION' and queue_doc['resultado_canonico']['participantes'][0]['documento']=='1001','El worker no completo la extraccion')
+        conn=connect(str(db)); queue_state=conn.execute('SELECT estado,intentos FROM idp_trabajos_cola WHERE id=?',(queued_job['id'],)).fetchone(); conn.close()
+        require(queue_state['estado']=='COMPLETADO' and queue_state['intentos']==1,'La cola no persistio el resultado del worker')
         invalid_book=root/'LISTADO_ASISTENCIA_INVALIDO.xlsx'
         invalid_wb=Workbook(); invalid_ws=invalid_wb.active; invalid_ws.append(['LISTADO DE ASISTENCIA']); invalid_ws.append(['Nombre completo','Documento','UDS','Asistio']); invalid_ws.append(['PERSONA INEXISTENTE','9999','UCA 1','SI']); invalid_wb.save(invalid_book)
         invalid_id,_=create(repo,1,invalid_book)

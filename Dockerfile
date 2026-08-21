@@ -41,7 +41,7 @@ RUN python -m pip install --upgrade pip \
 COPY --chown=appuser:appuser . /app
 RUN chmod 0755 /app/predeploy_hosting.sh /app/start_hosting.sh \
     /app/backend/start_gunicorn.sh /app/backend/init_hosting.py \
-    /app/backend/runtime_prepare.py
+    /app/backend/runtime_prepare.py /app/backend/start_idp_worker.sh
 
 EXPOSE 5000
 CMD ["./start_hosting.sh"]

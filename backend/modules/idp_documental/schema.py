@@ -125,6 +125,28 @@ CREATE TABLE IF NOT EXISTS idp_asistencias_importadas (
     FOREIGN KEY(documento_id) REFERENCES idp_documentos(id)
 );
 
+CREATE TABLE IF NOT EXISTS idp_trabajos_cola (
+    id TEXT PRIMARY KEY,
+    documento_id BIGINT NOT NULL,
+    fundacion_id INTEGER NOT NULL,
+    tipo_trabajo TEXT NOT NULL DEFAULT 'EXTRAER_DOCUMENTO',
+    estado TEXT NOT NULL DEFAULT 'PENDIENTE',
+    etapa TEXT NOT NULL DEFAULT 'EN_COLA',
+    progreso INTEGER NOT NULL DEFAULT 0,
+    intentos INTEGER NOT NULL DEFAULT 0,
+    max_intentos INTEGER NOT NULL DEFAULT 3,
+    disponible_desde TEXT NOT NULL,
+    bloqueado_por TEXT,
+    fecha_bloqueo TEXT,
+    error_codigo TEXT,
+    error_mensaje TEXT,
+    fecha_creacion TEXT NOT NULL,
+    fecha_actualizacion TEXT NOT NULL,
+    fecha_fin TEXT,
+    UNIQUE(documento_id, fundacion_id, tipo_trabajo),
+    FOREIGN KEY(documento_id) REFERENCES idp_documentos(id)
+);
+
 CREATE TABLE IF NOT EXISTS idp_eventos_auditoria (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     documento_id BIGINT,
@@ -144,4 +166,5 @@ CREATE INDEX IF NOT EXISTS idx_idp_eventos_documento ON idp_eventos_auditoria(do
 CREATE INDEX IF NOT EXISTS idx_idp_validaciones_documento ON idp_resultados_validacion(documento_id, fundacion_id, nivel);
 CREATE INDEX IF NOT EXISTS idx_idp_lotes_tenant_fecha ON idp_lotes_importacion(fundacion_id, fecha_actividad);
 CREATE INDEX IF NOT EXISTS idx_idp_asistencias_tenant_doc ON idp_asistencias_importadas(fundacion_id, documento_participante, fecha_actividad);
+CREATE INDEX IF NOT EXISTS idx_idp_cola_estado_disponible ON idp_trabajos_cola(estado, disponible_desde, fecha_creacion);
 """
