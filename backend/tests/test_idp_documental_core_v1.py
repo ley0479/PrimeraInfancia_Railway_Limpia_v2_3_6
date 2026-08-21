@@ -4,6 +4,7 @@ from pathlib import Path
 import tempfile
 from unittest.mock import patch
 import os
+import json
 
 from openpyxl import Workbook
 from PIL import Image
@@ -41,6 +42,8 @@ def main():
         conn.execute("CREATE TABLE plantillas_oficiales_versiones(id INTEGER PRIMARY KEY,tipo_formato TEXT,codigo TEXT,nombre TEXT,version TEXT,fecha_vigencia TEXT,fecha_vigencia_fin TEXT,estado TEXT,hash_sha256 TEXT,mapeo_json TEXT,fundacion_id INTEGER,updated_at TEXT)")
         conn.execute("INSERT INTO plantillas_oficiales_versiones VALUES(1,'LISTADO_ASISTENCIA_USUARIOS','ICBF-ASIS','Asistencia oficial','2026.03','2026-03-01',NULL,'vigente','hash-tenant-1','{\"campos\":{\"documento\":{}}}',1,'2026-03-01')")
         conn.execute("INSERT INTO plantillas_oficiales_versiones VALUES(2,'LISTADO_ASISTENCIA_USUARIOS','ICBF-ASIS','Otra fundacion','2099.01','2099-01-01',NULL,'vigente','hash-tenant-2','{}',2,'2099-01-01')")
+        ram_mapping=[{'field':'tipo_documento','sheet':'FORMATO RAM','col_letter':'B','col':2,'data_start_row':15,'fila_fin':16},{'field':'documento_beneficiario','sheet':'FORMATO RAM','col_letter':'C','col':3,'data_start_row':15,'fila_fin':16},{'field':'primer_nombre','sheet':'FORMATO RAM','col_letter':'D','col':4,'data_start_row':15,'fila_fin':16},{'field':'primer_apellido','sheet':'FORMATO RAM','col_letter':'F','col':6,'data_start_row':15,'fila_fin':16},{'field':'control_asistencia','sheet':'FORMATO RAM','col_letter':'J:K','col':10,'data_start_row':15,'fila_fin':16},{'field':'total_asistencias','sheet':'FORMATO RAM','col_letter':'AI','col':35,'data_start_row':15,'fila_fin':16}]
+        conn.execute("INSERT INTO plantillas_oficiales_versiones(id,tipo_formato,codigo,nombre,version,fecha_vigencia,estado,mapeo_json,fundacion_id,updated_at) VALUES(3,'RAM','F27.MT1.PP','RAM oficial','3','2026-08-01','vigente',?,1,'2026-08-01')",(json.dumps(ram_mapping),))
         conn.commit(); conn.close()
         document_id,digest=create(repo,1,book)
         item=repo.get_document(document_id,1)
@@ -141,6 +144,10 @@ def main():
         require(ram_doc['tipo_documento']=='RAM' and ram_participant['nombre_completo']=='ANA PEREZ','No estructuro la identidad RAM')
         require(ram_participant['asistencia_dias']=={'1':'A','2':'I'} and ram_participant['total_asistencias']=='1','No conservo dias y totales RAM')
         require(ram_doc['validaciones']['semaforo']=='VERDE','No valido RAM contra Base Maestra')
+        mapped_ram=root/'RAM_SIN_ENCABEZADOS.xlsx'; mapped_wb=Workbook(); mapped_ws=mapped_wb.active; mapped_ws.title='FORMATO RAM'; mapped_ws['A1']='FORMATO RAM F27 MT1 PP'; mapped_ws.cell(15,2,'RC'); mapped_ws.cell(15,3,'1001'); mapped_ws.cell(15,4,'ANA'); mapped_ws.cell(15,6,'PEREZ'); mapped_ws.cell(15,10,'A'); mapped_ws.cell(15,11,'I'); mapped_ws.cell(15,35,1); mapped_wb.save(mapped_ram)
+        mapped_ram_id,_=create(repo,1,mapped_ram); mapped_ram_doc=repo.get_document(mapped_ram_id,1); mapped_participant=mapped_ram_doc['resultado_canonico']['participantes'][0]
+        require(mapped_participant['documento']=='1001' and mapped_participant['asistencia_dias']=={'1':'A','2':'I'},'No aplico el mapeo oficial versionado')
+        require(any(field['regla']=='mapeo_oficial_versionado' for field in mapped_ram_doc['campos']),'No audito evidencia del mapeo versionado')
         bien_book=root/'ENTREGA_BIENESTARINA.xlsx'; bien_wb=Workbook(); bien_ws=bien_wb.active; bien_ws.title='BIENESTARINA'; bien_ws.append(['ENTREGA DE ALIMENTO BIENESTARINA']); bien_ws.append(['Tipo documento','NUI','Primer nombre','Primer apellido','Fecha de entrega','Lote','Cantidad entregada','UDS']); bien_ws.append(['RC','1001','ANA','PEREZ','20/08/2026','LT-2026-08','2','UCA 1']); bien_wb.save(bien_book)
         bien_id,_=create(repo,1,bien_book); bien_doc=repo.get_document(bien_id,1); bien_delivery=bien_doc['resultado_canonico']['entregas'][0]
         require(bien_doc['tipo_documento']=='BIENESTARINA' and bien_delivery['fecha_entrega']=='2026-08-20' and bien_delivery['lote']=='LT-2026-08','No estructuro Bienestarina')

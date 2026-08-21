@@ -74,6 +74,13 @@ def normalize(value: Any) -> str:
     return ' '.join(re.sub(r'[^a-z0-9]+', ' ', text).split())
 
 
+def col_letter_to_index(value: str) -> int:
+    result=0
+    for char in str(value or '').upper():
+        if 'A'<=char<='Z': result=result*26+ord(char)-64
+    return result
+
+
 def classify_document(text: str, filename: str) -> tuple[str, float, str]:
     sample = normalize(f'{filename} {text[:15000]}')
     normalized_filename = normalize(filename)
@@ -679,8 +686,42 @@ def resolve_official_template_version(database_path: str, tenant_id: int, docume
     item=dict(row)
     try: mapping=json.loads(item.pop('mapeo_json',None) or '{}')
     except Exception: mapping={}
-    item['mapeo_resumen']={'campos':len(mapping.get('fields') or mapping.get('campos') or mapping) if isinstance(mapping,dict) else 0}
+    mapped_items=(mapping.get('fields') or mapping.get('campos') or mapping) if isinstance(mapping,dict) else mapping
+    item['mapeo_resumen']={'campos':len(mapped_items) if isinstance(mapped_items,(list,dict)) else 0}
+    item['_mapeo']=mapped_items
     return item
+
+
+def apply_official_mapping(raw: dict, canonical: dict, fields: list[dict], template_version: dict | None) -> None:
+    """Usa el mapeo publicado solo como fallback; nunca sobrescribe extracción existente."""
+    if canonical.get('tipo_documento')!='RAM' or canonical.get('participantes') or not template_version: return
+    mapping=template_version.get('_mapeo')
+    if not isinstance(mapping,list) or not mapping: return
+    sheets={normalize(sheet.get('nombre')):sheet for sheet in raw.get('hojas') or []}
+    target_name=normalize(next((item.get('sheet') or item.get('hoja') for item in mapping if item.get('sheet') or item.get('hoja')),''))
+    sheet=sheets.get(target_name) or next(iter(sheets.values()),None)
+    if not sheet: return
+    rows={int(row.get('fila') or 0):row.get('valores') or [] for row in sheet.get('filas') or []}
+    start=min((int(item.get('data_start_row') or item.get('fila_inicio') or 0) for item in mapping if item.get('data_start_row') or item.get('fila_inicio')),default=0)
+    end=max((int(item.get('fila_fin') or start) for item in mapping),default=start)
+    aliases={'documento_beneficiario':'documento','tipo_documento':'tipo_documento','primer_nombre':'primer_nombre','segundo_nombre':'segundo_nombre','primer_apellido':'primer_apellido','segundo_apellido':'segundo_apellido','nombre_completo':'nombre_completo','total_asistencias':'total_asistencias','total_inasistencias':'total_inasistencias','causa_retiro':'causa_retiro'}
+    for row_number in range(start,end+1):
+        values=rows.get(row_number) or []; participant={}; index=len(canonical['participantes'])
+        for item in mapping:
+            source=str(item.get('field') or item.get('campo') or ''); field=aliases.get(source)
+            column=int(item.get('col') or item.get('col_index') or 0)
+            if source=='control_asistencia':
+                span=str(item.get('col_letter') or item.get('columna') or '')
+                bounds=span.split(':'); first=column; last=col_letter_to_index(bounds[-1]) if len(bounds)>1 else column
+                attendance={str(day):str(values[col-1]).strip().upper() for day,col in enumerate(range(first,last+1),1) if col-1<len(values) and values[col-1] not in (None,'')}
+                if attendance: participant['asistencia_dias']=attendance
+                continue
+            if not field or column<1 or column-1>=len(values) or values[column-1] in (None,''): continue
+            value=str(values[column-1]).strip(); participant[field]=value
+            fields.append({'ruta':f'participantes.{index}.{field}','valor':value,'texto_original':values[column-1],'confianza':.99,'evidencia':{'hoja':sheet.get('nombre'),'fila':row_number,'columna':column,'plantilla_version_id':template_version.get('id')},'regla':'mapeo_oficial_versionado'})
+        name_parts=[participant.pop(field,None) for field in ('primer_nombre','segundo_nombre','primer_apellido','segundo_apellido')]
+        if not participant.get('nombre_completo') and any(name_parts): participant['nombre_completo']=' '.join(part for part in name_parts if part)
+        if participant.get('documento') or participant.get('nombre_completo'): canonical['participantes'].append(participant)
 
 
 def validate_against_master(database_path: str, tenant_id: int, canonical: dict) -> dict:

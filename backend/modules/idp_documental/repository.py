@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
-from .services import connect, init_schema, now_iso, public_document, resolve_official_template_version, validate_canonical
+from .services import apply_official_mapping, connect, init_schema, now_iso, public_document, resolve_official_template_version, validate_canonical
 
 
 def _assign_path(root: dict, dotted_path: str, value: Any) -> None:
@@ -108,6 +108,8 @@ class IDPRepository:
         kind, confidence, rule = classification; now = now_iso()
         needs_ocr = bool(raw.get('requiere_ocr'))
         template_version=resolve_official_template_version(self.database_path,tenant_id,kind)
+        apply_official_mapping(raw,canonical,fields,template_version)
+        if template_version: template_version.pop('_mapeo',None)
         canonical['version_plantilla']=template_version.get('version') if template_version else None
         canonical.setdefault('metadatos',{})['plantilla_oficial']=template_version
         validation = validate_canonical(self.database_path,tenant_id,canonical) if not needs_ocr else {'semaforo':'GRIS','errores_criticos':0,'advertencias':1,'coincidencias':0,'total':0,'resultados':[{'ruta_canonica':'documento','regla':'OCR_REQUERIDO','nivel':'ADVERTENCIA','estado':'PENDIENTE','mensaje':'Conecte un motor OCR para continuar.','esperado':None,'evidencia':{}}]}
