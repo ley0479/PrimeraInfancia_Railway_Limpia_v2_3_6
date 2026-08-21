@@ -686,7 +686,9 @@ def resolve_official_template_version(database_path: str, tenant_id: int, docume
     item=dict(row)
     try: mapping=json.loads(item.pop('mapeo_json',None) or '{}')
     except Exception: mapping={}
-    mapped_items=(mapping.get('fields') or mapping.get('campos') or mapping) if isinstance(mapping,dict) else mapping
+    if isinstance(mapping,dict) and isinstance(mapping.get('campos'),dict):
+        mapped_items=[{'field':field,'col':column,'sheet':mapping.get('hoja'),'data_start_row':mapping.get('fila_datos')} for field,column in mapping['campos'].items()]
+    else: mapped_items=(mapping.get('fields') or mapping.get('campos') or mapping) if isinstance(mapping,dict) else mapping
     item['mapeo_resumen']={'campos':len(mapped_items) if isinstance(mapped_items,(list,dict)) else 0}
     item['_mapeo']=mapped_items
     return item
@@ -694,7 +696,10 @@ def resolve_official_template_version(database_path: str, tenant_id: int, docume
 
 def apply_official_mapping(raw: dict, canonical: dict, fields: list[dict], template_version: dict | None) -> None:
     """Usa el mapeo publicado solo como fallback; nunca sobrescribe extracción existente."""
-    if canonical.get('tipo_documento')!='RAM' or canonical.get('participantes') or not template_version: return
+    kind=canonical.get('tipo_documento')
+    if kind not in {'RAM','LISTADO_ASISTENCIA','BIENESTARINA'} or not template_version: return
+    if kind in {'RAM','LISTADO_ASISTENCIA'} and canonical.get('participantes'): return
+    if kind=='BIENESTARINA' and canonical.get('entregas'): return
     mapping=template_version.get('_mapeo')
     if not isinstance(mapping,list) or not mapping: return
     sheets={normalize(sheet.get('nombre')):sheet for sheet in raw.get('hojas') or []}
@@ -703,10 +708,11 @@ def apply_official_mapping(raw: dict, canonical: dict, fields: list[dict], templ
     if not sheet: return
     rows={int(row.get('fila') or 0):row.get('valores') or [] for row in sheet.get('filas') or []}
     start=min((int(item.get('data_start_row') or item.get('fila_inicio') or 0) for item in mapping if item.get('data_start_row') or item.get('fila_inicio')),default=0)
-    end=max((int(item.get('fila_fin') or start) for item in mapping),default=start)
-    aliases={'documento_beneficiario':'documento','tipo_documento':'tipo_documento','primer_nombre':'primer_nombre','segundo_nombre':'segundo_nombre','primer_apellido':'primer_apellido','segundo_apellido':'segundo_apellido','nombre_completo':'nombre_completo','total_asistencias':'total_asistencias','total_inasistencias':'total_inasistencias','causa_retiro':'causa_retiro'}
+    configured_ends=[int(item.get('fila_fin')) for item in mapping if item.get('fila_fin')]
+    end=max(configured_ends,default=max(rows,default=start))
+    aliases={'documento_beneficiario':'documento','documento':'documento','nui':'documento','tipo_documento':'tipo_documento','primer_nombre':'primer_nombre','segundo_nombre':'segundo_nombre','primer_apellido':'primer_apellido','segundo_apellido':'segundo_apellido','nombre_completo':'nombre_completo','nombre':'nombre_completo','total_asistencias':'total_asistencias','total_inasistencias':'total_inasistencias','causa_retiro':'causa_retiro','asistencia':'asistio','asistio':'asistio','firma':'firma_presente','firma_presente':'firma_presente','unidad':'unidad','unidad_servicio':'unidad','fecha_entrega':'fecha_entrega','lote':'lote','cantidad':'cantidad','nombre_acudiente':'acudiente','acudiente':'acudiente','parentesco':'parentesco'}
     for row_number in range(start,end+1):
-        values=rows.get(row_number) or []; participant={}; index=len(canonical['participantes'])
+        values=rows.get(row_number) or []; record={}; index=len(canonical.get('entregas') or []) if kind=='BIENESTARINA' else len(canonical['participantes'])
         for item in mapping:
             source=str(item.get('field') or item.get('campo') or ''); field=aliases.get(source)
             column=int(item.get('col') or item.get('col_index') or 0)
@@ -714,14 +720,22 @@ def apply_official_mapping(raw: dict, canonical: dict, fields: list[dict], templ
                 span=str(item.get('col_letter') or item.get('columna') or '')
                 bounds=span.split(':'); first=column; last=col_letter_to_index(bounds[-1]) if len(bounds)>1 else column
                 attendance={str(day):str(values[col-1]).strip().upper() for day,col in enumerate(range(first,last+1),1) if col-1<len(values) and values[col-1] not in (None,'')}
-                if attendance: participant['asistencia_dias']=attendance
+                if attendance: record['asistencia_dias']=attendance
                 continue
             if not field or column<1 or column-1>=len(values) or values[column-1] in (None,''): continue
-            value=str(values[column-1]).strip(); participant[field]=value
-            fields.append({'ruta':f'participantes.{index}.{field}','valor':value,'texto_original':values[column-1],'confianza':.99,'evidencia':{'hoja':sheet.get('nombre'),'fila':row_number,'columna':column,'plantilla_version_id':template_version.get('id')},'regla':'mapeo_oficial_versionado'})
-        name_parts=[participant.pop(field,None) for field in ('primer_nombre','segundo_nombre','primer_apellido','segundo_apellido')]
-        if not participant.get('nombre_completo') and any(name_parts): participant['nombre_completo']=' '.join(part for part in name_parts if part)
-        if participant.get('documento') or participant.get('nombre_completo'): canonical['participantes'].append(participant)
+            value=_schedule_date(values[column-1]) if field=='fecha_entrega' else str(values[column-1]).strip()
+            if field in {'asistio','firma_presente'}: value=normalize(value) in {'si','x','presente','asistio','firmado'}
+            if field=='unidad': canonical['unidad_servicio'].setdefault('nombre',str(value)); continue
+            record[field]=value
+            route_root='entregas' if kind=='BIENESTARINA' else 'participantes'
+            fields.append({'ruta':f'{route_root}.{index}.{field}','valor':value,'texto_original':values[column-1],'confianza':.99,'evidencia':{'hoja':sheet.get('nombre'),'fila':row_number,'columna':column,'plantilla_version_id':template_version.get('id')},'regla':'mapeo_oficial_versionado'})
+        name_parts=[record.pop(field,None) for field in ('primer_nombre','segundo_nombre','primer_apellido','segundo_apellido')]
+        if not record.get('nombre_completo') and any(name_parts): record['nombre_completo']=' '.join(part for part in name_parts if part)
+        if not (record.get('documento') or record.get('nombre_completo')): continue
+        if kind=='BIENESTARINA':
+            canonical.setdefault('entregas',[]).append(record)
+            canonical['participantes'].append({field:record[field] for field in ('documento','nombre_completo') if record.get(field)})
+        else: canonical['participantes'].append(record)
 
 
 def validate_against_master(database_path: str, tenant_id: int, canonical: dict) -> dict:
