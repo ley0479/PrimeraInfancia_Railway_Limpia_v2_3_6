@@ -1,6 +1,7 @@
 (function () {
     const api = () => `${window.backendUrl || window.getBackendUrl?.() || window.getConfiguredBackendUrl?.() || window.location.origin}/api/base-maestra`;
-    const state = { initialized: false, dashboard: null };
+    const universalApi = () => `${window.backendUrl || window.getBackendUrl?.() || window.getConfiguredBackendUrl?.() || window.location.origin}/api/importaciones`;
+    const state = { initialized: false, dashboard: null, universalImportId: null, universalResult: null };
 
     function el(id) { return document.getElementById(id); }
 
@@ -262,6 +263,42 @@
         }
     }
 
+    function renderUniversal(data) {
+        const status = el('bm-universal-status');
+        const mappingBox = el('bm-universal-mapping');
+        if (!status || !mappingBox) return;
+        const inspection = data.inspection || {};
+        const units = data.units || {};
+        status.className = 'mt-4 rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3 text-sm text-cyan-100';
+        status.innerHTML = `<strong>${esc(data.estado || 'ANALIZADO')}</strong> · Hoja: ${esc(data.selected_table || '—')} · Encabezado fila ${esc(data.preview?.header_row || '—')} · ${esc(data.preview?.rows?.length || 0)} registros de vista · ${esc(units.count || 0)} unidades. ${data.requires_confirmation ? '<span class="text-amber-200">Requiere confirmación.</span>' : '<span class="text-emerald-200">Mapeo de unidad con confianza alta.</span>'}`;
+        status.classList.remove('hidden');
+        const important = ['regional.nombre', 'municipio.codigo', 'municipio.nombre', 'centro_zonal.nombre', 'unidad.codigo', 'unidad.nombre', 'participante.numero_documento', 'participante.nombre_completo'];
+        const rows = important.map(field => {
+            const decision = data.mapping?.[field] || {};
+            const selected = decision.selected;
+            const rejected = (decision.rejected || []).map(item => `${item.original_header}: ${item.reasons?.join(', ')}`).join(' · ');
+            return `<tr class="border-b border-slate-800"><td class="px-3 py-2 text-slate-200">${esc(field)}</td><td class="px-3 py-2">${esc(selected?.original_header || 'No detectado')}</td><td class="px-3 py-2">${esc(selected?.score ?? '—')} · ${badge(selected?.confidence || decision.status)}</td><td class="px-3 py-2 text-xs text-slate-500">${esc((selected?.reasons || []).join(', '))}${rejected ? `<br>Descartadas: ${esc(rejected)}` : ''}</td></tr>`;
+        }).join('');
+        mappingBox.innerHTML = `<table class="w-full min-w-[760px] text-sm"><thead class="bg-slate-900 text-slate-300"><tr><th class="px-3 py-2 text-left">Campo canónico</th><th class="px-3 py-2 text-left">Columna propuesta</th><th class="px-3 py-2 text-left">Confianza</th><th class="px-3 py-2 text-left">Explicación</th></tr></thead><tbody>${rows}</tbody></table>`;
+        mappingBox.classList.remove('hidden');
+    }
+
+    async function baseMaestraAnalizarUniversal() {
+        const file = el('bm-universal-file')?.files?.[0];
+        if (!file) return mensaje('Selecciona una fuente para analizar.', 'warning');
+        const form = new FormData(); form.append('file', file);
+        try {
+            if (typeof mostrarCargando === 'function') mostrarCargando('Inspeccionando hojas, encabezados y columnas...');
+            const data = await fetchJson(`${universalApi()}/analizar`, { method: 'POST', body: form });
+            state.universalImportId = data.importacion_id; state.universalResult = data;
+            renderUniversal(data);
+            mensaje(`Análisis #${data.importacion_id} terminado. No se escribió en Base Maestra.`, data.requires_confirmation ? 'warning' : 'success');
+        } catch (error) {
+            if (/404/.test(String(error.message))) mensaje('El Motor Universal está desactivado. Se habilitará al final del despliegue.', 'info');
+            else mensaje(error.message || 'No se pudo analizar la fuente.', 'error');
+        } finally { if (typeof ocultarCargando === 'function') ocultarCargando(); }
+    }
+
     async function baseMaestraValidarCarga(cargaId) {
         try {
             if (typeof mostrarCargando === 'function') mostrarCargando('Validando datos de Base Maestra...');
@@ -347,6 +384,7 @@
     window.baseMaestraInit = baseMaestraInit;
     window.baseMaestraCargarResumen = baseMaestraCargarResumen;
     window.baseMaestraCargarFuente = baseMaestraCargarFuente;
+    window.baseMaestraAnalizarUniversal = baseMaestraAnalizarUniversal;
     window.baseMaestraValidarCarga = baseMaestraValidarCarga;
     window.baseMaestraValidarPendientes = baseMaestraValidarPendientes;
     window.baseMaestraConsolidar = baseMaestraConsolidar;

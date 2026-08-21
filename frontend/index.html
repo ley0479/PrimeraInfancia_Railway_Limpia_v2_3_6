@@ -1814,6 +1814,21 @@
 
                     <div id="bm-alerta" class="hidden rounded-2xl px-4 py-3 text-sm"></div>
 
+                    <div id="bm-motor-universal" class="bm-panel p-5">
+                        <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                            <div>
+                                <h3 class="text-lg font-semibold text-slate-100">Motor Universal de Lectura y Mapeo</h3>
+                                <p class="text-xs text-slate-400 mt-1">Inspecciona hojas, detecta encabezados y propone campos sin importar todavía. Los datos ambiguos requieren confirmación.</p>
+                            </div>
+                            <div class="flex flex-col sm:flex-row gap-2">
+                                <input id="bm-universal-file" type="file" class="bm-input" accept=".xlsx,.xls,.xlsm,.ods,.csv,.tsv,.txt,.json,.ndjson" />
+                                <button onclick="baseMaestraAnalizarUniversal()" class="bm-btn bm-btn-primary">Analizar estructura</button>
+                            </div>
+                        </div>
+                        <div id="bm-universal-status" class="hidden mt-4"></div>
+                        <div id="bm-universal-mapping" class="hidden mt-4 overflow-x-auto"></div>
+                    </div>
+
                     <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-6" id="bm-cards">
                         <div class="bm-card"><div class="bm-label">Versión activa</div><div id="bm-version" class="bm-value">—</div></div>
                         <div class="bm-card"><div class="bm-label">Niños maestros</div><div id="bm-total-ninos" class="bm-value">0</div></div>
@@ -3675,7 +3690,7 @@
     <script src="./js/modules/integraciones-configuracion.js?v=2.7.0"></script>
     <script src="./js/modules/backups.js?v=2.2.1"></script>
     <script src="./js/modules/calidad-datos.js?v=2.2.2"></script>
-    <script src="./js/modules/base-maestra.js?v=2.3.0-alpha75-base-maestra-unidades"></script>
+    <script src="./js/modules/base-maestra.js?v=2.7.0-universal-mapper-1"></script>
     <script src="./js/modules/base-maestra-panel.js?v=2.3.0-alpha.31"></script>
     <script src="./js/modules/theme-manager.js?v=2.3.0-alpha.29"></script>
     <script src="./js/modules/motor-plantillas.js?v=2.3.0-ram-v3"></script>

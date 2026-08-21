@@ -246,6 +246,13 @@ try:
 except Exception as exc:
     print(f'Base Maestra no pudo registrarse: {exc}')
 
+# Motor Universal Tabular: permanece detrás de bandera durante la transición.
+try:
+    from modules.importaciones_universales import register_importaciones_universales
+    register_importaciones_universales(app, DATABASE_PATH, UPLOAD_FOLDER)
+except Exception as exc:
+    print(f'Motor Universal de Mapeo no pudo registrarse: {exc}')
+
 # Fase comercial 1: Backups automáticos y restauración.
 try:
     from modules.backups import register_backups

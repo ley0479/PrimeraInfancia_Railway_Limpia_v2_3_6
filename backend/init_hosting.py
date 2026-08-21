@@ -88,6 +88,9 @@ def bootstrap_core_schema(config_class) -> None:
     ensure_security_schema(str(config_class.DATABASE_PATH))
     from modules.base_maestra.repository import BaseMaestraRepository
     BaseMaestraRepository(config_class.DATABASE_PATH).init_schema()
+    from migrations.migrate_universal_mapper_v7 import migrate as migrate_universal_mapper
+    universal_mapper_migration = migrate_universal_mapper(str(config_class.DATABASE_PATH))
+    print('[MIGRATION] universal mapper: ' + json.dumps(universal_mapper_migration, ensure_ascii=False), flush=True)
 
     # Los modulos comerciales se migran explicitamente en predeploy. Registrar
     # sus Blueprints durante el import de app.py queda como operacion sin DDL.
