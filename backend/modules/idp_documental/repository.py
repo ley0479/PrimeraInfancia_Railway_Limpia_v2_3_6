@@ -158,6 +158,12 @@ class IDPRepository:
             except Exception: value['valor']=value.get('valor_interpretado')
             try: value['evidencia']=json.loads(value.get('evidencia_json') or '{}')
             except Exception: value['evidencia']={}
+            suggestion=conn.execute("""SELECT c.valor_nuevo,c.fecha FROM idp_correcciones_humanas c JOIN idp_campos_extraidos source ON source.id=c.campo_id AND source.fundacion_id=c.fundacion_id JOIN idp_documentos approved ON approved.id=c.documento_id AND approved.fundacion_id=c.fundacion_id WHERE c.fundacion_id=? AND approved.id<>? AND approved.tipo_documento=? AND approved.estado IN ('APROBADO','IMPORTADO') AND source.ruta_canonica=? AND source.texto_original=? ORDER BY c.fecha DESC,c.id DESC LIMIT 1""",(tenant_id,document_id,item.get('tipo_documento'),value.get('ruta_canonica'),value.get('texto_original'))).fetchone()
+            if suggestion:
+                try: suggested_value=json.loads(suggestion['valor_nuevo'])
+                except Exception: suggested_value=suggestion['valor_nuevo']
+                occurrences=conn.execute("""SELECT COUNT(*) total FROM idp_correcciones_humanas c JOIN idp_campos_extraidos source ON source.id=c.campo_id AND source.fundacion_id=c.fundacion_id JOIN idp_documentos approved ON approved.id=c.documento_id AND approved.fundacion_id=c.fundacion_id WHERE c.fundacion_id=? AND approved.id<>? AND approved.tipo_documento=? AND approved.estado IN ('APROBADO','IMPORTADO') AND source.ruta_canonica=? AND source.texto_original=? AND c.valor_nuevo=?""",(tenant_id,document_id,item.get('tipo_documento'),value.get('ruta_canonica'),value.get('texto_original'),suggestion['valor_nuevo'])).fetchone()['total']
+                value['sugerencia_correccion']={'valor':suggested_value,'apariciones':int(occurrences or 0),'fecha_ultima':suggestion['fecha'],'aplicacion':'MANUAL'}
             value.pop('valor_interpretado',None); value.pop('evidencia_json',None); fields.append(value)
         item['campos']=fields
         item['resultados_validacion']=[dict(x) for x in conn.execute("SELECT id,ruta_canonica,regla,nivel,estado,mensaje,esperado_json,evidencia_json,resuelto,fecha FROM idp_resultados_validacion WHERE documento_id=? AND fundacion_id=? ORDER BY id",(document_id,tenant_id)).fetchall()]

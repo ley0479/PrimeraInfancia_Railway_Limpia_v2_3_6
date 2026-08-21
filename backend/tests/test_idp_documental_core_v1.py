@@ -81,6 +81,11 @@ def main():
         require(attendance_count==2 and other_tenant_count==0,'Fallo persistencia o aislamiento del lote importado')
         require([row['asistio'] for row in imported_rows]==[1,0],'Interpreto incorrectamente SI/NO al importar')
         require(any(event['evento']=='ASISTENCIA_IMPORTADA' for event in imported_doc['eventos']),'No audito la importacion')
+        learned_book=root/'LISTADO_ASISTENCIA_APRENDIZAJE.xlsx'; learned_wb=Workbook(); learned_ws=learned_wb.active; learned_ws.append(['LISTADO DE ASISTENCIA - SEGUNDO DOCUMENTO']); learned_ws.append(['Nombre completo','Documento','UDS','Asistio']); learned_ws.append(['ANA PEREZ','1001','UCA 1','SI']); learned_wb.save(learned_book)
+        learned_id,_=create(repo,1,learned_book); learned_doc=repo.get_document(learned_id,1); learned_name=next(field for field in learned_doc['campos'] if field['ruta_canonica']=='participantes.0.nombre_completo')
+        require(learned_name['valor']=='ANA PEREZ','La memoria aplico una correccion automaticamente')
+        require(learned_name['sugerencia_correccion']['valor']=='ANA MARIA PEREZ' and learned_name['sugerencia_correccion']['aplicacion']=='MANUAL','No sugirio la correccion aprobada')
+        require(repo.get_document(learned_id,2) is None,'Expuso aprendizaje entre fundaciones')
         queued_book=root/'LISTADO_ASISTENCIA_COLA.xlsx'
         queue_wb=Workbook(); queue_ws=queue_wb.active; queue_ws.append(['LISTADO DE ASISTENCIA EN COLA']); queue_ws.append(['Nombre completo','Documento','UDS','Asistio']); queue_ws.append(['ANA PEREZ','1001','UCA 1','SI']); queue_wb.save(queued_book)
         queue_id=repo.create_document({'fundacion_id':1,'nombre_original':queued_book.name,'nombre_guardado':queued_book.name,'ruta_privada':str(queued_book),'extension':'.xlsx','mime_type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','tamano_bytes':queued_book.stat().st_size,'sha256':sha256_file(queued_book),'usuario_id':10})

@@ -43,7 +43,7 @@
         const target=$('idp-detail'); if(!target)return;
         const doc=state.selected;
         if(!doc){target.innerHTML='<div class="idp-empty">Selecciona un documento para revisar sus resultados.</div>';return;}
-        const fields=(doc.campos||[]).map(field=>`<div class="idp-field ${confidence(field)}" onclick="IDPDocumental.focusEvidence(${Number(field.id)},event)"><div><small>${esc(field.ruta_canonica)}</small><strong>${displayValue(field.valor)}</strong><span>Original: ${esc(field.texto_original||'No encontrado')} · Confianza ${(Number(field.confianza||0)*100).toFixed(0)}%</span><span>Evidencia: ${esc(JSON.stringify(field.evidencia||{}))}</span></div><button type="button" class="idp-btn secondary" onclick="event.stopPropagation();IDPDocumental.correct(${Number(field.id)})">Corregir</button></div>`).join('');
+        const fields=(doc.campos||[]).map(field=>{const suggestion=field.sugerencia_correccion;return `<div class="idp-field ${confidence(field)}" onclick="IDPDocumental.focusEvidence(${Number(field.id)},event)"><div><small>${esc(field.ruta_canonica)}</small><strong>${displayValue(field.valor)}</strong><span>Original: ${esc(field.texto_original||'No encontrado')} · Confianza ${(Number(field.confianza||0)*100).toFixed(0)}%</span><span>Evidencia: ${esc(JSON.stringify(field.evidencia||{}))}</span>${suggestion?`<span>Sugerencia aprobada (${Number(suggestion.apariciones||1)} coincidencia(s)): ${displayValue(suggestion.valor)}</span>`:''}</div><div>${suggestion?`<button type="button" class="idp-btn primary" onclick="event.stopPropagation();IDPDocumental.applySuggestion(${Number(field.id)})">Usar sugerencia</button>`:''}<button type="button" class="idp-btn secondary" onclick="event.stopPropagation();IDPDocumental.correct(${Number(field.id)})">Corregir</button></div></div>`;}).join('');
         const summary=doc.validaciones||{};
         const validations=(summary.resultados||[]).map(item=>`<div class="idp-validation ${String(item.nivel||'').toLowerCase()}"><strong>${esc(item.regla||item.codigo||'VALIDACION')}</strong><span>${esc(item.mensaje||'Sin detalle')}</span></div>`).join('');
         const validationSummary=`<div class="idp-validation-summary ${String(summary.semaforo||'GRIS').toLowerCase()}"><div><small>Semáforo</small><strong>${esc(summary.semaforo||'GRIS')}</strong></div><div><small>Coincidencias</small><strong>${Number(summary.coincidencias||0)} / ${Number(summary.total||0)}</strong></div><div><small>Errores críticos</small><strong>${Number(summary.errores_criticos||0)}</strong></div><div><small>Advertencias</small><strong>${Number(summary.advertencias||0)}</strong></div></div>`;
@@ -87,6 +87,13 @@
         const raw=prompt(`Corregir ${field.ruta_canonica}`,field.valor??''); if(raw===null)return;
         const reason=prompt('Motivo de la corrección (opcional)','Revisión humana')??'';
         try { const data=await api(`/documentos/${state.selected.id}/campos/${fieldId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({valor:raw,motivo:reason})}); state.selected=data.documento; message(data.message,'success'); renderDetail(); await loadPreview(); }
+        catch(error){message(error.message,'error');}
+    }
+
+    async function applySuggestion(fieldId) {
+        const field=(state.selected?.campos||[]).find(item=>Number(item.id)===Number(fieldId)),suggestion=field?.sugerencia_correccion; if(!suggestion)return;
+        if(!confirm(`¿Usar la sugerencia aprobada para ${field.ruta_canonica}?`))return;
+        try { const data=await api(`/documentos/${state.selected.id}/campos/${fieldId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({valor:suggestion.valor,motivo:'Sugerencia de corrección aprobada previamente'})}); state.selected=data.documento; message('Sugerencia aplicada y registrada para auditoría.','success'); renderDetail(); await loadPreview(); }
         catch(error){message(error.message,'error');}
     }
 
@@ -138,6 +145,6 @@
         if(!state.initialized){state.initialized=true;$('idp-upload')?.addEventListener('click',upload);}
         load();
     }
-    window.IDPDocumental={init,load,select,upload,correct,approve,download,downloadOfficial,retryOcr,focusEvidence,importAttendance};
+    window.IDPDocumental={init,load,select,upload,correct,applySuggestion,approve,download,downloadOfficial,retryOcr,focusEvidence,importAttendance};
     window.idpDocumentalInit=init;
 })();
