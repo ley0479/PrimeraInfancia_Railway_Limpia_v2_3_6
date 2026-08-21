@@ -37,8 +37,25 @@ def _seed_catalogs(connection) -> None:
     now=datetime.now().isoformat(timespec="seconds")
     for code,(category,component,options) in BASE_CATALOGS.items():
         row=connection.execute("SELECT id FROM doc_catalogos_respuesta WHERE codigo=? AND scope='GLOBAL' AND fundacion_id IS NULL",(code,)).fetchone()
-        if row: catalog_id=int(row[0])
-        else: catalog_id=int(connection.execute("INSERT INTO doc_catalogos_respuesta(codigo,categoria,componente,scope,fundacion_id,activo,creado_en,actualizado_en) VALUES(?,?,?,'GLOBAL',NULL,1,?,?)",(code,category,component,now,now)).lastrowid)
+        if row:
+            catalog_id = int(row[0])
+        else:
+            # ``lastrowid`` is not portable through the PostgreSQL DB-API
+            # compatibility layer (it can legitimately be 0).  The catalog
+            # has a stable natural key, so resolve the generated identity
+            # explicitly after inserting it.  This also remains compatible
+            # with SQLite and keeps the migration idempotent.
+            connection.execute(
+                "INSERT INTO doc_catalogos_respuesta(codigo,categoria,componente,scope,fundacion_id,activo,creado_en,actualizado_en) VALUES(?,?,?,'GLOBAL',NULL,1,?,?)",
+                (code, category, component, now, now),
+            )
+            row = connection.execute(
+                "SELECT id FROM doc_catalogos_respuesta WHERE codigo=? AND scope='GLOBAL' AND fundacion_id IS NULL",
+                (code,),
+            ).fetchone()
+            if not row:
+                raise RuntimeError(f"No fue posible resolver el catálogo documental {code}")
+            catalog_id = int(row[0])
         for option_code,text,order,contradictions in options:
             exists=connection.execute("SELECT id FROM doc_opciones_respuesta WHERE catalogo_id=? AND codigo=?",(catalog_id,option_code)).fetchone()
             if not exists: connection.execute("INSERT INTO doc_opciones_respuesta(catalogo_id,codigo,texto,orden,activo,requiere_justificacion,contradice_json,creado_en,actualizado_en) VALUES(?,?,?,?,1,0,?,?,?)",(catalog_id,option_code,text,order,json.dumps(contradictions),now,now))
