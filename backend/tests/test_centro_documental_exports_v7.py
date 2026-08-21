@@ -4,6 +4,8 @@ import json
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 import zipfile
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -29,6 +31,19 @@ def run():
             pdf=convert_pdf(output,root/"pdf"); assert pdf.read_bytes()[:5]==b"%PDF-"
         except RuntimeError as exc:
             assert "Word permanece disponible" in str(exc); pdf_status="PENDING"
+        simulated_dir=root/"pdf-simulado"
+        def fake_run(arguments,**kwargs):
+            assert "--headless" in arguments
+            assert any(str(value).startswith("-env:UserInstallation=file:") for value in arguments)
+            assert kwargs.get("timeout")==90 and kwargs.get("check") is False
+            simulated_dir.mkdir(parents=True,exist_ok=True)
+            (simulated_dir/output.with_suffix(".pdf").name).write_bytes(b"%PDF-1.7\nSIMULADO")
+            return SimpleNamespace(returncode=0,stdout="",stderr="")
+        with patch("modules.centro_documental.document_builder_service.shutil.which",return_value="/usr/bin/soffice"), patch("modules.centro_documental.document_builder_service.subprocess.run",side_effect=fake_run):
+            simulated_pdf=convert_pdf(output,simulated_dir)
+        assert simulated_pdf.read_bytes().startswith(b"%PDF-")
+        dockerfile=(ROOT.parent/"Dockerfile").read_text(encoding="utf-8")
+        assert "libreoffice-writer" in dockerfile
         package=root/"paquete.zip"; packaged=build_package(package,[("01_ACTA.docx",output)],{"documento_id":1,"capture":"PENDIENTE_PLANTILLA"})
         assert packaged["archivos"] and zipfile.is_zipfile(package)
         with zipfile.ZipFile(package) as archive:

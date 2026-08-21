@@ -21,6 +21,7 @@ RUN apt-get update \
        shared-mime-info \
        fonts-dejavu-core \
        fonts-liberation \
+       libreoffice-writer \
        poppler-utils \
        libpq5 \
        tesseract-ocr \

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import tempfile
 import zipfile
 
 
@@ -65,7 +66,27 @@ def convert_pdf(word_path: Path, output_dir: Path, timeout=90) -> Path:
     executable=shutil.which("soffice") or shutil.which("libreoffice")
     if not executable: raise RuntimeError("No existe un convertidor PDF instalado; el Word permanece disponible.")
     output_dir.mkdir(parents=True,exist_ok=True)
-    process=subprocess.run([executable,"--headless","--convert-to","pdf","--outdir",str(output_dir),str(word_path)],capture_output=True,text=True,timeout=timeout,check=False)
+    # LibreOffice mantiene bloqueos en su perfil de usuario. Un perfil temporal
+    # por trabajo evita que conversiones concurrentes de tenants distintos se
+    # interfieran entre sí dentro del worker/contenedor.
+    with tempfile.TemporaryDirectory(prefix="pi-libreoffice-") as profile_dir:
+        profile_uri = Path(profile_dir).resolve().as_uri()
+        process=subprocess.run(
+            [
+                executable,
+                "--headless",
+                f"-env:UserInstallation={profile_uri}",
+                "--convert-to",
+                "pdf",
+                "--outdir",
+                str(output_dir),
+                str(word_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
     result=output_dir/(word_path.stem+".pdf")
     if process.returncode or not result.exists() or result.stat().st_size<5: raise RuntimeError("No se pudo generar PDF; el Word permanece disponible.")
     if result.read_bytes()[:5]!=b"%PDF-": raise RuntimeError("El archivo PDF generado no es válido.")
