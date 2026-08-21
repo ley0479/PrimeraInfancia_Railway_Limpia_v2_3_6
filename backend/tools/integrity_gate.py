@@ -229,14 +229,20 @@ class Gate:
             path = self.root / "backend" / rel
             if not path.is_file():
                 failures.append(f"faltante:{rel}")
+                print(f"[FAIL] Prueba crítica {rel}: archivo ausente", flush=True)
                 continue
+            print(f"[RUN] Prueba crítica {rel}", flush=True)
             run = subprocess.run(
                 [sys.executable, str(path)], cwd=str(self.root / "backend"), env=env,
                 capture_output=True, text=True, check=False, timeout=180,
             )
             executed += 1
             if run.returncode:
-                failures.append(f"{rel}: {(run.stdout + run.stderr)[-1200:]}")
+                output = (run.stdout + run.stderr).strip()
+                failures.append(f"{rel}: {output[-1200:]}")
+                print(f"[FAIL] Prueba crítica {rel}\n{output}", flush=True)
+            else:
+                print(f"[PASS] Prueba crítica {rel}", flush=True)
         self.record("Regresión crítica", not failures, f"{executed} pruebas" if not failures else " | ".join(failures[:8]), evidence=failures)
 
     def check_manifest(self) -> None:
