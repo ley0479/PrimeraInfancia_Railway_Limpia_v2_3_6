@@ -74,6 +74,22 @@ CREATE TABLE IF NOT EXISTS idp_correcciones_humanas (
     FOREIGN KEY(campo_id) REFERENCES idp_campos_extraidos(id)
 );
 
+CREATE TABLE IF NOT EXISTS idp_resultados_validacion (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    documento_id BIGINT NOT NULL,
+    fundacion_id INTEGER NOT NULL,
+    ruta_canonica TEXT,
+    regla TEXT NOT NULL,
+    nivel TEXT NOT NULL,
+    estado TEXT NOT NULL,
+    mensaje TEXT NOT NULL,
+    esperado_json TEXT,
+    evidencia_json TEXT,
+    resuelto INTEGER DEFAULT 0,
+    fecha TEXT NOT NULL,
+    FOREIGN KEY(documento_id) REFERENCES idp_documentos(id)
+);
+
 CREATE TABLE IF NOT EXISTS idp_eventos_auditoria (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     documento_id BIGINT,
@@ -90,4 +106,5 @@ CREATE TABLE IF NOT EXISTS idp_eventos_auditoria (
 CREATE INDEX IF NOT EXISTS idx_idp_documentos_tenant_estado ON idp_documentos(fundacion_id, estado);
 CREATE INDEX IF NOT EXISTS idx_idp_campos_documento ON idp_campos_extraidos(documento_id, fundacion_id);
 CREATE INDEX IF NOT EXISTS idx_idp_eventos_documento ON idp_eventos_auditoria(documento_id, fundacion_id);
+CREATE INDEX IF NOT EXISTS idx_idp_validaciones_documento ON idp_resultados_validacion(documento_id, fundacion_id, nivel);
 """

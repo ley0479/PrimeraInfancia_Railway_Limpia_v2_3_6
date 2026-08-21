@@ -7,7 +7,7 @@ from openpyxl import Workbook
 from PIL import Image
 
 from modules.idp_documental.repository import IDPRepository
-from modules.idp_documental.services import canonicalize, classify_document, read_document, sha256_file
+from modules.idp_documental.services import canonicalize, classify_document, connect, read_document, sha256_file
 
 
 def require(condition, message):
@@ -28,12 +28,21 @@ def main():
     with tempfile.TemporaryDirectory() as temporary:
         root=Path(temporary); db=root/'idp.sqlite3'; book=root/'LISTADO_ASISTENCIA.xlsx'
         wb=Workbook(); ws=wb.active; ws.title='ASISTENCIA'; ws.append(['LISTADO DE ASISTENCIA']); ws.append(['Nombre completo','Documento','UDS','Asistió','Firma']); ws.append(['ANA PEREZ','1001','UCA 1','SI','X']); ws.append(['LUIS DIAZ','1002','UCA 1','NO','']); wb.save(book)
-        repo=IDPRepository(str(db)); document_id,digest=create(repo,1,book)
+        repo=IDPRepository(str(db))
+        conn=connect(str(db))
+        conn.execute("CREATE TABLE master_ninos(id INTEGER PRIMARY KEY,documento TEXT,nombre_completo TEXT,unidad_servicio TEXT,estado TEXT,activo INTEGER,fundacion_id INTEGER)")
+        conn.execute("INSERT INTO master_ninos VALUES(1,'1001','ANA PEREZ','UCA 1','ACTIVO',1,1)")
+        conn.execute("INSERT INTO master_ninos VALUES(2,'1002','LUIS DIAZ','UCA 1','ACTIVO',1,1)")
+        conn.execute("INSERT INTO master_ninos VALUES(3,'1001','OTRA FUNDACION','UCA X','ACTIVO',1,2)")
+        conn.commit(); conn.close()
+        document_id,digest=create(repo,1,book)
         item=repo.get_document(document_id,1)
         require(item and item['tipo_documento']=='LISTADO_ASISTENCIA','No clasifico asistencia')
         require(item['estado']=='REQUIERE_REVISION','Estado incorrecto')
         require(len(item['resultado_canonico']['participantes'])==2,'No extrajo participantes')
         require(item['resultado_canonico']['participantes'][0]['documento']=='1001','Documento mal mapeado')
+        require(item['validaciones']['semaforo']=='VERDE','La planilla valida no quedo en verde')
+        require(item['validaciones']['coincidencias']==2,'No valido los participantes contra Base Maestra')
         require(repo.get_document(document_id,2) is None,'Fallo aislamiento por fundacion')
         require(repo.find_duplicate(1,digest)['id']==document_id,'No detecto duplicado del tenant')
         require(repo.find_duplicate(2,digest) is None,'Bloqueo incorrectamente el mismo archivo en otro tenant')
@@ -46,6 +55,16 @@ def main():
         require(approved['estado']=='APROBADO' and approved['progreso']==100,'No aprobo documento revisado')
         require(any(event['evento']=='CAMPO_CORREGIDO' for event in approved['eventos']),'No audito correccion')
         require(any(event['evento']=='DOCUMENTO_APROBADO' for event in approved['eventos']),'No audito aprobacion')
+        invalid_book=root/'LISTADO_ASISTENCIA_INVALIDO.xlsx'
+        invalid_wb=Workbook(); invalid_ws=invalid_wb.active; invalid_ws.append(['LISTADO DE ASISTENCIA']); invalid_ws.append(['Nombre completo','Documento','UDS','Asistio']); invalid_ws.append(['PERSONA INEXISTENTE','9999','UCA 1','SI']); invalid_wb.save(invalid_book)
+        invalid_id,_=create(repo,1,invalid_book)
+        invalid_doc=repo.get_document(invalid_id,1)
+        require(invalid_doc['validaciones']['semaforo']=='ROJO','No marco en rojo el documento inexistente')
+        require(invalid_doc['validaciones']['errores_criticos']>0,'No genero error critico de Base Maestra')
+        invalid_blocked=False
+        try: repo.approve(invalid_id,1,10)
+        except ValueError: invalid_blocked=True
+        require(invalid_blocked,'Permitio aprobar inconsistencias criticas')
         image_path=root/'foto_asistencia.jpg'; Image.new('RGB',(1200,1600),'white').save(image_path)
         image_id,_=create(repo,1,image_path)
         image_doc=repo.get_document(image_id,1)
@@ -54,7 +73,7 @@ def main():
         try: repo.approve(image_id,1,10)
         except ValueError: blocked=True
         require(blocked,'Permitio aprobar una imagen sin OCR')
-        print('IDP core PASS: clasificacion, canonico, tenant, duplicado, correccion y aprobacion')
+        print('IDP core PASS: clasificacion, canonico, tenant, Base Maestra, correccion y aprobacion')
 
 
 if __name__=='__main__':

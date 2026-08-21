@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import unicodedata
 import zipfile
+from difflib import SequenceMatcher
 from typing import Any
 
 from modules.dbapi_compat import sqlite3
@@ -217,6 +218,45 @@ def canonicalize(raw: dict, document_type: str) -> tuple[dict, list[dict]]:
                 break
     fields.append({'ruta': 'tipo_documento', 'valor': document_type, 'texto_original': document_type, 'confianza': 1.0, 'evidencia': {}, 'regla': 'clasificador_reglas'})
     return canonical, fields
+
+
+def _document_key(value: Any) -> str:
+    return re.sub(r'[^A-Za-z0-9]', '', str(value or '')).upper()
+
+
+def validate_against_master(database_path: str, tenant_id: int, canonical: dict) -> dict:
+    participants = list(canonical.get('participantes') or [])
+    results: list[dict] = []
+    try:
+        conn = connect(database_path)
+        rows = conn.execute("""SELECT documento,nombre_completo,unidad_servicio,estado,activo FROM master_ninos WHERE COALESCE(fundacion_id,1)=?""", (tenant_id,)).fetchall()
+        conn.close()
+    except Exception:
+        return {'semaforo':'GRIS','errores_criticos':0,'advertencias':1,'coincidencias':0,'total':len(participants),'resultados':[{'ruta_canonica':'participantes','regla':'BASE_MAESTRA_DISPONIBLE','nivel':'ADVERTENCIA','estado':'PENDIENTE','mensaje':'La Base Maestra no está disponible para validar este documento.','esperado':None,'evidencia':{}}]}
+    master = {_document_key(row['documento']):dict(row) for row in rows if _document_key(row['documento'])}
+    seen: set[str] = set(); matches = 0
+    document_unit = normalize((canonical.get('unidad_servicio') or {}).get('nombre'))
+    for index, participant in enumerate(participants):
+        path=f'participantes.{index}'; document=_document_key(participant.get('documento'))
+        if not document:
+            results.append({'ruta_canonica':f'{path}.documento','regla':'DOCUMENTO_OBLIGATORIO','nivel':'CRITICO','estado':'ERROR','mensaje':'No se encontró documento o NUI.','esperado':None,'evidencia':{'indice':index}}); continue
+        if document in seen:
+            results.append({'ruta_canonica':f'{path}.documento','regla':'DUPLICADO_EN_DOCUMENTO','nivel':'CRITICO','estado':'ERROR','mensaje':'El participante está repetido en el documento cargado.','esperado':None,'evidencia':{'indice':index}})
+        seen.add(document); found=master.get(document)
+        if not found:
+            results.append({'ruta_canonica':f'{path}.documento','regla':'EXISTE_BASE_MAESTRA','nivel':'CRITICO','estado':'ERROR','mensaje':'El documento no existe en la Base Maestra de esta fundación.','esperado':None,'evidencia':{'indice':index}}); continue
+        matches += 1; participant['base_maestra_id_documento']=document; participant['validado_base_maestra']=True
+        if not bool(found.get('activo')) or normalize(found.get('estado')) in {'retirado','inactivo'}:
+            results.append({'ruta_canonica':path,'regla':'PARTICIPANTE_ACTIVO','nivel':'CRITICO','estado':'ERROR','mensaje':'El participante figura retirado o inactivo en Base Maestra.','esperado':{'estado':found.get('estado')},'evidencia':{'indice':index}})
+        source_name=normalize(participant.get('nombre_completo')); expected_name=normalize(found.get('nombre_completo'))
+        similarity=SequenceMatcher(None,source_name,expected_name).ratio() if source_name and expected_name else 0
+        if similarity < .78:
+            results.append({'ruta_canonica':f'{path}.nombre_completo','regla':'NOMBRE_COINCIDE_DOCUMENTO','nivel':'ADVERTENCIA','estado':'REVISAR','mensaje':'El nombre no coincide suficientemente con el documento en Base Maestra.','esperado':{'nombre_completo':found.get('nombre_completo')},'evidencia':{'similitud':round(similarity,3),'indice':index}})
+        source_unit=normalize(participant.get('unidad') or document_unit); expected_unit=normalize(found.get('unidad_servicio'))
+        if source_unit and expected_unit and source_unit != expected_unit:
+            results.append({'ruta_canonica':f'{path}.unidad','regla':'UNIDAD_COINCIDE','nivel':'CRITICO','estado':'ERROR','mensaje':'El participante pertenece a otra UDS/UCA en Base Maestra.','esperado':{'unidad_servicio':found.get('unidad_servicio')},'evidencia':{'indice':index}})
+    critical=sum(1 for item in results if item['nivel']=='CRITICO'); warnings=sum(1 for item in results if item['nivel']=='ADVERTENCIA')
+    return {'semaforo':'ROJO' if critical else ('AMARILLO' if warnings else 'VERDE'),'errores_criticos':critical,'advertencias':warnings,'coincidencias':matches,'total':len(participants),'resultados':results}
 
 
 def public_document(row: Any) -> dict:

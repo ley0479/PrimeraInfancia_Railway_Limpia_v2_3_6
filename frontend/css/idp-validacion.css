@@ -1,0 +1,35 @@
+.idp-validation-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: .55rem;
+    margin-top: 1rem;
+    padding: .75rem;
+    border: 1px solid;
+    border-radius: .85rem;
+    background: #02061799;
+}
+.idp-validation-summary.verde { border-color: #10b98188; }
+.idp-validation-summary.amarillo { border-color: #f59e0b88; }
+.idp-validation-summary.rojo { border-color: #f43f5e88; }
+.idp-validation-summary.gris { border-color: #64748b88; }
+.idp-validation-summary small,
+.idp-validation-summary strong { display: block; }
+.idp-validation-summary small { font-size: .62rem; color: #94a3b8; }
+.idp-validation-summary strong { font-size: .86rem; color: #f8fafc; }
+.idp-validation {
+    display: flex;
+    gap: .55rem;
+    align-items: flex-start;
+    margin-top: .55rem;
+    padding: .65rem;
+    border: 1px solid;
+    border-radius: .7rem;
+    font-size: .72rem;
+}
+.idp-validation strong { font-size: .64rem; }
+.idp-validation.critico { border-color: #f43f5e55; background: #f43f5e12; color: #fecdd3; }
+.idp-validation.advertencia { border-color: #f59e0b55; background: #f59e0b12; color: #fde68a; }
+.idp-validation.info { border-color: #38bdf855; background: #38bdf812; color: #bae6fd; }
+@media (max-width: 520px) {
+    .idp-validation-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
