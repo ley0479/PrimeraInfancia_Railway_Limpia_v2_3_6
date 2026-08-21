@@ -200,6 +200,19 @@ def register_centro_documental(app, database_path: str, data_dir: str) -> None:
         user=_user(); item=repository.get_instance(document_id,user["fundacion_id"])
         return jsonify({"documento":item}) if item else (jsonify({"error":"Documento no encontrado."}),404)
 
+    @blueprint.patch("/<int:document_id>")
+    @require_roles(*PROFESSIONAL_ROLES)
+    def update_document(document_id: int):
+        user=_user(); payload=request.get_json(silent=True) or {}
+        if "narrativa" not in payload:
+            return jsonify({"error":"No se recibieron campos documentales editables."}),400
+        narrative=str(payload.get("narrativa") or "").strip()
+        if not narrative:
+            return jsonify({"error":"La narrativa no puede quedar vacía."}),400
+        try: item=repository.save_narrative(document_id,user["fundacion_id"],narrative,user["id"])
+        except KeyError as exc: return jsonify({"error":str(exc)}),404
+        return jsonify({"message":"Narrativa revisada y guardada.","documento":item})
+
     @blueprint.post("/<int:document_id>/selecciones")
     @require_roles(*PROFESSIONAL_ROLES)
     def save_selections(document_id: int):

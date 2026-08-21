@@ -3478,7 +3478,7 @@
                                 <div><p class="cd-eyebrow">Actas · informes · encuentros · evidencias</p><h2 class="mt-2 text-2xl font-semibold text-white">Centro de Documentos Institucionales</h2><p class="mt-2 text-sm text-slate-400">Genera planeaciones y borradores revisables sobre plantillas oficiales. Los hechos reales siempre deben ser confirmados por el profesional.</p></div>
                                 <div id="cd-capture-state" class="cd-status pending">CAPTURE: plantilla pendiente</div>
                             </div>
-                            <div id="cd-message" class="hidden mt-4"></div>
+                            <div id="cdi-message" class="hidden mt-4"></div>
                         </div>
                         <div class="grid gap-5 xl:grid-cols-2">
                             <form id="cd-template-form" class="cd-card p-5 space-y-3">
@@ -3493,6 +3493,7 @@
                                 <h3 class="font-semibold text-white">Generar planeación por tema</h3>
                                 <select id="cd-component" class="cd-input"><option value="PEDAGOGICO">Pedagógico</option><option value="PSICOSOCIAL">Psicosocial</option><option value="SALUD_NUTRICION">Salud y Nutrición</option></select>
                                 <input id="cd-document-type" class="cd-input" value="ACTA_ENCUENTRO" placeholder="Tipo de documento">
+                                <select id="cd-working-template-version" class="cd-input"><option value="">Seleccione una plantilla aprobada</option></select>
                                 <input id="cd-unit" class="cd-input" placeholder="UDS / UCA">
                                 <textarea id="cd-theme" class="cd-input" rows="3" placeholder="Tema del encuentro" required></textarea>
                                 <button class="cd-btn primary" type="submit">Generar planeación</button>
@@ -3501,6 +3502,15 @@
                         <div class="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,.8fr)]">
                             <div class="cd-card p-5"><div class="flex items-center justify-between"><h3 class="font-semibold text-white">Planeación propuesta</h3><span class="cd-status planned">PLANEADO</span></div><div id="cd-planning-preview" class="mt-4 text-sm text-slate-300"><div class="cd-empty">Ingresa un tema para preparar la planeación.</div></div><div class="mt-4 flex gap-2"><button id="cd-create-document" class="cd-btn primary" type="button" disabled>Guardar borrador guiado</button></div></div>
                             <div class="cd-card p-5"><h3 class="font-semibold text-white">Plantillas de la fundación</h3><div id="cd-templates" class="mt-4 space-y-2"><div class="cd-empty">Sin cargar.</div></div></div>
+                        </div>
+                        <div id="cd-workflow" class="hidden cd-card p-5 space-y-5">
+                            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3"><div><p class="cd-eyebrow">Hechos confirmados y revisión humana</p><h3 id="cd-document-heading" class="font-semibold text-white">Documento</h3></div><span id="cd-document-status" class="cd-status planned">BORRADOR</span></div>
+                            <div id="cd-catalog-options" class="grid gap-4 lg:grid-cols-2"></div>
+                            <div><label class="block text-xs text-slate-400 mb-2">Otra respuesta para este documento</label><textarea id="cd-custom-response" class="cd-input" rows="2" placeholder="Escriba un hecho real confirmado; no se agregará automáticamente al catálogo."></textarea></div>
+                            <div class="flex flex-wrap gap-2"><button id="cd-save-facts" type="button" class="cd-btn primary">Confirmar selecciones</button><button id="cd-generate-narrative" type="button" class="cd-btn secondary">Generar borrador narrativo</button><button id="cd-submit-review" type="button" class="cd-btn secondary">Enviar a revisión</button></div>
+                            <div><div class="flex items-center justify-between gap-2"><label class="text-sm font-semibold text-white">Borrador generado</label><span class="cd-status pending">REQUIERE REVISIÓN</span></div><textarea id="cd-narrative" class="cd-input mt-2" rows="7" placeholder="La narrativa aparecerá después de confirmar los hechos."></textarea></div>
+                            <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto]"><input id="cd-review-observation" class="cd-input" placeholder="Observación obligatoria para devolver"><button id="cd-return-document" type="button" class="cd-btn secondary">Devolver</button><button id="cd-approve-document" type="button" class="cd-btn primary">Aprobar</button></div>
+                            <div class="flex flex-wrap gap-2"><button id="cd-generate-word" type="button" class="cd-btn secondary">Generar Word</button><button id="cd-generate-pdf" type="button" class="cd-btn secondary">Generar PDF</button><button id="cd-generate-package" type="button" class="cd-btn secondary">Generar paquete ZIP</button><a id="cd-download-word" class="hidden cd-btn secondary" href="#">Descargar Word</a><a id="cd-download-pdf" class="hidden cd-btn secondary" href="#">Descargar PDF</a></div>
                         </div>
                     </div>
                     <div class="idp-card p-6">

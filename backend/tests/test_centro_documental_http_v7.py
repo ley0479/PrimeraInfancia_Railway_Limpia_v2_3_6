@@ -28,6 +28,12 @@ def run():
         assert client.get(f"/api/documentos/{document_id}",headers={"X-Tenant":"2"}).status_code==404
         assert client.post("/api/documentos",json={"tipo_documento":"CAPTURE","componente":"SALUD_NUTRICION"}).status_code==409
         catalogs=client.get("/api/documentos/catalogos?componente=PEDAGOGICO"); assert catalogs.status_code==200 and catalogs.json["catalogos"]
+        option=catalogs.json["catalogos"][0]["opciones"][0]
+        selections=client.post(f"/api/documentos/{document_id}/selecciones",json={"selecciones":[{"categoria":"PARTICIPACION","opcion_id":option["id"]}]}); assert selections.status_code==200
+        draft=client.post(f"/api/documentos/{document_id}/generar-borrador"); assert draft.status_code==200 and draft.json["documento"]["estado"]=="EN_ELABORACION"
+        edited=client.patch(f"/api/documentos/{document_id}",json={"narrativa":"Texto revisado por el profesional."}); assert edited.status_code==200 and edited.json["documento"]["narrativa"].startswith("Texto revisado")
+        submitted=client.post(f"/api/documentos/{document_id}/enviar-revision",json={}); assert submitted.status_code==200 and submitted.json["documento"]["estado"]=="EN_REVISION"
+        returned=client.post(f"/api/documentos/{document_id}/devolver",headers={"X-Role":"COORDINADOR"},json={"observacion":"Ajustar el cierre."}); assert returned.status_code==200 and returned.json["documento"]["estado"]=="DEVUELTO"
         assert client.post(f"/api/documentos/{document_id}/aprobar",headers={"X-Role":"DOCENTE"}).status_code==403
         assert client.get("/api/documentos/estado",headers={"X-Role":"INVITADO"}).status_code==403
     print("PASS test_centro_documental_http_v7")

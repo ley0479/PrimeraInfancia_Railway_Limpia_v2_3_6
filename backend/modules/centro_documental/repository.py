@@ -32,7 +32,19 @@ class CentroDocumentalRepository:
     def list_templates(self, tenant: int) -> list[dict]:
         with self.connect() as connection:
             rows = connection.execute("SELECT * FROM doc_plantillas WHERE (scope='GLOBAL' AND fundacion_id IS NULL) OR fundacion_id=? ORDER BY tipo_documento,nombre",(tenant,)).fetchall()
-        return [dict(row) for row in rows]
+            result=[]
+            for row in rows:
+                item=dict(row)
+                version=connection.execute(
+                    "SELECT id,version,estado,mapa_version FROM doc_plantilla_versiones WHERE plantilla_id=? AND (fundacion_id=? OR fundacion_id IS NULL) ORDER BY id DESC LIMIT 1",
+                    (item["id"],tenant),
+                ).fetchone()
+                item["plantilla_version_id"]=int(version["id"]) if version else None
+                item["version"]=version["version"] if version else None
+                item["version_estado"]=version["estado"] if version else "SIN_VERSION"
+                item["mapa_version"]=version["mapa_version"] if version else 0
+                result.append(item)
+        return result
 
     def create_template_version(self, template: dict, version: dict, user_id=None) -> dict:
         tenant = int(template["fundacion_id"])
