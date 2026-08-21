@@ -124,7 +124,8 @@ def _read_word(path: Path) -> dict:
         rows = [[cell.text for cell in row.cells] for row in table.rows]
         tables.append({'tabla': table_index, 'filas': rows})
     text = '\n'.join([item['texto'] for item in paragraphs] + [str(cell) for table in tables for row in table['filas'] for cell in row])
-    return {'motor': 'PYTHON_DOCX_NATIVE', 'texto': text, 'parrafos': paragraphs, 'tablas': tables}
+    sheets=[{'nombre':f'TABLA_WORD_{table["tabla"]}','filas':[{'fila':index+1,'valores':row} for index,row in enumerate(table['filas'])],'max_filas_leidas':len(table['filas'])} for table in tables]
+    return {'motor': 'PYTHON_DOCX_NATIVE', 'texto': text, 'parrafos': paragraphs, 'tablas': tables, 'hojas': sheets}
 
 
 def _read_powerpoint(path: Path) -> dict:
@@ -279,6 +280,15 @@ HEADER_ALIASES = {
     'firma_presente': ('firma', 'firma del asistente'),
     'unidad': ('uds', 'uca', 'unidad', 'unidad de servicio'),
 }
+SCHEDULE_HEADER_ALIASES = {
+    'fecha':('fecha','fecha actividad','fecha de actividad','fecha programada'),
+    'fecha_limite':('fecha limite','fecha de entrega','entrega','vence','vencimiento'),
+    'actividad':('actividad','tema','tarea','descripcion','compromiso'),
+    'responsable':('responsable','th a cargo','profesional','encargado'),
+    'entregable':('entregable','evidencia','producto','soporte'),
+    'modulo':('modulo','componente','area'),
+    'periodicidad':('periodicidad','frecuencia','recurrencia'),
+}
 
 
 def _mapped_header(value: Any) -> str | None:
@@ -287,6 +297,40 @@ def _mapped_header(value: Any) -> str | None:
         if text in aliases or any(len(alias) >= 4 and alias in text for alias in aliases):
             return field
     return None
+
+
+def _mapped_schedule_header(value: Any) -> str | None:
+    text=normalize(value)
+    for field,aliases in SCHEDULE_HEADER_ALIASES.items():
+        if text in aliases or any(len(alias)>=4 and alias in text for alias in aliases): return field
+    return None
+
+
+def _schedule_date(value: Any) -> str | None:
+    if value in (None,''): return None
+    if hasattr(value,'strftime'): return value.strftime('%Y-%m-%d')
+    text=str(value).strip()
+    for pattern in ('%Y-%m-%d','%d/%m/%Y','%d-%m-%Y','%Y/%m/%d'):
+        try: return datetime.strptime(text[:10],pattern).date().isoformat()
+        except ValueError: pass
+    return None
+
+
+def _canonicalize_schedule(raw: dict, canonical: dict, fields: list[dict]) -> None:
+    canonical['actividades']=[]
+    for sheet in raw.get('hojas') or []:
+        rows=sheet.get('filas') or []
+        for position,row in enumerate(rows):
+            mapping={field:column for column,value in enumerate(row.get('valores') or []) if (field:=_mapped_schedule_header(value))}
+            if 'actividad' not in mapping or not ({'fecha','fecha_limite','responsable','entregable'} & set(mapping)): continue
+            for data_row in rows[position+1:]:
+                values=data_row.get('valores') or []; activity={}; index=len(canonical['actividades'])
+                for field,column in mapping.items():
+                    raw_value=values[column] if column<len(values) else None; value=_schedule_date(raw_value) if field in {'fecha','fecha_limite'} else (str(raw_value).strip() if raw_value not in (None,'') else None)
+                    if value is not None: activity[field]=value
+                    fields.append({'ruta':f'actividades.{index}.{field}','valor':value,'texto_original':raw_value,'confianza':.96 if value is not None and not raw.get('origen_ocr') else (.76 if value is not None else 0),'evidencia':{'hoja':sheet['nombre'],'fila':data_row.get('fila'),'columna':column+1},'regla':'encabezado_cronograma'})
+                if activity.get('actividad'): canonical['actividades'].append(activity)
+            return
 
 
 def _canonicalize_ocr_attendance(raw: dict, canonical: dict, fields: list[dict]) -> None:
@@ -341,6 +385,7 @@ def canonicalize(raw: dict, document_type: str) -> tuple[dict, list[dict]]:
                 break
     if document_type in {'LISTADO_ASISTENCIA','RAM'} and raw.get('origen_ocr') and not canonical['participantes']:
         _canonicalize_ocr_attendance(raw,canonical,fields)
+    if document_type=='CRONOGRAMA': _canonicalize_schedule(raw,canonical,fields)
     fields.append({'ruta': 'tipo_documento', 'valor': document_type, 'texto_original': document_type, 'confianza': 1.0, 'evidencia': {}, 'regla': 'clasificador_reglas'})
     return canonical, fields
 
@@ -404,6 +449,25 @@ def validate_against_master(database_path: str, tenant_id: int, canonical: dict)
             results.append({'ruta_canonica':f'{path}.unidad','regla':'UNIDAD_COINCIDE','nivel':'CRITICO','estado':'ERROR','mensaje':'El participante pertenece a otra UDS/UCA en Base Maestra.','esperado':{'unidad_servicio':found.get('unidad_servicio')},'evidencia':{'indice':index}})
     critical=sum(1 for item in results if item['nivel']=='CRITICO'); warnings=sum(1 for item in results if item['nivel']=='ADVERTENCIA')
     return {'semaforo':'ROJO' if critical else ('AMARILLO' if warnings else 'VERDE'),'errores_criticos':critical,'advertencias':warnings,'coincidencias':matches,'total':len(participants),'resultados':results}
+
+
+def validate_schedule(canonical: dict) -> dict:
+    activities=list(canonical.get('actividades') or []); results=[]; seen=set()
+    if not activities: results.append({'ruta_canonica':'actividades','regla':'ACTIVIDADES_REQUERIDAS','nivel':'CRITICO','estado':'ERROR','mensaje':'No se identificaron actividades en el cronograma.','esperado':None,'evidencia':{}})
+    for index,activity in enumerate(activities):
+        path=f'actividades.{index}'; date=activity.get('fecha') or activity.get('fecha_limite'); title=normalize(activity.get('actividad'))
+        if not date: results.append({'ruta_canonica':f'{path}.fecha','regla':'FECHA_REQUERIDA','nivel':'ADVERTENCIA','estado':'REVISAR','mensaje':'La actividad no tiene una fecha válida; no se inventó ninguna.','esperado':None,'evidencia':{'indice':index}})
+        key=(date,title)
+        if key in seen: results.append({'ruta_canonica':path,'regla':'ACTIVIDAD_DUPLICADA','nivel':'CRITICO','estado':'ERROR','mensaje':'La actividad está repetida para la misma fecha.','esperado':None,'evidencia':{'indice':index}})
+        seen.add(key)
+        if not activity.get('responsable'): results.append({'ruta_canonica':f'{path}.responsable','regla':'RESPONSABLE_RECOMENDADO','nivel':'ADVERTENCIA','estado':'REVISAR','mensaje':'No se identificó responsable para la actividad.','esperado':None,'evidencia':{'indice':index}})
+    critical=sum(item['nivel']=='CRITICO' for item in results); warnings=sum(item['nivel']=='ADVERTENCIA' for item in results)
+    return {'semaforo':'ROJO' if critical else ('AMARILLO' if warnings else 'VERDE'),'errores_criticos':critical,'advertencias':warnings,'coincidencias':len(activities),'total':len(activities),'resultados':results}
+
+
+def validate_canonical(database_path: str, tenant_id: int, canonical: dict) -> dict:
+    if canonical.get('tipo_documento')=='CRONOGRAMA': return validate_schedule(canonical)
+    return validate_against_master(database_path,tenant_id,canonical)
 
 
 def attendance_official_payload(document: dict) -> tuple[list[dict], dict]:

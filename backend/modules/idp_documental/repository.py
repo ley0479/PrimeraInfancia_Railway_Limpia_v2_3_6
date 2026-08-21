@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
-from .services import connect, init_schema, now_iso, public_document, resolve_official_template_version, validate_against_master
+from .services import connect, init_schema, now_iso, public_document, resolve_official_template_version, validate_canonical
 
 
 def _assign_path(root: dict, dotted_path: str, value: Any) -> None:
@@ -110,7 +110,7 @@ class IDPRepository:
         template_version=resolve_official_template_version(self.database_path,tenant_id,kind)
         canonical['version_plantilla']=template_version.get('version') if template_version else None
         canonical.setdefault('metadatos',{})['plantilla_oficial']=template_version
-        validation = validate_against_master(self.database_path,tenant_id,canonical) if not needs_ocr else {'semaforo':'GRIS','errores_criticos':0,'advertencias':1,'coincidencias':0,'total':0,'resultados':[{'ruta_canonica':'documento','regla':'OCR_REQUERIDO','nivel':'ADVERTENCIA','estado':'PENDIENTE','mensaje':'Conecte un motor OCR para continuar.','esperado':None,'evidencia':{}}]}
+        validation = validate_canonical(self.database_path,tenant_id,canonical) if not needs_ocr else {'semaforo':'GRIS','errores_criticos':0,'advertencias':1,'coincidencias':0,'total':0,'resultados':[{'ruta_canonica':'documento','regla':'OCR_REQUERIDO','nivel':'ADVERTENCIA','estado':'PENDIENTE','mensaje':'Conecte un motor OCR para continuar.','esperado':None,'evidencia':{}}]}
         status = 'REQUIERE_OCR' if needs_ocr else 'REQUIERE_REVISION'
         conn = connect(self.database_path)
         conn.execute("""UPDATE idp_documentos SET tipo_documento=?,confianza_clasificacion=?,estado=?,etapa=?,progreso=?,motor_lectura=?,resultado_bruto_json=?,resultado_canonico_json=?,validaciones_json=?,fecha_actualizacion=? WHERE id=? AND fundacion_id=?""", (kind,confidence,status,'PENDIENTE_OCR' if needs_ocr else 'REVISION_HUMANA',65 if needs_ocr else 80,raw.get('motor'),json.dumps(raw,ensure_ascii=False,default=str),json.dumps(canonical,ensure_ascii=False,default=str),json.dumps(validation,ensure_ascii=False,default=str),now,document_id,tenant_id))
@@ -175,7 +175,7 @@ class IDPRepository:
         _assign_path(canonical,field['ruta_canonica'],value)
         conn.execute("UPDATE idp_campos_extraidos SET valor_interpretado=?,estado_revision='CORREGIDO',usuario_correccion_id=?,fecha_actualizacion=? WHERE id=?",(encoded,user_id,now,field_id))
         conn.execute("INSERT INTO idp_correcciones_humanas(documento_id,campo_id,fundacion_id,valor_anterior,valor_nuevo,motivo,usuario_id,fecha) VALUES(?,?,?,?,?,?,?,?)",(document_id,field_id,tenant_id,previous,encoded,str(reason or '')[:500],user_id,now))
-        validation=validate_against_master(self.database_path,tenant_id,canonical)
+        validation=validate_canonical(self.database_path,tenant_id,canonical)
         conn.execute("UPDATE idp_documentos SET resultado_canonico_json=?,validaciones_json=?,fecha_actualizacion=? WHERE id=? AND fundacion_id=?",(json.dumps(canonical,ensure_ascii=False,default=str),json.dumps(validation,ensure_ascii=False,default=str),now,document_id,tenant_id)); self._store_validations(conn,document_id,tenant_id,validation,now); conn.commit(); conn.close()
         self.audit(tenant_id,'CAMPO_CORREGIDO',document_id,user_id,'REVISION_HUMANA','REQUIERE_REVISION',{'campo_id':field_id,'ruta':field['ruta_canonica']})
 

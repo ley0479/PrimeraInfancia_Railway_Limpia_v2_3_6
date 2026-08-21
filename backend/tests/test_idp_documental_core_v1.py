@@ -7,6 +7,7 @@ import os
 
 from openpyxl import Workbook
 from PIL import Image
+from docx import Document
 
 from modules.idp_documental.repository import IDPRepository
 from modules.idp_documental.services import attendance_official_payload, canonicalize, classify_document, connect, read_document, read_document_azure, read_document_ocr, sha256_file
@@ -90,6 +91,16 @@ def main():
         require(queue_doc['estado']=='REQUIERE_REVISION' and queue_doc['resultado_canonico']['participantes'][0]['documento']=='1001','El worker no completo la extraccion')
         conn=connect(str(db)); queue_state=conn.execute('SELECT estado,intentos FROM idp_trabajos_cola WHERE id=?',(queued_job['id'],)).fetchone(); conn.close()
         require(queue_state['estado']=='COMPLETADO' and queue_state['intentos']==1,'La cola no persistio el resultado del worker')
+        schedule_book=root/'CRONOGRAMA_MENSUAL.xlsx'; schedule_wb=Workbook(); schedule_ws=schedule_wb.active; schedule_ws.append(['CRONOGRAMA MENSUAL']); schedule_ws.append(['Fecha','Actividad','Responsable','Entregable','Modulo']); schedule_ws.append(['20/08/2026','Encuentro familiar','Psicosocial','Acta y listado','Familias']); schedule_wb.save(schedule_book)
+        schedule_id,_=create(repo,1,schedule_book); schedule_doc=repo.get_document(schedule_id,1)
+        require(schedule_doc['tipo_documento']=='CRONOGRAMA' and len(schedule_doc['resultado_canonico']['actividades'])==1,'No estructuro el cronograma Excel')
+        require(schedule_doc['resultado_canonico']['actividades'][0]['fecha']=='2026-08-20','No normalizo la fecha del cronograma')
+        require(schedule_doc['validaciones']['semaforo']=='VERDE','Marco incorrectamente el cronograma completo')
+        schedule_word=root/'CRONOGRAMA_WORD.docx'; word=Document(); table=word.add_table(rows=2,cols=3)
+        for column,value in enumerate(['Fecha','Actividad','Responsable']): table.rows[0].cells[column].text=value
+        for column,value in enumerate(['21/08/2026','Taller pedagógico','Docente']): table.rows[1].cells[column].text=value
+        word.save(schedule_word); word_id,_=create(repo,1,schedule_word); word_doc=repo.get_document(word_id,1)
+        require(word_doc['tipo_documento']=='CRONOGRAMA' and word_doc['resultado_canonico']['actividades'][0]['responsable']=='Docente','No estructuro la tabla Word del cronograma')
         invalid_book=root/'LISTADO_ASISTENCIA_INVALIDO.xlsx'
         invalid_wb=Workbook(); invalid_ws=invalid_wb.active; invalid_ws.append(['LISTADO DE ASISTENCIA']); invalid_ws.append(['Nombre completo','Documento','UDS','Asistio']); invalid_ws.append(['PERSONA INEXISTENTE','9999','UCA 1','SI']); invalid_wb.save(invalid_book)
         invalid_id,_=create(repo,1,invalid_book)
