@@ -7,7 +7,7 @@ from openpyxl import Workbook
 from PIL import Image
 
 from modules.idp_documental.repository import IDPRepository
-from modules.idp_documental.services import canonicalize, classify_document, connect, read_document, sha256_file
+from modules.idp_documental.services import attendance_official_payload, canonicalize, classify_document, connect, read_document, sha256_file
 
 
 def require(condition, message):
@@ -43,6 +43,10 @@ def main():
         require(item['resultado_canonico']['participantes'][0]['documento']=='1001','Documento mal mapeado')
         require(item['validaciones']['semaforo']=='VERDE','La planilla valida no quedo en verde')
         require(item['validaciones']['coincidencias']==2,'No valido los participantes contra Base Maestra')
+        generation_blocked=False
+        try: attendance_official_payload(item)
+        except ValueError: generation_blocked=True
+        require(generation_blocked,'Permitio generar formato oficial sin aprobacion')
         require(repo.get_document(document_id,2) is None,'Fallo aislamiento por fundacion')
         require(repo.find_duplicate(1,digest)['id']==document_id,'No detecto duplicado del tenant')
         require(repo.find_duplicate(2,digest) is None,'Bloqueo incorrectamente el mismo archivo en otro tenant')
@@ -53,6 +57,9 @@ def main():
         repo.approve(document_id,1,10)
         approved=repo.get_document(document_id,1)
         require(approved['estado']=='APROBADO' and approved['progreso']==100,'No aprobo documento revisado')
+        official_users,official_metadata=attendance_official_payload(approved)
+        require(len(official_users)==2 and official_users[0]['documento']=='1001','No preparo usuarios para el listado oficial')
+        require(official_metadata['unidad']=='UCA 1','No preparo la UDS para el listado oficial')
         require(any(event['evento']=='CAMPO_CORREGIDO' for event in approved['eventos']),'No audito correccion')
         require(any(event['evento']=='DOCUMENTO_APROBADO' for event in approved['eventos']),'No audito aprobacion')
         invalid_book=root/'LISTADO_ASISTENCIA_INVALIDO.xlsx'

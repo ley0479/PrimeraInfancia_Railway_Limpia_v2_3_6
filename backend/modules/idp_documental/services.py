@@ -259,6 +259,29 @@ def validate_against_master(database_path: str, tenant_id: int, canonical: dict)
     return {'semaforo':'ROJO' if critical else ('AMARILLO' if warnings else 'VERDE'),'errores_criticos':critical,'advertencias':warnings,'coincidencias':matches,'total':len(participants),'resultados':results}
 
 
+def attendance_official_payload(document: dict) -> tuple[list[dict], dict]:
+    if not document or document.get('estado') != 'APROBADO':
+        raise ValueError('Aprueba el documento antes de generar el listado oficial.')
+    if document.get('tipo_documento') != 'LISTADO_ASISTENCIA':
+        raise ValueError('La generación oficial solo está disponible para listados de asistencia.')
+    canonical = document.get('resultado_canonico') or {}
+    participants = list(canonical.get('participantes') or [])
+    if not participants:
+        raise ValueError('El documento aprobado no contiene participantes para generar.')
+    unit = (canonical.get('unidad_servicio') or {}).get('nombre') or ''
+    period = canonical.get('periodo') or {}
+    users = []
+    for participant in participants:
+        users.append({
+            'nombre_completo': participant.get('nombre_completo') or '',
+            'documento': participant.get('documento') or participant.get('nui') or '',
+            'tipo_documento': participant.get('tipo_documento') or '',
+            'unidad': participant.get('unidad') or unit,
+            'telefono': participant.get('telefono') or '',
+        })
+    return users, {'unidad':unit,'fecha':period.get('fecha'),'mes':period.get('mes'),'anio':period.get('anio'),'documento_id':document.get('id')}
+
+
 def public_document(row: Any) -> dict:
     item = dict(row)
     for source, target, default in (

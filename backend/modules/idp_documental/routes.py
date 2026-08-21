@@ -11,7 +11,7 @@ from modules.seguridad.services import require_roles
 from modules.seguridad.tenant_context import tenant_storage_root
 
 from .repository import IDPRepository
-from .services import ALLOWED_EXTENSIONS, MAX_FILE_SIZE, canonicalize, classify_document, read_document, sha256_file, validate_file_signature
+from .services import ALLOWED_EXTENSIONS, MAX_FILE_SIZE, attendance_official_payload, canonicalize, classify_document, read_document, sha256_file, validate_file_signature
 
 
 ALLOWED_ROLES = ('SUPERADMIN', 'GERENTE', 'COORDINADOR', 'AUXILIAR_ADMINISTRATIVO')
@@ -115,5 +115,22 @@ def register_idp_documental(app, database_path: str, data_dir: str) -> None:
         except KeyError as exc: return jsonify({'error':str(exc)}),404
         except ValueError as exc: return jsonify({'error':str(exc)}),409
         return jsonify({'message':'Documento aprobado. Aún no se ha importado a módulos funcionales.','documento':repo.get_document(document_id,user['fundacion_id'])})
+
+    @bp.route('/documentos/<int:document_id>/listado-oficial', methods=['GET'])
+    @require_roles(*ALLOWED_ROLES)
+    def download_official_attendance(document_id: int):
+        user = _user(); document = repo.get_document(document_id,user['fundacion_id'])
+        if not document: return jsonify({'error':'Documento no encontrado.'}),404
+        try:
+            users, metadata = attendance_official_payload(document)
+            from services.listado_asistencia_usuarios_service import generate_list
+            generated = tenant_storage_root(data_dir,user['fundacion_id']) / 'idp' / 'generados'
+            generated.mkdir(parents=True,exist_ok=True)
+            output = generated / f'LISTADO_ASISTENCIA_OFICIAL_IDP_{document_id}_{uuid.uuid4().hex[:8]}.xlsx'
+            generate_list(data_dir,output,users,metadata=metadata,tenant_id=user['fundacion_id'])
+        except (ValueError,FileNotFoundError) as exc:
+            return jsonify({'error':str(exc)}),409
+        repo.audit(user['fundacion_id'],'LISTADO_OFICIAL_GENERADO',document_id,user['id'],'APROBADO','APROBADO',{'archivo':output.name,'participantes':len(users)})
+        return send_file(output,as_attachment=True,download_name=f'LISTADO_ASISTENCIA_OFICIAL_{document_id}.xlsx')
 
     app.register_blueprint(bp)
