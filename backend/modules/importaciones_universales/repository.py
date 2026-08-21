@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -21,6 +22,11 @@ class UniversalImportRepository:
         Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.database_path); conn.row_factory = sqlite3.Row; return conn
     def init_schema(self):
+        if (
+            os.getenv("SKIP_RUNTIME_SCHEMA_DDL", "").strip().lower() in {"1","true","yes","si","sí","on"}
+            and os.getenv("APP_SCHEMA_MIGRATION_MODE", "").strip().lower() not in {"1","true","yes","si","sí","on"}
+        ):
+            return
         with self.connect() as conn:
             conn.executescript(SCHEMA_SQL)
             now=now_iso()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -16,7 +17,16 @@ from tests.test_universal_data_mapper_regression import build_fixture
 def main():
     with tempfile.TemporaryDirectory(prefix="pi-universal-e2e-") as folder:
         database_path=str(Path(folder)/"database.sqlite3"); source=Path(folder)/"source.xlsx"; build_fixture(source)
+        previous_skip=os.environ.get("SKIP_RUNTIME_SCHEMA_DDL"); previous_mode=os.environ.get("APP_SCHEMA_MIGRATION_MODE")
+        os.environ["SKIP_RUNTIME_SCHEMA_DDL"]="1"; os.environ["APP_SCHEMA_MIGRATION_MODE"]="0"
+        UniversalImportRepository(database_path).init_schema()
+        assert not Path(database_path).exists(),"Runtime no debe crear esquema"
+        os.environ["SKIP_RUNTIME_SCHEMA_DDL"]="0"; os.environ["APP_SCHEMA_MIGRATION_MODE"]="1"
         BaseMaestraRepository(database_path).init_schema(); repo=UniversalImportRepository(database_path); repo.init_schema()
+        if previous_skip is None: os.environ.pop("SKIP_RUNTIME_SCHEMA_DDL",None)
+        else: os.environ["SKIP_RUNTIME_SCHEMA_DDL"]=previous_skip
+        if previous_mode is None: os.environ.pop("APP_SCHEMA_MIGRATION_MODE",None)
+        else: os.environ["APP_SCHEMA_MIGRATION_MODE"]=previous_mode
         digest=file_sha256(str(source)); import_id=repo.create({"tenant_id":7,"usuario_id":11,"nombre_archivo":"source.xlsx","nombre_guardado":"source.xlsx","tipo_archivo":".xlsx","hash_sha256":digest})
         service=UniversalMappingService(); analysis=service.analyze(str(source)); repo.update_analysis(import_id,7,analysis)
         assert repo.replace_staging(import_id,7,service.staging_rows(str(source),analysis,chunk_size=53)) == 417

@@ -44,6 +44,7 @@ def main():
     routes.UniversalImportRepository = FakeRepository; routes.UniversalMappingService = FakeService
     routes.require_roles = lambda *roles: (lambda function: function)
     routes.validate_tabular_source = lambda *args: {"signature_valid": True}
+    previous_skip=os.environ.get("SKIP_RUNTIME_SCHEMA_DDL"); os.environ["SKIP_RUNTIME_SCHEMA_DDL"]="1"
     try:
         with tempfile.TemporaryDirectory() as folder:
             app=Flask(__name__); app.config.update(ENABLE_UNIVERSAL_DATA_MAPPER=True, UNIVERSAL_IMPORT_MAX_BYTES=1024*1024)
@@ -59,6 +60,8 @@ def main():
             assert response.get_json()["importacion_id"] == 9
     finally:
         routes.UniversalImportRepository, routes.UniversalMappingService, routes.require_roles, routes.validate_tabular_source = originals
+        if previous_skip is None: os.environ.pop("SKIP_RUNTIME_SCHEMA_DDL",None)
+        else: os.environ["SKIP_RUNTIME_SCHEMA_DDL"]=previous_skip
     print("UNIVERSAL_IMPORT_HTTP_CONTRACT_PASS")
 
 
