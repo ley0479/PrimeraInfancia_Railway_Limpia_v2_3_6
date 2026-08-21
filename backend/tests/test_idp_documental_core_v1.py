@@ -136,6 +136,13 @@ def main():
         require(ram_doc['tipo_documento']=='RAM' and ram_participant['nombre_completo']=='ANA PEREZ','No estructuro la identidad RAM')
         require(ram_participant['asistencia_dias']=={'1':'A','2':'I'} and ram_participant['total_asistencias']=='1','No conservo dias y totales RAM')
         require(ram_doc['validaciones']['semaforo']=='VERDE','No valido RAM contra Base Maestra')
+        bien_book=root/'ENTREGA_BIENESTARINA.xlsx'; bien_wb=Workbook(); bien_ws=bien_wb.active; bien_ws.title='BIENESTARINA'; bien_ws.append(['ENTREGA DE ALIMENTO BIENESTARINA']); bien_ws.append(['Tipo documento','NUI','Primer nombre','Primer apellido','Fecha de entrega','Lote','Cantidad entregada','UDS']); bien_ws.append(['RC','1001','ANA','PEREZ','20/08/2026','LT-2026-08','2','UCA 1']); bien_wb.save(bien_book)
+        bien_id,_=create(repo,1,bien_book); bien_doc=repo.get_document(bien_id,1); bien_delivery=bien_doc['resultado_canonico']['entregas'][0]
+        require(bien_doc['tipo_documento']=='BIENESTARINA' and bien_delivery['fecha_entrega']=='2026-08-20' and bien_delivery['lote']=='LT-2026-08','No estructuro Bienestarina')
+        require(bien_doc['validaciones']['semaforo']=='VERDE','No valido Bienestarina contra Base Maestra')
+        invalid_bien=root/'BIENESTARINA_INCOMPLETA.xlsx'; invalid_bien_wb=Workbook(); invalid_bien_ws=invalid_bien_wb.active; invalid_bien_ws.append(['BIENESTARINA ENTREGA DE ALIMENTO']); invalid_bien_ws.append(['NUI','Nombre','Cantidad']); invalid_bien_ws.append(['1001','ANA PEREZ','0']); invalid_bien_wb.save(invalid_bien)
+        invalid_bien_id,_=create(repo,1,invalid_bien); invalid_bien_doc=repo.get_document(invalid_bien_id,1)
+        require(invalid_bien_doc['validaciones']['semaforo']=='ROJO' and invalid_bien_doc['validaciones']['errores_criticos']>=3,'No bloqueo Bienestarina incompleta')
         invalid_book=root/'LISTADO_ASISTENCIA_INVALIDO.xlsx'
         invalid_wb=Workbook(); invalid_ws=invalid_wb.active; invalid_ws.append(['LISTADO DE ASISTENCIA']); invalid_ws.append(['Nombre completo','Documento','UDS','Asistio']); invalid_ws.append(['PERSONA INEXISTENTE','9999','UCA 1','SI']); invalid_wb.save(invalid_book)
         invalid_id,_=create(repo,1,invalid_book)

@@ -307,6 +307,19 @@ RAM_HEADER_ALIASES = {
     'total_inasistencias':('total inasistencias','inasistencias'),
     'causa_retiro':('causa retiro','causa de retiro'),
 }
+BIENESTARINA_HEADER_ALIASES = {
+    'tipo_documento':('tipo documento','tipo de documento','tipo doc'),
+    'documento':('documento','nui','identificacion','documento beneficiario'),
+    'primer_nombre':('primer nombre',), 'segundo_nombre':('segundo nombre',),
+    'primer_apellido':('primer apellido',), 'segundo_apellido':('segundo apellido',),
+    'nombre_completo':('nombre','nombre completo','beneficiario'),
+    'fecha_entrega':('fecha entrega','fecha de entrega'),
+    'lote':('lote','numero de lote'),
+    'cantidad':('cantidad','cantidad entregada','cantidad bienestarina'),
+    'acudiente':('acudiente','nombre acudiente'),
+    'parentesco':('parentesco',), 'firma_presente':('firma','firma acudiente','firma de recibido'),
+    'unidad':('uds','uca','unidad','unidad de servicio'),
+}
 SCHEDULE_HEADER_ALIASES = {
     'fecha':('fecha','fecha actividad','fecha de actividad','fecha programada'),
     'fecha_limite':('fecha limite','fecha de entrega','entrega','vence','vencimiento'),
@@ -378,6 +391,13 @@ def _mapped_header(value: Any) -> str | None:
 def _mapped_ram_header(value: Any) -> str | None:
     text=normalize(value)
     for field,aliases in RAM_HEADER_ALIASES.items():
+        if text in aliases: return field
+    return None
+
+
+def _mapped_bienestarina_header(value: Any) -> str | None:
+    text=normalize(value)
+    for field,aliases in BIENESTARINA_HEADER_ALIASES.items():
         if text in aliases: return field
     return None
 
@@ -502,6 +522,30 @@ def _canonicalize_ram(raw: dict, canonical: dict, fields: list[dict]) -> None:
             return
 
 
+def _canonicalize_bienestarina(raw: dict, canonical: dict, fields: list[dict]) -> None:
+    canonical['entregas']=[]
+    for sheet in raw.get('hojas') or []:
+        rows=sheet.get('filas') or []
+        for position,row in enumerate(rows):
+            mapping={field:column for column,value in enumerate(row.get('valores') or []) if (field:=_mapped_bienestarina_header(value))}
+            if 'documento' not in mapping or not ({'nombre_completo','primer_nombre','primer_apellido'} & set(mapping)): continue
+            for data_row in rows[position+1:]:
+                values=data_row.get('valores') or []; delivery={}; index=len(canonical['entregas'])
+                for field,column in mapping.items():
+                    raw_value=values[column] if column<len(values) else None
+                    if raw_value in (None,''): continue
+                    if field=='unidad': canonical['unidad_servicio'].setdefault('nombre',str(raw_value).strip()); continue
+                    value=_schedule_date(raw_value) if field=='fecha_entrega' else str(raw_value).strip()
+                    delivery[field]=value
+                    fields.append({'ruta':f'entregas.{index}.{field}','valor':value,'texto_original':raw_value,'confianza':.98,'evidencia':{'hoja':sheet['nombre'],'fila':data_row.get('fila'),'columna':column+1},'regla':'encabezado_bienestarina'})
+                name_parts=[delivery.pop(field,None) for field in ('primer_nombre','segundo_nombre','primer_apellido','segundo_apellido')]
+                if not delivery.get('nombre_completo') and any(name_parts): delivery['nombre_completo']=' '.join(part for part in name_parts if part)
+                if delivery.get('documento') or delivery.get('nombre_completo'):
+                    canonical['entregas'].append(delivery)
+                    canonical['participantes'].append({field:delivery[field] for field in ('documento','nombre_completo') if delivery.get(field)})
+            return
+
+
 def _canonicalize_planning(raw: dict, canonical: dict, fields: list[dict]) -> None:
     planning={}; evidence={}
     paragraphs=raw.get('parrafos') or []
@@ -602,6 +646,7 @@ def canonicalize(raw: dict, document_type: str) -> tuple[dict, list[dict]]:
                         canonical['participantes'].append(participant)
                 break
     if document_type=='RAM': _canonicalize_ram(raw,canonical,fields)
+    if document_type=='BIENESTARINA': _canonicalize_bienestarina(raw,canonical,fields)
     if document_type in {'LISTADO_ASISTENCIA','RAM'} and raw.get('origen_ocr') and not canonical['participantes']:
         _canonicalize_ocr_attendance(raw,canonical,fields)
     if document_type=='CRONOGRAMA': _canonicalize_schedule(raw,canonical,fields)
@@ -743,6 +788,19 @@ def validate_rpp(canonical: dict) -> dict:
     return _validate_labeled(canonical.get('rpp') or {},'rpp',(('fecha','fecha del servicio'),('unidad','UDS/UCA'),('tiempo_comida','tiempo de comida'),('preparacion','preparación o menú'),('porciones','número de porciones')),(('minuta_patron','minuta patrón'),('responsable','responsable de la preparación')),len(RPP_LABEL_ALIASES))
 
 
+def validate_bienestarina(database_path: str, tenant_id: int, canonical: dict) -> dict:
+    validation=validate_against_master(database_path,tenant_id,canonical); results=list(validation.get('resultados') or [])
+    deliveries=list(canonical.get('entregas') or [])
+    if not deliveries: results.append({'ruta_canonica':'entregas','regla':'ENTREGAS_REQUERIDAS','nivel':'CRITICO','estado':'ERROR','mensaje':'No se identificaron entregas de Bienestarina.','esperado':None,'evidencia':{}})
+    for index,delivery in enumerate(deliveries):
+        for field,label in (('fecha_entrega','fecha de entrega'),('lote','lote'),('cantidad','cantidad entregada')):
+            if not delivery.get(field): results.append({'ruta_canonica':f'entregas.{index}.{field}','regla':f'{field.upper()}_REQUERIDO','nivel':'CRITICO','estado':'ERROR','mensaje':f'No se identificó {label}.','esperado':None,'evidencia':{'indice':index}})
+        quantity=_numeric_measure(delivery.get('cantidad'))
+        if delivery.get('cantidad') and (quantity is None or quantity<=0): results.append({'ruta_canonica':f'entregas.{index}.cantidad','regla':'CANTIDAD_POSITIVA','nivel':'CRITICO','estado':'ERROR','mensaje':'La cantidad entregada debe ser numérica y mayor que cero.','esperado':{'min_exclusivo':0},'evidencia':{'indice':index}})
+    critical=sum(item['nivel']=='CRITICO' for item in results); warnings=sum(item['nivel']=='ADVERTENCIA' for item in results)
+    return {'semaforo':'ROJO' if critical else ('AMARILLO' if warnings else 'VERDE'),'errores_criticos':critical,'advertencias':warnings,'coincidencias':validation.get('coincidencias',0),'total':len(deliveries),'resultados':results}
+
+
 def validate_canonical(database_path: str, tenant_id: int, canonical: dict) -> dict:
     if canonical.get('tipo_documento')=='CRONOGRAMA': return validate_schedule(canonical)
     if canonical.get('tipo_documento')=='PESO_TALLA': return validate_nutrition(database_path,tenant_id,canonical)
@@ -750,6 +808,7 @@ def validate_canonical(database_path: str, tenant_id: int, canonical: dict) -> d
     if canonical.get('tipo_documento')=='ACTA': return validate_minutes(canonical)
     if canonical.get('tipo_documento')=='INFORME': return validate_report(canonical)
     if canonical.get('tipo_documento')=='RPP': return validate_rpp(canonical)
+    if canonical.get('tipo_documento')=='BIENESTARINA': return validate_bienestarina(database_path,tenant_id,canonical)
     return validate_against_master(database_path,tenant_id,canonical)
 
 
