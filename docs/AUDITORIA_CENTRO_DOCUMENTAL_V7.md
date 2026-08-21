@@ -96,3 +96,7 @@ CAPTURE: **PENDING**, por ausencia de plantilla oficial real.
 - Fase 6: Word sobre copia, integridad del original, texto largo, membrete, firma vacía y ZIP con manifiesto — PASS.
 - PDF: PENDING en el entorno local por ausencia de LibreOffice; se verificó que el fallo conserva y ofrece el Word.
 - CAPTURE: PENDING; no existe plantilla real aprobada y la bandera permanece desactivada.
+- Evidencias privadas, referencias a Calendario/Checklist y participantes de fuentes maestras — PASS.
+- Reutilización del listado oficial existente — integrada; requiere que cada fundación tenga su planilla oficial cargada.
+- Contrato HTTP, roles y aislamiento A/B — PASS.
+- Asistente frontend dentro del Motor Documental IDP — sintaxis PASS; oculto mientras la bandera permanezca apagada.

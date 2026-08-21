@@ -66,7 +66,7 @@ const MENU_POR_ROL = {
 };
 if (!MENU_POR_ROL.COORDINADOR.includes('talento')) MENU_POR_ROL.COORDINADOR.push('talento');
 ['SUPERADMIN','GERENTE','COORDINADOR','AUXILIAR_ADMINISTRATIVO'].forEach(rol=>{if(!MENU_POR_ROL[rol].includes('administrativo-financiero'))MENU_POR_ROL[rol].push('administrativo-financiero')});
-['SUPERADMIN','GERENTE','COORDINADOR','AUXILIAR_ADMINISTRATIVO'].forEach(rol=>{if(!MENU_POR_ROL[rol].includes('motor-documental'))MENU_POR_ROL[rol].push('motor-documental')});
+['SUPERADMIN','GERENTE','COORDINADOR','AUXILIAR_ADMINISTRATIVO','DOCENTE','NUTRICIONISTA','PSICOSOCIAL'].forEach(rol=>{if(!MENU_POR_ROL[rol].includes('motor-documental'))MENU_POR_ROL[rol].push('motor-documental')});
 ['SUPERADMIN','GERENTE'].forEach(rol=>{if(!MENU_POR_ROL[rol].includes('integraciones-configuracion'))MENU_POR_ROL[rol].push('integraciones-configuracion')});
 
 const allowedBaseExtensions = ['.xlsx', '.xls', '.xlsm', '.csv', '.txt', '.tsv', '.tab', '.dat', '.ods', '.html', '.htm', '.json', '.docx', '.pdf'];
@@ -852,6 +852,9 @@ function mostrarSeccion(seccion) {
     }
     if (seccion === 'motor-documental' && typeof idpDocumentalInit === 'function') {
         idpDocumentalInit();
+    }
+    if (seccion === 'motor-documental' && typeof centroDocumentalInit === 'function') {
+        centroDocumentalInit();
     }
     if (seccion === 'planeacion-pedagogica' && typeof ppInit === 'function') {
         ppInit();

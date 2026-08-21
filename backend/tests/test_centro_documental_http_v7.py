@@ -1,0 +1,36 @@
+from __future__ import annotations
+
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT=Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path: sys.path.insert(0,str(ROOT))
+
+from flask import Flask,g,request
+from migrations.migrate_centro_documental_v7 import migrate
+from modules.centro_documental import register_centro_documental
+
+
+def run():
+    with tempfile.TemporaryDirectory() as folder:
+        root=Path(folder); database=root/"http.sqlite"; data=root/"data"; migrate(str(database))
+        app=Flask(__name__); app.config.update(TESTING=True,ENABLE_DOCUMENT_AUTOMATION=False,ENABLE_TEMPLATE_MAPPING=True,ENABLE_RESPONSE_CATALOGS=True)
+        @app.before_request
+        def user(): g.current_user={"id":1,"fundacion_id":int(request.headers.get("X-Tenant","1")),"rol":request.headers.get("X-Role","DOCENTE")}
+        register_centro_documental(app,str(database),str(data)); client=app.test_client()
+        assert client.get("/api/documentos/estado").status_code==404
+        app.config["ENABLE_DOCUMENT_AUTOMATION"]=True
+        state=client.get("/api/documentos/estado"); assert state.status_code==200 and state.json["capture"]["estado"]=="PLANTILLA_PENDIENTE"
+        planning=client.post("/api/documentos/tema/generar-planeacion",json={"tema":"Juego y vínculos","componente":"PEDAGOGICO"}); assert planning.status_code==200 and planning.json["planeacion"]["clasificacion"]=="PLANEADO"
+        created=client.post("/api/documentos",json={"tipo_documento":"ACTA_HOGAR","componente":"PEDAGOGICO","tema":"Juego y vínculos"}); assert created.status_code==201; document_id=created.json["documento"]["id"]
+        assert client.get(f"/api/documentos/{document_id}").status_code==200
+        assert client.get(f"/api/documentos/{document_id}",headers={"X-Tenant":"2"}).status_code==404
+        assert client.post("/api/documentos",json={"tipo_documento":"CAPTURE","componente":"SALUD_NUTRICION"}).status_code==409
+        catalogs=client.get("/api/documentos/catalogos?componente=PEDAGOGICO"); assert catalogs.status_code==200 and catalogs.json["catalogos"]
+        assert client.post(f"/api/documentos/{document_id}/aprobar",headers={"X-Role":"DOCENTE"}).status_code==403
+        assert client.get("/api/documentos/estado",headers={"X-Role":"INVITADO"}).status_code==403
+    print("PASS test_centro_documental_http_v7")
+
+
+if __name__=="__main__": run()

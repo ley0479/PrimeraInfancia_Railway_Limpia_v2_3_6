@@ -160,3 +160,58 @@ class CentroDocumentalRepository:
             if number is None: row=connection.execute("SELECT * FROM doc_versiones WHERE documento_id=? AND fundacion_id=? ORDER BY version DESC LIMIT 1",(instance_id,tenant)).fetchone()
             else: row=connection.execute("SELECT * FROM doc_versiones WHERE documento_id=? AND fundacion_id=? AND version=?",(instance_id,tenant,number)).fetchone()
         return dict(row) if row else None
+
+    def replace_participants(self, instance_id: int, tenant: int, participants: list[dict]) -> list[dict]:
+        with self.connect() as connection:
+            if not connection.execute("SELECT id FROM doc_instancias WHERE id=? AND fundacion_id=?",(instance_id,tenant)).fetchone(): raise KeyError("Documento no encontrado.")
+            resolved=[]
+            for item in participants:
+                source=str(item.get("origen_tipo") or "BENEFICIARIO").upper(); source_id=str(item.get("origen_id") or "").strip()
+                if source=="BENEFICIARIO": row=connection.execute("SELECT id,nombre_completo nombre,documento,nui,unidad_servicio unidad FROM master_ninos WHERE id=? AND fundacion_id=? AND activo=1",(source_id,tenant)).fetchone()
+                elif source=="TALENTO_HUMANO": row=connection.execute("SELECT id,nombre,documento,NULL nui,unidad FROM th_personas WHERE id=? AND fundacion_id=? AND COALESCE(activo,1)=1",(source_id,tenant)).fetchone()
+                else: raise ValueError("Origen de participante no permitido.")
+                if not row: raise ValueError("Un participante no existe en la fuente maestra de la fundación.")
+                resolved.append((source,source_id,dict(row)))
+            connection.execute("DELETE FROM doc_participantes WHERE documento_id=? AND fundacion_id=?",(instance_id,tenant))
+            for source,source_id,row in resolved: connection.execute("INSERT INTO doc_participantes(documento_id,fundacion_id,origen_tipo,origen_id,nombre_mostrado,creado_en) VALUES(?,?,?,?,?,?)",(instance_id,tenant,source,source_id,row.get("nombre"),now_iso()))
+            connection.commit()
+        self.audit(tenant,"DOCUMENTO",instance_id,"PARTICIPANTES_CONFIRMADOS",None,{"cantidad":len(resolved)})
+        return [{"origen_tipo":source,"origen_id":source_id,**row} for source,source_id,row in resolved]
+
+    def participants(self, instance_id: int, tenant: int) -> list[dict]:
+        with self.connect() as connection:
+            links=connection.execute("SELECT * FROM doc_participantes WHERE documento_id=? AND fundacion_id=? ORDER BY id",(instance_id,tenant)).fetchall(); result=[]
+            for link in links:
+                item=dict(link)
+                if item["origen_tipo"]=="BENEFICIARIO": source=connection.execute("SELECT nombre_completo nombre,documento,nui,unidad_servicio unidad FROM master_ninos WHERE id=? AND fundacion_id=?",(item["origen_id"],tenant)).fetchone()
+                else: source=connection.execute("SELECT nombre,documento,NULL nui,unidad FROM th_personas WHERE id=? AND fundacion_id=?",(item["origen_id"],tenant)).fetchone()
+                if source: result.append({**item,**dict(source)})
+        return result
+
+    def add_evidence(self, instance_id: int, tenant: int, data: dict, user_id=None) -> dict:
+        with self.connect() as connection:
+            if not connection.execute("SELECT id FROM doc_instancias WHERE id=? AND fundacion_id=?",(instance_id,tenant)).fetchone(): raise KeyError("Documento no encontrado.")
+            number=int(connection.execute("SELECT COALESCE(MAX(version),0)+1 n FROM doc_evidencias WHERE documento_id=? AND fundacion_id=? AND nombre_original=?",(instance_id,tenant,data["nombre_original"])).fetchone()["n"])
+            cursor=connection.execute("INSERT INTO doc_evidencias(documento_id,fundacion_id,actividad_id,requisito,nombre_original,nombre_seguro,ruta_privada,mime_type,tamano_bytes,hash_sha256,version,estado,usuario_id,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(instance_id,tenant,data.get("actividad_id"),data.get("requisito"),data["nombre_original"],data["nombre_seguro"],data["ruta_privada"],data.get("mime_type"),data.get("tamano_bytes"),data["hash_sha256"],number,"CARGADA",user_id,now_iso()))
+            evidence_id=int(cursor.lastrowid); connection.commit()
+        self.audit(tenant,"EVIDENCIA",evidence_id,"CARGADA",user_id,{"documento_id":instance_id,"hash":data["hash_sha256"]})
+        return self.get_evidence(evidence_id,tenant)
+
+    def get_evidence(self, evidence_id: int, tenant: int) -> dict | None:
+        with self.connect() as connection: row=connection.execute("SELECT * FROM doc_evidencias WHERE id=? AND fundacion_id=?",(evidence_id,tenant)).fetchone()
+        return dict(row) if row else None
+
+    def list_evidence(self, instance_id: int, tenant: int) -> list[dict]:
+        with self.connect() as connection: rows=connection.execute("SELECT id,documento_id,actividad_id,requisito,nombre_original,mime_type,tamano_bytes,hash_sha256,version,estado,usuario_id,creado_en FROM doc_evidencias WHERE documento_id=? AND fundacion_id=? ORDER BY id DESC",(instance_id,tenant)).fetchall()
+        return [dict(row) for row in rows]
+
+    def calendar_requirements(self, instance_id: int, tenant: int) -> dict:
+        with self.connect() as connection:
+            doc=connection.execute("SELECT actividad_id FROM doc_instancias WHERE id=? AND fundacion_id=?",(instance_id,tenant)).fetchone()
+            if not doc: raise KeyError("Documento no encontrado.")
+            if not doc["actividad_id"]: return {"vinculada":False,"requisitos":[]}
+            try:
+                assignment=connection.execute("SELECT * FROM calendario_asignaciones WHERE id=? AND fundacion_id=?",(doc["actividad_id"],tenant)).fetchone()
+                requirements=connection.execute("SELECT * FROM calendario_requisitos WHERE obligacion_id=? AND fundacion_id=? ORDER BY orden,id",(assignment["obligacion_id"],tenant)).fetchall() if assignment else []
+            except Exception: assignment=None; requirements=[]
+        return {"vinculada":bool(assignment),"actividad":dict(assignment) if assignment else None,"requisitos":[dict(row) for row in requirements]}

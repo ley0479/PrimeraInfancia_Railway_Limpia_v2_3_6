@@ -47,6 +47,7 @@
     <link rel="stylesheet" href="./css/componente-psicosocial.css?v=2.7.0">
     <link rel="stylesheet" href="./css/integrity-stability.css?v=2.6.1">
     <link rel="stylesheet" href="./css/idp-documental.css?v=2.7.0-idp-core-1">
+    <link rel="stylesheet" href="./css/centro-documental.css?v=2.7.2-doc-center-1">
     <link rel="stylesheet" href="./css/idp-validacion.css?v=2.7.0-idp-validation-1">
     <link rel="stylesheet" href="./css/accessibility-pi.css?v=2.3.0-release-a11y-ux">
     <link rel="stylesheet" href="./css/responsive-mobile.css?v=2.3.4-responsive-stability">
@@ -3471,6 +3472,37 @@
 
 
                 <section id="motor-documental" class="hidden space-y-6 idp-shell">
+                    <div id="cd-center" class="hidden cd-shell space-y-5">
+                        <div class="cd-card p-6">
+                            <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
+                                <div><p class="cd-eyebrow">Actas · informes · encuentros · evidencias</p><h2 class="mt-2 text-2xl font-semibold text-white">Centro de Documentos Institucionales</h2><p class="mt-2 text-sm text-slate-400">Genera planeaciones y borradores revisables sobre plantillas oficiales. Los hechos reales siempre deben ser confirmados por el profesional.</p></div>
+                                <div id="cd-capture-state" class="cd-status pending">CAPTURE: plantilla pendiente</div>
+                            </div>
+                            <div id="cd-message" class="hidden mt-4"></div>
+                        </div>
+                        <div class="grid gap-5 xl:grid-cols-2">
+                            <form id="cd-template-form" class="cd-card p-5 space-y-3">
+                                <h3 class="font-semibold text-white">Registrar plantilla oficial</h3>
+                                <div class="grid gap-3 md:grid-cols-2"><input id="cd-template-code" class="cd-input" placeholder="Código" required><input id="cd-template-version" class="cd-input" placeholder="Versión" value="1.0" required></div>
+                                <div class="grid gap-3 md:grid-cols-2"><select id="cd-template-component" class="cd-input"><option value="PEDAGOGICO">Pedagógico</option><option value="PSICOSOCIAL">Psicosocial</option><option value="SALUD_NUTRICION">Salud y Nutrición</option></select><input id="cd-template-type" class="cd-input" placeholder="Tipo de documento" required></div>
+                                <input id="cd-template-file" type="file" accept=".docx,.xlsx,.xlsm,.pdf" class="cd-input" required>
+                                <button class="cd-btn primary" type="submit">Cargar, inspeccionar y proponer mapa</button>
+                                <p class="text-xs text-slate-500">El original se conserva intacto. El mapa no queda aprobado automáticamente.</p>
+                            </form>
+                            <form id="cd-planning-form" class="cd-card p-5 space-y-3">
+                                <h3 class="font-semibold text-white">Generar planeación por tema</h3>
+                                <select id="cd-component" class="cd-input"><option value="PEDAGOGICO">Pedagógico</option><option value="PSICOSOCIAL">Psicosocial</option><option value="SALUD_NUTRICION">Salud y Nutrición</option></select>
+                                <input id="cd-document-type" class="cd-input" value="ACTA_ENCUENTRO" placeholder="Tipo de documento">
+                                <input id="cd-unit" class="cd-input" placeholder="UDS / UCA">
+                                <textarea id="cd-theme" class="cd-input" rows="3" placeholder="Tema del encuentro" required></textarea>
+                                <button class="cd-btn primary" type="submit">Generar planeación</button>
+                            </form>
+                        </div>
+                        <div class="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,.8fr)]">
+                            <div class="cd-card p-5"><div class="flex items-center justify-between"><h3 class="font-semibold text-white">Planeación propuesta</h3><span class="cd-status planned">PLANEADO</span></div><div id="cd-planning-preview" class="mt-4 text-sm text-slate-300"><div class="cd-empty">Ingresa un tema para preparar la planeación.</div></div><div class="mt-4 flex gap-2"><button id="cd-create-document" class="cd-btn primary" type="button" disabled>Guardar borrador guiado</button></div></div>
+                            <div class="cd-card p-5"><h3 class="font-semibold text-white">Plantillas de la fundación</h3><div id="cd-templates" class="mt-4 space-y-2"><div class="cd-empty">Sin cargar.</div></div></div>
+                        </div>
+                    </div>
                     <div class="idp-card p-6">
                         <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
                             <div><p class="idp-eyebrow">Núcleo IDP independiente del proveedor</p><h2 class="mt-2 text-2xl font-semibold text-white flex items-center gap-2"><i data-lucide="scan-text" class="w-6 h-6 text-sky-300"></i> Motor Universal de Lectura y Validación Documental</h2><p class="mt-2 max-w-4xl text-sm text-slate-400">Recibe documentos privados, evita duplicados por huella digital, clasifica, extrae datos nativos y los presenta para revisión humana. En esta fase ninguna aprobación importa información automáticamente.</p></div>
@@ -3709,6 +3741,7 @@
     <script src="./js/modules/componente-psicosocial.js?v=2.7.0"></script>
     <script src="./js/modules/integrity-stability.js?v=2.6.1"></script>
     <script src="./js/modules/idp-documental.js?v=2.7.0-idp-core-1"></script>
+    <script src="./js/modules/centro-documental.js?v=2.7.2-doc-center-1"></script>
     <script src="./js/modules/panel-principal-institucional.js?v=2.3.0-alpha.51-entregables-sn"></script>
     <script src="./js/modules/buscador-global.js?v=2.3.0-alpha.70-menu"></script>
     <script src="./js/modules/accessibility-pi.js?v=2.3.0-release-a11y-ux"></script>

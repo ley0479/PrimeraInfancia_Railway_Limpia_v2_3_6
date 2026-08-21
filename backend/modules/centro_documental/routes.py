@@ -291,4 +291,69 @@ def register_centro_documental(app, database_path: str, data_dir: str) -> None:
         repository.audit(user["fundacion_id"],"DOCUMENTO",document_id,"DESCARGADO",user["id"],{"tipo":kind,"version":version["version"]})
         return send_file(path,as_attachment=True,download_name=path.name)
 
+    @blueprint.put("/<int:document_id>/participantes")
+    @require_roles(*PROFESSIONAL_ROLES)
+    def save_participants(document_id: int):
+        user=_user(); payload=request.get_json(silent=True) or {}
+        try: result=repository.replace_participants(document_id,user["fundacion_id"],payload.get("participantes") or [])
+        except KeyError as exc: return jsonify({"error":str(exc)}),404
+        except ValueError as exc: return jsonify({"error":str(exc)}),409
+        return jsonify({"participantes":result})
+
+    @blueprint.route("/<int:document_id>/evidencias",methods=["GET","POST"])
+    @require_roles(*PROFESSIONAL_ROLES)
+    def evidence(document_id: int):
+        user=_user()
+        if request.method=="GET": return jsonify({"evidencias":repository.list_evidence(document_id,user["fundacion_id"])})
+        upload=request.files.get("file")
+        if not upload or not upload.filename: return jsonify({"error":"Selecciona una evidencia."}),400
+        forbidden={".exe",".com",".bat",".cmd",".ps1",".sh",".html",".htm"}; extension=Path(upload.filename).suffix.lower()
+        if extension in forbidden or str(upload.mimetype or "").lower() in {"text/html","application/x-msdownload","application/x-sh"}: return jsonify({"error":"Tipo de evidencia no permitido."}),415
+        root=tenant_storage_root(data_dir,user["fundacion_id"])/"evidence"/str(document_id); root.mkdir(parents=True,exist_ok=True)
+        safe=secure_filename(upload.filename) or "evidencia"; temporary=root/f".upload_{uuid.uuid4().hex}{extension}"; upload.save(temporary)
+        try:
+            size=temporary.stat().st_size
+            if size<=0 or size>50*1024*1024: return jsonify({"error":"La evidencia está vacía o supera 50 MB."}),413
+            digest=_hash(temporary); destination=root/f"{digest[:20]}_{safe}"
+            if not destination.exists(): shutil.copy2(temporary,destination)
+            try: saved=repository.add_evidence(document_id,user["fundacion_id"],{"actividad_id":request.form.get("actividad_id",type=int),"requisito":request.form.get("requisito"),"nombre_original":upload.filename,"nombre_seguro":destination.name,"ruta_privada":str(destination),"mime_type":upload.mimetype,"tamano_bytes":size,"hash_sha256":digest},user["id"])
+            except KeyError as exc: return jsonify({"error":str(exc)}),404
+            return jsonify({"message":"Evidencia privada cargada con integridad verificable.","evidencia":saved}),201
+        finally: temporary.unlink(missing_ok=True)
+
+    @blueprint.get("/evidencias/<int:evidence_id>/descargar")
+    @require_roles(*PROFESSIONAL_ROLES)
+    def download_evidence(evidence_id: int):
+        user=_user(); item=repository.get_evidence(evidence_id,user["fundacion_id"])
+        if not item: return jsonify({"error":"Evidencia no encontrada."}),404
+        try:
+            path=Path(item["ruta_privada"]).resolve(strict=True); root=(tenant_storage_root(data_dir,user["fundacion_id"])/"evidence").resolve(); path.relative_to(root)
+        except (OSError,ValueError): return jsonify({"error":"Evidencia privada no disponible."}),404
+        if _hash(path)!=item["hash_sha256"]: return jsonify({"error":"La evidencia no superó la verificación de integridad."}),409
+        repository.audit(user["fundacion_id"],"EVIDENCIA",evidence_id,"DESCARGADA",user["id"])
+        return send_file(path,as_attachment=True,download_name=item["nombre_original"],mimetype=item.get("mime_type"))
+
+    @blueprint.get("/<int:document_id>/calendario")
+    @require_roles(*PROFESSIONAL_ROLES)
+    def calendar_link(document_id: int):
+        user=_user()
+        try: result=repository.calendar_requirements(document_id,user["fundacion_id"])
+        except KeyError as exc: return jsonify({"error":str(exc)}),404
+        return jsonify(result)
+
+    @blueprint.post("/<int:document_id>/generar-listado-asistencia")
+    @require_roles(*PROFESSIONAL_ROLES)
+    def official_attendance(document_id: int):
+        user=_user(); item=repository.get_instance(document_id,user["fundacion_id"])
+        if not item: return jsonify({"error":"Documento no encontrado."}),404
+        participants=repository.participants(document_id,user["fundacion_id"])
+        if not participants: return jsonify({"error":"Confirma al menos un participante antes de generar el listado."}),409
+        try:
+            from services.listado_asistencia_usuarios_service import generate_list
+            folder=tenant_storage_root(data_dir,user["fundacion_id"])/"documents"/str(document_id); output=folder/f"LISTADO_ASISTENCIA_OFICIAL_{document_id}.xlsx"
+            generate_list(data_dir,output,participants,metadata={"unidad":item.get("uds"),"tema":item.get("tema")},tenant_id=user["fundacion_id"])
+        except (FileNotFoundError,ValueError) as exc: return jsonify({"error":str(exc)}),409
+        repository.audit(user["fundacion_id"],"DOCUMENTO",document_id,"LISTADO_OFICIAL_GENERADO",user["id"],{"participantes":len(participants)})
+        return send_file(output,as_attachment=True,download_name=output.name)
+
     app.register_blueprint(blueprint)
