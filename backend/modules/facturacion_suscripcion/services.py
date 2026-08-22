@@ -609,7 +609,13 @@ class BillingService:
                 ORDER BY s.fecha_vencimiento ASC LIMIT 50
                 """
             )
-            return {'stats': stats, 'pagos_recientes': recientes, 'alertas': [subscription_to_api(v) for v in vencidas]}
+            return {
+                'stats': stats,
+                'pagos_recientes': recientes,
+                'alertas': [subscription_to_api(v) for v in vencidas],
+                'suscripciones': self.list_suscripciones(),
+                'fecha_actual': date.today().isoformat(),
+            }
         sub = self.get_subscription()
         movimientos = self.repo.fetch_all(
             """
@@ -621,6 +627,7 @@ class BillingService:
         return {
             'suscripcion': sub, 'movimientos': movimientos, 'pagos': pagos,
             'alertas': self.subscription_alerts(sub),
+            'fecha_actual': date.today().isoformat(),
         }
 
     def subscription_alerts(self, sub: dict[str, Any]) -> list[dict[str, Any]]:

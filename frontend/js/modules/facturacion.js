@@ -113,7 +113,17 @@ function facRenderDashboard(data = {}) {
     const user = usuarioActual || authUser() || {};
     if (cards) {
         if (user.rol === 'SUPERADMIN') {
-            if (usage) usage.innerHTML = '';
+            const clamp = (value) => Math.max(0, Math.min(100, Number(value || 0)));
+            const subscriptions = data.suscripciones || [];
+            if (usage) usage.innerHTML = subscriptions.length ? subscriptions.map(sub => `
+                <article class="fac-usage-card">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div><strong>${escaparHtml(sub.fundacion_nombre || 'Fundación')}</strong><p class="mt-1 text-xs text-slate-400">Hoy: ${escaparHtml(data.fecha_actual || '')} · Vence: ${escaparHtml(sub.fecha_vencimiento || 'Sin fecha')}</p></div>
+                        <span class="text-xs text-slate-400">${escaparHtml(sub.estado || '')}</span>
+                    </div>
+                    <div class="mt-4"><div class="flex justify-between gap-2 text-xs text-slate-300"><span>Vigencia</span><span>${Math.max(0, Number(sub.dias_restantes || 0))} días restantes</span></div><div class="fac-progress-track mt-2"><div class="fac-progress-fill bg-cyan-500" style="width:${clamp(sub.porcentaje_tiempo_consumido)}%"></div></div></div>
+                    <div class="mt-4"><div class="flex justify-between gap-2 text-xs text-slate-300"><span>Créditos</span><span>${Number(sub.creditos_disponibles || 0)} disponibles</span></div><div class="fac-progress-track mt-2"><div class="fac-progress-fill bg-amber-500" style="width:${clamp(sub.porcentaje_consumido)}%"></div></div><p class="mt-2 text-xs text-slate-500">${Number(sub.creditos_consumidos || 0)} de ${Number(sub.creditos_totales || 0)} consumidos${sub.dias_estimados_agotamiento == null ? '' : ` · agotamiento estimado: ${Number(sub.dias_estimados_agotamiento)} días`}</p></div>
+                </article>`).join('') : '<div class="fac-panel p-4 text-sm text-slate-400 lg:col-span-2">No hay suscripciones configuradas para mostrar.</div>';
             const s = data.stats || {};
             cards.innerHTML = [
                 ['Fundaciones', s.fundaciones_total || 0], ['Activas', s.activas || 0], ['Por vencer', s.por_vencer || 0],
@@ -125,6 +135,7 @@ function facRenderDashboard(data = {}) {
             if (usage) usage.innerHTML = `
                 <article class="fac-usage-card">
                     <div class="flex items-center justify-between gap-3"><strong>Tiempo de suscripción</strong><span class="text-xs text-slate-400">${escaparHtml(sub.estado || '')}</span></div>
+                    <p class="mt-2 text-xs text-slate-400">Hoy: ${escaparHtml(data.fecha_actual || '')} · Vence: ${escaparHtml(sub.fecha_vencimiento || 'Sin fecha')}</p>
                     <div class="fac-progress-track mt-3"><div class="fac-progress-fill bg-cyan-500" style="width:${clamp(sub.porcentaje_tiempo_consumido)}%"></div></div>
                     <p class="mt-2 text-sm text-slate-300">${Number(sub.dias_transcurridos || 0)} de ${Number(sub.dias_totales || 0)} días utilizados · ${Math.max(0, Number(sub.dias_restantes || 0))} restantes</p>
                 </article>
