@@ -113,6 +113,13 @@ def bootstrap_core_schema(config_class) -> None:
     documents_migration = migrate_centro_documental(str(config_class.DATABASE_PATH))
     print('[MIGRATION] centro documental: ' + json.dumps(documents_migration, ensure_ascii=False), flush=True)
 
+    # Motor IDP: sus repositorios no pueden depender de DDL durante el primer
+    # request. El esquema se crea explícitamente en pre-deploy, igual que el
+    # Centro Documental, antes de bloquear las escrituras de esquema runtime.
+    from modules.idp_documental.services import init_schema as init_idp_schema
+    init_idp_schema(str(config_class.DATABASE_PATH))
+    print('[MIGRATION] idp documental: PASS', flush=True)
+
     # Las bases anteriores a multi-tenant conservaban UNIQUE(nombre), lo que
     # impedia repetir legítimamente una UDS en otra fundacion.
     from migrations.migrate_unidades_tenant_unique_v7 import migrate as migrate_unidades_tenant_unique
@@ -262,6 +269,7 @@ def _main() -> int:
         'planeacion_pedagogica',
         'base_maestra',
         'motor_plantillas',
+        'idp_documental',
         'centro_planeacion',
         'integrity_stability',
     }

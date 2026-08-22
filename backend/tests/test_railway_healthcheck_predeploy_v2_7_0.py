@@ -23,12 +23,15 @@ def run() -> None:
     predeploy = (ROOT / "predeploy_hosting.sh").read_text(encoding="utf-8")
     runtime = (ROOT / "start_hosting.sh").read_text(encoding="utf-8")
     prepare = (ROOT / "backend" / "runtime_prepare.py").read_text(encoding="utf-8")
+    init_hosting = (ROOT / "backend" / "init_hosting.py").read_text(encoding="utf-8")
     require("python backend/init_hosting.py" in predeploy, "Pre-deploy no ejecuta migraciones")
     require("python backend/init_hosting.py" not in runtime, "Runtime todavía ejecuta migraciones")
     require("SKIP_RUNTIME_SCHEMA_DDL=1" in runtime, "Runtime no bloquea DDL")
     require("python backend/runtime_prepare.py" in runtime, "Runtime no prepara el volumen")
     require(runtime.find("runtime_prepare.py") < runtime.find("exec gunicorn"), "Gunicorn tiene orden inválido")
     require("get_db_connection" not in prepare and "configure_database" not in prepare, "Preparación runtime toca la base")
+    require("init_idp_schema(str(config_class.DATABASE_PATH))" in init_hosting, "Pre-deploy omite el esquema IDP")
+    require("'idp_documental'" in init_hosting, "IDP no participa en el gate de blueprints críticos")
     print("PASS test_railway_healthcheck_predeploy_v2_7_0")
 
 
