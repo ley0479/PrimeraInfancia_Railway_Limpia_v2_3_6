@@ -110,6 +110,45 @@ class CentroDocumentalRepository:
         self.audit(tenant,"DOCUMENTO",instance_id,"CREADO",user_id)
         return self.get_instance(instance_id,tenant)
 
+    def list_instances(self, tenant: int, limit: int = 25, offset: int = 0, component: str = "", status: str = "") -> dict:
+        take=max(1,min(int(limit or 25),100)); skip=max(0,int(offset or 0))
+        where=["fundacion_id=?"]; params=[tenant]
+        if component: where.append("componente=?"); params.append(component.upper())
+        if status: where.append("estado=?"); params.append(status.upper())
+        clause=" AND ".join(where)
+        with self.connect() as connection:
+            total=int(connection.execute(f"SELECT COUNT(*) total FROM doc_instancias WHERE {clause}",params).fetchone()["total"])
+            rows=connection.execute(
+                f"SELECT id,tipo_documento,componente,uds,periodo,modo,estado,tema,version_actual,creado_en,actualizado_en FROM doc_instancias WHERE {clause} ORDER BY actualizado_en DESC,id DESC LIMIT ? OFFSET ?",
+                (*params,take,skip),
+            ).fetchall()
+        return {"documentos":[dict(row) for row in rows],"total":total,"limit":take,"offset":skip}
+
+    def document_audit(self, instance_id: int, tenant: int) -> list[dict]:
+        with self.connect() as connection:
+            if not connection.execute("SELECT id FROM doc_instancias WHERE id=? AND fundacion_id=?",(instance_id,tenant)).fetchone(): raise KeyError("Documento no encontrado.")
+            rows=connection.execute(
+                "SELECT a.id,a.accion,a.usuario_id,a.detalle_json,a.creado_en FROM doc_auditoria a LEFT JOIN doc_versiones v ON a.entidad='DOCUMENTO_VERSION' AND v.id=a.entidad_id AND v.fundacion_id=a.fundacion_id WHERE a.fundacion_id=? AND ((a.entidad='DOCUMENTO' AND a.entidad_id=?) OR (a.entidad='DOCUMENTO_VERSION' AND v.documento_id=?)) ORDER BY a.id DESC LIMIT 100",
+                (tenant,instance_id,instance_id),
+            ).fetchall()
+        result=[]
+        for row in rows:
+            item=dict(row); item["detalle"]=json.loads(item.pop("detalle_json") or "{}"); result.append(item)
+        return result
+
+    def document_history(self, instance_id: int, tenant: int) -> dict:
+        with self.connect() as connection:
+            if not connection.execute("SELECT id FROM doc_instancias WHERE id=? AND fundacion_id=?",(instance_id,tenant)).fetchone(): raise KeyError("Documento no encontrado.")
+            versions=connection.execute(
+                "SELECT id,version,estado,CASE WHEN archivo_word IS NULL THEN 0 ELSE 1 END word_disponible,CASE WHEN archivo_pdf IS NULL THEN 0 ELSE 1 END pdf_disponible,hash_sha256,creado_por,creado_en FROM doc_versiones WHERE documento_id=? AND fundacion_id=? ORDER BY version DESC",
+                (instance_id,tenant),
+            ).fetchall()
+            reviews=connection.execute(
+                "SELECT id,accion,observacion,usuario_id,creado_en FROM doc_revisiones WHERE documento_id=? AND fundacion_id=? ORDER BY id DESC",
+                (instance_id,tenant),
+            ).fetchall()
+        return {"versiones":[dict(row) for row in versions],"revisiones":[dict(row) for row in reviews],"eventos":self.document_audit(instance_id,tenant)}
+
     def get_instance(self, instance_id: int, tenant: int) -> dict | None:
         with self.connect() as connection:
             row=connection.execute("SELECT * FROM doc_instancias WHERE id=? AND fundacion_id=?",(instance_id,tenant)).fetchone()

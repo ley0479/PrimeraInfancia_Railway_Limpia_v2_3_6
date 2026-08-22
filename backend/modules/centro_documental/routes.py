@@ -21,8 +21,8 @@ from .validators import validate_special_state
 from .document_builder_service import build_docx,build_package,convert_pdf
 
 
-ADMIN_ROLES = ("SUPERADMIN", "GERENTE", "ADMIN", "COORDINADOR")
-PROFESSIONAL_ROLES = ADMIN_ROLES + ("DOCENTE", "NUTRICIONISTA", "PSICOSOCIAL", "ENFERMERIA")
+ADMIN_ROLES = ("SUPERADMIN", "GERENTE", "COORDINADOR", "AUXILIAR_ADMINISTRATIVO")
+PROFESSIONAL_ROLES = ADMIN_ROLES + ("DOCENTE", "NUTRICIONISTA", "PSICOSOCIAL")
 ALLOWED_EXTENSIONS = {".docx", ".xlsx", ".xlsm", ".pdf"}
 MIME_BY_EXTENSION = {
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -194,11 +194,25 @@ def register_centro_documental(app, database_path: str, data_dir: str) -> None:
         item=repository.create_instance(user["fundacion_id"],payload,user["id"])
         return jsonify({"documento":item}),201
 
+    @blueprint.get("")
+    @require_roles(*PROFESSIONAL_ROLES)
+    def list_documents():
+        user=_user()
+        return jsonify(repository.list_instances(user["fundacion_id"],request.args.get("limit",25,type=int),request.args.get("offset",0,type=int),request.args.get("componente", ""),request.args.get("estado", "")))
+
     @blueprint.get("/<int:document_id>")
     @require_roles(*PROFESSIONAL_ROLES)
     def get_document(document_id: int):
         user=_user(); item=repository.get_instance(document_id,user["fundacion_id"])
         return jsonify({"documento":item}) if item else (jsonify({"error":"Documento no encontrado."}),404)
+
+    @blueprint.get("/<int:document_id>/auditoria")
+    @require_roles(*PROFESSIONAL_ROLES)
+    def document_audit(document_id: int):
+        user=_user()
+        try: history=repository.document_history(document_id,user["fundacion_id"])
+        except KeyError as exc: return jsonify({"error":str(exc)}),404
+        return jsonify(history)
 
     @blueprint.patch("/<int:document_id>")
     @require_roles(*PROFESSIONAL_ROLES)
@@ -291,8 +305,20 @@ def register_centro_documental(app, database_path: str, data_dir: str) -> None:
         if version.get("archivo_pdf"): files.append(("07_PDF_APROBADOS/documento.pdf",Path(version["archivo_pdf"])))
         folder=tenant_storage_root(data_dir,user["fundacion_id"])/"packages"/str(document_id); output=folder/f"PAQUETE_DOCUMENTAL_{document_id}.zip"
         package=build_package(output,files,{"documento_id":document_id,"fundacion_id":user["fundacion_id"],"estado":item["estado"],"capture":"PENDIENTE_PLANTILLA"})
-        repository.audit(user["fundacion_id"],"DOCUMENTO",document_id,"PAQUETE_GENERADO",user["id"],{"archivo":output.name})
+        repository.audit(user["fundacion_id"],"DOCUMENTO",document_id,"PAQUETE_GENERADO",user["id"],{"archivo":output.name,"hash_sha256":package["sha256"]})
         return jsonify({"message":"Paquete documental generado.","paquete":package}),201
+
+    @blueprint.get("/<int:document_id>/descargar-paquete")
+    @require_roles(*PROFESSIONAL_ROLES)
+    def download_package(document_id: int):
+        user=_user()
+        if not repository.get_instance(document_id,user["fundacion_id"]): return jsonify({"error":"Documento no encontrado."}),404
+        root=(tenant_storage_root(data_dir,user["fundacion_id"])/"packages").resolve()
+        try:
+            path=(root/str(document_id)/f"PAQUETE_DOCUMENTAL_{document_id}.zip").resolve(strict=True); path.relative_to(root)
+        except (OSError,ValueError): return jsonify({"error":"Paquete documental no disponible."}),404
+        repository.audit(user["fundacion_id"],"DOCUMENTO",document_id,"PAQUETE_DESCARGADO",user["id"],{"hash_sha256":_hash(path)})
+        return send_file(path,as_attachment=True,download_name=path.name,mimetype="application/zip")
 
     @blueprint.get("/<int:document_id>/descargar")
     @require_roles(*PROFESSIONAL_ROLES)
@@ -304,10 +330,13 @@ def register_centro_documental(app, database_path: str, data_dir: str) -> None:
         repository.audit(user["fundacion_id"],"DOCUMENTO",document_id,"DESCARGADO",user["id"],{"tipo":kind,"version":version["version"]})
         return send_file(path,as_attachment=True,download_name=path.name)
 
-    @blueprint.put("/<int:document_id>/participantes")
+    @blueprint.route("/<int:document_id>/participantes",methods=["GET","PUT"])
     @require_roles(*PROFESSIONAL_ROLES)
     def save_participants(document_id: int):
         user=_user(); payload=request.get_json(silent=True) or {}
+        if request.method=="GET":
+            if not repository.get_instance(document_id,user["fundacion_id"]): return jsonify({"error":"Documento no encontrado."}),404
+            return jsonify({"participantes":repository.participants(document_id,user["fundacion_id"])})
         try: result=repository.replace_participants(document_id,user["fundacion_id"],payload.get("participantes") or [])
         except KeyError as exc: return jsonify({"error":str(exc)}),404
         except ValueError as exc: return jsonify({"error":str(exc)}),409
